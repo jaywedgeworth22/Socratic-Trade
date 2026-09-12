@@ -495,6 +495,7 @@ const tickGuardHost = globalThis as unknown as {
   __tickStartedAtMs?: number;
   __tickGeneration?: number;
   __tickSentryCheckInId?: string;
+  __tickAbortController?: AbortController;
 };
 
 /** Default wall-clock budget for one tick body before the watchdog unwedge.  2 minutes is under
@@ -523,6 +524,7 @@ function clearTickGuard(): void {
   tickGuardHost.__tickInFlight = false;
   tickGuardHost.__tickStartedAtMs = undefined;
   tickGuardHost.__tickSentryCheckInId = undefined;
+  tickGuardHost.__tickAbortController = undefined;
 }
 
 /** Test-only: drop the process-pinned in-flight bit so files sharing a vitest worker stay isolated. */
@@ -557,6 +559,9 @@ export function runSchedulerTickWatchdog(now = Date.now()): SchedulerTickWatchdo
   }
   const hungForMs =
     typeof started === "number" && Number.isFinite(started) ? now - started : Number.NaN;
+  if (tickGuardHost.__tickAbortController) {
+    tickGuardHost.__tickAbortController.abort(new Error("Scheduler tick watchdog timeout"));
+  }
   const checkInId = tickGuardHost.__tickSentryCheckInId;
   nextTickGeneration();
   clearTickGuard();
@@ -600,6 +605,7 @@ export function reconcileAutonomyOnBoot(): void {
   // per account) after the reconcile loop finishes, rather than notifying inline per account.
   const haltedByUser = new Map<string, string[]>();
   for (const userId of listUsers()) {
+      signal?.throwIfAborted();
     // Per-user autoResumeOnBoot setting (default false) — the individual opt-in replaces
     // the old global env var. Each user independently decides whether their accounts resume.
     if (getAutoResumeOnBoot(userId)) {
@@ -714,7 +720,7 @@ export function startScheduler(): void {
   console.log("[scheduler] started (tick every 60s; watchdog every 15s)");
 }
 
-async function tickInner(): Promise<void> {
+async function tickInner(signal?: AbortSignal): Promise<void> {
   // Captured immediately: `tick()` bumps `__tickGeneration` synchronously right before invoking
   // `tickInner`, so this is always this call's own generation. Guards the Sentry check-in close in
   // the `finally` below the same way `tick()`'s own `finally` already guards `clearTickGuard()` —
@@ -1495,10 +1501,11 @@ async function tick(): Promise<void> {
   }
   tickGuardHost.__tickInFlight = true;
   tickGuardHost.__tickStartedAtMs = Date.now();
+  tickGuardHost.__tickAbortController = new AbortController();
   const started = tickGuardHost.__tickStartedAtMs;
   const myGen = nextTickGeneration();
   try {
-    await tickInner();
+    await tickInner(tickGuardHost.__tickAbortController?.signal);
     const durationMs = Date.now() - started;
     recordSchedulerTick(durationMs > TICK_MS ? "overrun" : "ok", durationMs);
   } catch (err) {

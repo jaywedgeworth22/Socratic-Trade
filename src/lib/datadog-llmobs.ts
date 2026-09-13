@@ -25,6 +25,8 @@ const LLM_HOST_HINTS = [
   "mistral.ai",
   "deepseek.com",
   "api.minimax.io",
+  "moonshot.cn",
+  "api.moonshot.cn",
 ];
 
 type LlmObsApi = {
@@ -96,8 +98,9 @@ export async function withDatadogLlmObs<T>(
 
   const model = extractModelName(init?.body) ?? "unknown";
   const provider = inferGenAiSystem(url);
+  let wrapped: (() => Promise<unknown>) | Promise<unknown>;
   try {
-    const wrapped = llmobs.wrap(
+    wrapped = llmobs.wrap(
       {
         kind: "llm",
         name: `${provider}.chat`,
@@ -108,8 +111,22 @@ export async function withDatadogLlmObs<T>(
       async () => {
         const result = await fn();
         try {
+          const isError =
+            result &&
+            typeof result === "object" &&
+            "ok" in result &&
+            (result as { ok?: boolean }).ok === false;
+          const status =
+            result && typeof result === "object" && "status" in result
+              ? (result as { status?: number }).status
+              : undefined;
           llmobs.annotate?.({
-            tags: { ml_app: DD_LLMOBS_ML_APP, fleet: "core" },
+            tags: {
+              ml_app: DD_LLMOBS_ML_APP,
+              fleet: "core",
+              ...(status ? { http_status: String(status) } : {}),
+            },
+            ...(isError ? { error: { message: `HTTP ${status ?? "error"}` } } : {}),
           });
         } catch {
           // annotation is best-effort
@@ -117,8 +134,11 @@ export async function withDatadogLlmObs<T>(
         return result;
       }
     );
-    return (typeof wrapped === "function" ? await wrapped() : await wrapped) as T;
   } catch {
+    // Tracer configuration threw synchronously; execute uninstrumented
     return fn();
   }
+
+  // Once wrapped, execute directly so underlying rejections are not retried
+  return (typeof wrapped === "function" ? await wrapped() : await wrapped) as T;
 }

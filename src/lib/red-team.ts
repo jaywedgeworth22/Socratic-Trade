@@ -491,7 +491,20 @@ export async function debateProposal(
               return { text: undefined, debate: unavailable(`Red Team review unavailable — ${why}`, failureKind, attemptCanonicalModel) };
             }
 
-            const payload = await response.json();
+            let payload: unknown;
+            try {
+              payload = await response.json();
+            } catch {
+              if (!isLast) {
+                lastError = new Error("Malformed response returned from LLM API.");
+                console.warn(`[RedTeam] ${attempt.model}/${attempt.provider} returned a malformed HTTP-200 body; failing over to ${next.model}/${next.provider}.`);
+                continue;
+              }
+              return {
+                text: undefined,
+                debate: unavailable("Malformed response returned from LLM API.", "malformed_response", attemptCanonicalModel)
+              };
+            }
             recordLlmUsage({
               userId,
               provider: attempt.provider,
@@ -629,7 +642,7 @@ export async function debateProposal(
               }
             };
           } catch (err) {
-            if (!isLast && isRetryableLlmError(err)) {
+            if (!isLast && (isRetryableLlmError(err) || err instanceof SyntaxError)) {
               lastError = err;
               console.warn(`[RedTeam] ${attempt.model}/${attempt.provider} errored (${(err as { message?: string })?.message ?? String(err)}); failing over to ${next.model}/${next.provider}.`);
               continue;

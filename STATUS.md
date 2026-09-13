@@ -4,6 +4,10 @@
 
 Hardened web and mobile API endpoints against open redirects, denial-of-service, and error leakage.  Implemented `sanitizeCallbackUrl` in `src/lib/auth/callback-url.ts` and wired into `app/login/page.tsx`, rejecting protocol-relative (`//evil.com`) and cross-origin targets.  Added strict `redirect` callback in NextAuth (`src/lib/auth/auth.ts`).  Enforced IP-based rate limiting on public mobile auth routes (`/api/mobile/auth/apple` and `/api/mobile/auth/exchange`) and bounded exchange request bodies with `APPLE_AUTH_MAX_BYTES` (returning HTTP 413 on overflow).  Added `RATE_LIMITS.orders` rate limiting to `POST /api/proposals/from-draft`.  Defensively caught JSON parse errors across `/api/orders/cancel`, `/api/profiles`, and `/api/consent`, returning HTTP 400 instead of unhandled 500 crashes.  Sanitized error reflections in `/api/chat` using `safeErrorMessage` to redact sensitive credentials.  Verified gate: `npm run lint` (0 errors), `npx tsc --noEmit` (clean), and 19 vitest tests passing.
 Rollout: `docs/rollouts/2026-09-13-issue-3224-api-security-hardening.md`.
+## 2026-09-13 ANTIGRAVITY — Datadog LLMObs duplicate invocation fix, Red Team failover resilience & Sentry GenAI token metrics (Issue #3222)
+
+Resolved issue #3222: decoupled `llmobs.wrap` tracer setup from execution in `withDatadogLlmObs` so errors do not retry `fn()` and double-bill LLM providers; added safe JSON parsing to `red-team.ts` so HTML proxy responses fail over cleanly to candidate fallback reviewers instead of failing closed immediately; annotated HTTP error status codes on Datadog and Sentry GenAI spans; intercepted `response.json()` to capture `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens` directly before span finalization; added Moonshot to LLM host hints; resolved `@sentry/profiling-node` import in Next.js instrumentation. Verified with lint (0 errors), tsc (0 errors), and vitest (16 passed).
+Rollout: `docs/rollouts/2026-09-13-issue-3222-llm-observability-resilience.md`.
 
 ## 2026-09-12 ANTIGRAVITY — Comprehensive Full-Stack Audit & System Diagnostics
 

@@ -75,6 +75,8 @@ function operationFromUrl(url: string): GenAiOperation {
   return "chat";
 }
 
+let lastGenAiSpanRecord: { span: any; timestamp: number } | null = null;
+
 export async function withGenAiSpan<T>(
   url: string,
   init: RequestInit | undefined,
@@ -96,7 +98,46 @@ export async function withGenAiSpan<T>(
         ...(model ? { "gen_ai.request.model": model } : {})
       }
     },
-    fn
+    async (span?: any) => {
+      const activeSpan = span ?? Sentry.getActiveSpan?.();
+      if (activeSpan) {
+        lastGenAiSpanRecord = { span: activeSpan, timestamp: Date.now() };
+      }
+      const result = await fn();
+      if (result && typeof result === "object") {
+        if ("ok" in result && (result as { ok?: boolean }).ok === false) {
+          const status = (result as { status?: number }).status;
+          activeSpan?.setStatus?.({ code: 2, message: `HTTP ${status ?? "error"}` });
+        }
+        if (typeof (result as any).json === "function") {
+          const origJson = (result as any).json.bind(result);
+          (result as any).json = async () => {
+            const data = await origJson();
+            try {
+              if (data && typeof data === "object" && "usage" in data) {
+                const u = (data as { usage?: any }).usage;
+                const promptTokens = u?.prompt_tokens ?? u?.input_tokens;
+                const completionTokens = u?.completion_tokens ?? u?.output_tokens;
+                const attrs: Record<string, string | number> = {};
+                if (typeof promptTokens === "number" && Number.isFinite(promptTokens)) {
+                  attrs["gen_ai.usage.input_tokens"] = promptTokens;
+                }
+                if (typeof completionTokens === "number" && Number.isFinite(completionTokens)) {
+                  attrs["gen_ai.usage.output_tokens"] = completionTokens;
+                }
+                if (Object.keys(attrs).length > 0) {
+                  activeSpan?.setAttributes?.(attrs);
+                }
+              }
+            } catch {
+              // best-effort
+            }
+            return data;
+          };
+        }
+      }
+      return result;
+    }
   );
 }
 
@@ -120,7 +161,8 @@ export function setGenAiUsageOnActiveSpan(usage: {
 }): void {
   void loadSentry().then((Sentry) => {
     try {
-      const span = Sentry?.getActiveSpan?.();
+      const activeSpan = Sentry?.getActiveSpan?.();
+      const span = activeSpan ?? (lastGenAiSpanRecord && (Date.now() - lastGenAiSpanRecord.timestamp < 30000) ? lastGenAiSpanRecord.span : null);
       if (!span) return;
       const attrs: Record<string, string | number> = {};
       if (usage.provider) attrs["gen_ai.system"] = usage.provider;

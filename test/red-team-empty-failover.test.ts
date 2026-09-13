@@ -122,6 +122,26 @@ describe("debateProposal — malformed-content failover (prod 2026-07-28..30 'Re
     expect(calledModels.length).toBe(2);
   });
 
+  it("non-JSON body (e.g. HTML proxy error) from the primary fails over to the fallback reviewer", async () => {
+    const { debateProposal } = await import("../src/lib/red-team");
+    await setupWithFallback("RT_FO_HTML");
+    const calledModels: string[] = [];
+    vi.stubGlobal("fetch", async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { model?: string };
+      calledModels.push(body.model ?? "");
+      if ((body.model ?? "").includes("claude")) return chatResponse(FALLBACK_VERDICT);
+      return new Response("<html><body>502 Bad Gateway</body></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" }
+      });
+    });
+
+    const result = await debateProposal(buyProposal(), undefined);
+    expect(result.available).toBe(true);
+    expect(result.verdict).toBe("approve");
+    expect(calledModels.length).toBe(2);
+  });
+
   it("fail-closed is preserved: when EVERY planned attempt returns empty content the review is unavailable", async () => {
     const { debateProposal } = await import("../src/lib/red-team");
     await setupWithFallback("RT_FO_EXHAUST");
@@ -139,4 +159,26 @@ describe("debateProposal — malformed-content failover (prod 2026-07-28..30 'Re
     expect(result.failureKind).toBe("malformed_response");
     expect(calledModels.length).toBe(2); // primary AND fallback were both tried before failing closed
   });
+
+  it("fail-closed is preserved: when EVERY planned attempt returns malformed non-JSON body, the review is unavailable", async () => {
+    const { debateProposal } = await import("../src/lib/red-team");
+    await setupWithFallback("RT_FO_HTML_EXHAUST");
+    const calledModels: string[] = [];
+    vi.stubGlobal("fetch", async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { model?: string };
+      calledModels.push(body.model ?? "");
+      return new Response("<html><body>502 Bad Gateway</body></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" }
+      });
+    });
+
+    const result = await debateProposal(buyProposal(), undefined);
+    expect(result.available).toBe(false);
+    expect(result.rejected).toBe(false);
+    expect(result.verdict).toBeUndefined();
+    expect(result.failureKind).toBe("malformed_response");
+    expect(calledModels.length).toBe(2);
+  });
 });
+

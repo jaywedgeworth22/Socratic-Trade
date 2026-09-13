@@ -34,10 +34,16 @@ export const FTS_MIRROR_HEARTBEAT_MS = 20_000;
  * dashboard getAccounts first wait (live ftsMirrorSlice logs were 6–12s
  * under the old 20-chunk / 6000ms cap).
  */
-export const FTS_MIRROR_MAX_CHUNKS_PER_TICK = 6;
+export const FTS_MIRROR_MAX_CHUNKS_PER_TICK = Math.max(
+  1,
+  Number(process.env.FTS_MIRROR_MAX_CHUNKS_PER_TICK) || 6
+);
 
 /** Hard wall-clock budget for FTS work per embed_queued tick. */
-export const FTS_MIRROR_TICK_BUDGET_MS = 2_000;
+export const FTS_MIRROR_TICK_BUDGET_MS = Math.max(
+  100,
+  Number(process.env.FTS_MIRROR_TICK_BUDGET_MS) || 2_000
+);
 
 /**
  * Inner feed size so the tick can re-check the wall clock between calls.

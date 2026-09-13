@@ -337,6 +337,45 @@ export function getRagUsageSummary(opts: { sinceIso?: string } = {}): RagUsageRo
   }));
 }
 
+export const DEFAULT_RAG_MAX_DAILY_INGEST_POINTS = 50_000;
+
+export function ragMaxDailyIngestPoints(): number {
+  const configured = Number(process.env.RAG_MAX_DAILY_INGEST_POINTS ?? process.env.QDRANT_MAX_DAILY_INGEST_POINTS);
+  return Number.isFinite(configured) && configured > 0
+    ? Math.floor(configured)
+    : DEFAULT_RAG_MAX_DAILY_INGEST_POINTS;
+}
+
+/**
+ * Total vector points upserted in the rolling 24-hour window, optionally scoped to a provider.
+ */
+export function usedRagUpsertPointsLast24h(userId: string = "local", provider?: string): number {
+  try {
+    const sinceIso = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+    const query = provider
+      ? "SELECT COALESCE(SUM(batch_count), 0) AS total FROM rag_usage WHERE user_id = ? AND operation = 'upsert' AND provider = ? AND created_at >= ?"
+      : "SELECT COALESCE(SUM(batch_count), 0) AS total FROM rag_usage WHERE user_id = ? AND operation = 'upsert' AND created_at >= ?";
+    const params = provider ? [userId, provider, sinceIso] : [userId, sinceIso];
+    const row = getDb().prepare(query).get(...params) as { total: number } | undefined;
+    return Number(row?.total ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Verifies that the rolling 24-hour vector point ingestion budget has headroom.
+ * Defaults to enabled, fail-open on DB errors.
+ */
+export function hasRagIngestPointsBudget(userId: string = "local", requested: number = 1, provider?: string): boolean {
+  if (process.env.RAG_INGEST_POINTS_BUDGET_ENABLED === "off" || process.env.RAG_INGEST_POINTS_BUDGET_ENABLED === "false") {
+    return true;
+  }
+  const used = usedRagUpsertPointsLast24h(userId, provider);
+  const limit = ragMaxDailyIngestPoints();
+  return used + requested <= limit;
+}
+
 // ── R5: consolidated per-retrieval distribution telemetry ───────────────────
 //
 // (2026-07-01 RAG backlog item R5.) Subsumes three overlapping proposals ("recall-proxy

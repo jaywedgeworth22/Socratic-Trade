@@ -231,3 +231,42 @@ export function meterQdrantQuery(userId?: string, recordCount?: number): void {
     batchCount: recordCount ?? 1
   });
 }
+
+let qdrantMetricChecked = false;
+
+export function resetQdrantMetricCheckedForTests(): void {
+  qdrantMetricChecked = false;
+}
+
+/**
+ * Asserts that the Qdrant collection is configured with Cosine distance metric.
+ * Distorted distance metrics skew VECTOR_MIN_SCORE and rerank relevance cutoffs.
+ * Cached per-process; fail-soft.
+ */
+export async function assertQdrantCollectionMetric(): Promise<void> {
+  if (qdrantMetricChecked) return;
+  try {
+    const { qdrantCollectionInfo } = await import("./qdrant-write");
+    const info = await qdrantCollectionInfo();
+    if (!info.exists) return;
+    if (info.distance && info.distance.toLowerCase() !== "cosine") {
+      console.warn(
+        `[vector-db] Qdrant collection "${info.collection}" distance metric is "${info.distance}", expected "Cosine" — cosine-scale cutoffs (VECTOR_MIN_SCORE) may be distorted.`
+      );
+      try {
+        const { audit } = await import("../db");
+        audit(
+          "vector_index_metric_mismatch",
+          { provider: "qdrant", collection: info.collection, metric: info.distance, expectedMetric: "Cosine" },
+          "local"
+        );
+      } catch {
+        // best-effort audit
+      }
+    }
+    qdrantMetricChecked = true;
+  } catch (err) {
+    console.warn("[qdrant-read] Could not verify collection metric:", err instanceof Error ? err.message : String(err));
+  }
+}
+

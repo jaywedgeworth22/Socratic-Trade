@@ -29,7 +29,27 @@ import {
   FTS_MIRROR_TICK_BUDGET_MS,
   planFtsMirrorSlice
 } from "./fts-mirror-bound";
-import crypto from "crypto";
+
+interface CachedFtsRows {
+  rows: Array<{
+    contentHash: string;
+    symbol: string;
+    source: string;
+    accession: string;
+    text: string;
+  }>;
+  cachedAt: number;
+}
+
+const ftsRowsCache = new Map<string, CachedFtsRows>();
+
+function getFtsCacheKey(cik: string, accession: string, sequence: number): string {
+  return `${cik}:${accession}:${sequence}`;
+}
+
+export function clearFtsRowsCacheForTests(): void {
+  ftsRowsCache.clear();
+}
 
 /** Hard cap on tasks one tick may claim+process.  Prod has ~500 running jobs; claiming
  *  5 per job let a single tick lease thousands of facts_extracted rows and hang for
@@ -373,24 +393,27 @@ export class SecIngestWorker {
           return;
         }
       }
-      const rawContent = await readLocalArtifact(task.cik, task.accession, sequence, `raw-${documentName}`);
-      const sectionsJson = await readLocalArtifact(task.cik, task.accession, sequence, "sections.json");
-      if (!rawContent || !sectionsJson) throw new Error("Parsed/Raw artifacts missing");
+      let doc: ReturnType<typeof buildSecDocument> | undefined;
+      if (!storeAlreadyDone) {
+        const rawContent = await readLocalArtifact(task.cik, task.accession, sequence, `raw-${documentName}`);
+        const sectionsJson = await readLocalArtifact(task.cik, task.accession, sequence, "sections.json");
+        if (!rawContent || !sectionsJson) throw new Error("Parsed/Raw artifacts missing");
 
-      const sections = timeSync("worker.parseSectionsJson", `${Math.round(sectionsJson.length / 1024)}KB`, () => JSON.parse(sectionsJson));
-      const doc = buildSecDocument({
-        rawContent,
-        sections,
-        documentName,
-        ticker: task.symbol,
-        docId: vectorDocId,
-        title: `${task.symbol} ${task.payload.docType || "Filing"}`,
-        docType: typeof task.payload.docType === "string" ? task.payload.docType : "filing",
-        publishedAt: task.payload.filedAt as string,
-        ...(typeof task.payload.acceptanceDateTime === "string" && task.payload.acceptanceDateTime
-          ? { acceptanceDateTime: task.payload.acceptanceDateTime }
-          : {})
-      });
+        const sections = timeSync("worker.parseSectionsJson", `${Math.round(sectionsJson.length / 1024)}KB`, () => JSON.parse(sectionsJson));
+        doc = buildSecDocument({
+          rawContent,
+          sections,
+          documentName,
+          ticker: task.symbol,
+          docId: vectorDocId,
+          title: `${task.symbol} ${task.payload.docType || "Filing"}`,
+          docType: typeof task.payload.docType === "string" ? task.payload.docType : "filing",
+          publishedAt: task.payload.filedAt as string,
+          ...(typeof task.payload.acceptanceDateTime === "string" && task.payload.acceptanceDateTime
+            ? { acceptanceDateTime: task.payload.acceptanceDateTime }
+            : {})
+        });
+      }
 
       // Heartbeat across storeDocument AND the FTS mirror.  #2680 yielded inside the
       // batch helper but left this interval covering only storeDocument; a 88-279s
@@ -398,7 +421,7 @@ export class SecIngestWorker {
       const leaseHeartbeat = setInterval(heartbeat, FTS_MIRROR_HEARTBEAT_MS);
       leaseHeartbeat.unref?.();
       try {
-        if (!storeAlreadyDone) {
+        if (!storeAlreadyDone && doc) {
           const res = await storeDocument(doc, "local", {
             maxTokens: 400,
             overlapRatio: 0.15
@@ -464,17 +487,48 @@ export class SecIngestWorker {
         // (delete+insert keyed on symbol/source/accession/hash).  The worker now feeds the
         // batch helper a bounded slice per tick; insertDocumentChunkFtsBatch keeps its
         // internal 250ms yield.  Resume cursor is the durable FTS row count.
-        const chunksJson = await readLocalArtifact(task.cik, task.accession, sequence, "chunks.json");
-        const ftsChunks: Array<{ content_hash: string; text: string }> = chunksJson
-          ? JSON.parse(chunksJson)
-          : chunkDocument(doc, { maxTokens: 400, overlapRatio: 0.15 });
-        const ftsRows = ftsChunks.map((chunk) => ({
-          contentHash: chunk.content_hash,
-          symbol: task.symbol,
-          source: "sec-edgar",
-          accession: vectorDocId,
-          text: chunk.text
-        }));
+        const cacheKey = getFtsCacheKey(task.cik, task.accession, sequence);
+        let ftsRows = ftsRowsCache.get(cacheKey)?.rows;
+        if (!ftsRows) {
+          const chunksJson = await readLocalArtifact(task.cik, task.accession, sequence, "chunks.json");
+          let ftsChunks: Array<{ content_hash: string; text: string }>;
+          if (chunksJson) {
+            ftsChunks = JSON.parse(chunksJson);
+          } else {
+            if (!doc) {
+              const rawContent = await readLocalArtifact(task.cik, task.accession, sequence, `raw-${documentName}`);
+              const sectionsJson = await readLocalArtifact(task.cik, task.accession, sequence, "sections.json");
+              if (!rawContent || !sectionsJson) throw new Error("Parsed/Raw artifacts missing");
+              const sections = timeSync("worker.parseSectionsJson", `${Math.round(sectionsJson.length / 1024)}KB`, () => JSON.parse(sectionsJson));
+              doc = buildSecDocument({
+                rawContent,
+                sections,
+                documentName,
+                ticker: task.symbol,
+                docId: vectorDocId,
+                title: `${task.symbol} ${task.payload.docType || "Filing"}`,
+                docType: typeof task.payload.docType === "string" ? task.payload.docType : "filing",
+                publishedAt: task.payload.filedAt as string,
+                ...(typeof task.payload.acceptanceDateTime === "string" && task.payload.acceptanceDateTime
+                  ? { acceptanceDateTime: task.payload.acceptanceDateTime }
+                  : {})
+              });
+            }
+            ftsChunks = chunkDocument(doc, { maxTokens: 400, overlapRatio: 0.15 });
+          }
+          ftsRows = ftsChunks.map((chunk) => ({
+            contentHash: chunk.content_hash,
+            symbol: task.symbol,
+            source: "sec-edgar",
+            accession: vectorDocId,
+            text: chunk.text
+          }));
+          if (ftsRowsCache.size >= 50) {
+            const oldestKey = ftsRowsCache.keys().next().value;
+            if (oldestKey) ftsRowsCache.delete(oldestKey);
+          }
+          ftsRowsCache.set(cacheKey, { rows: ftsRows, cachedAt: Date.now() });
+        }
 
         const tickStartedAt = Date.now();
         // Resume on CONTENT, never on a row COUNT.  `document_chunks_fts_index` is keyed on
@@ -545,6 +599,7 @@ export class SecIngestWorker {
           nextCheckpoint: "embedded",
           receipt: { ...task.payload, ...progress }
         });
+        ftsRowsCache.delete(cacheKey);
         if (!ok) throw new Error("Failed to advance checkpoint from embed_queued to embedded");
         return;
       } finally {

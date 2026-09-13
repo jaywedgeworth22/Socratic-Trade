@@ -19,6 +19,7 @@ import type { LlmReasoningEffort } from "@/lib/types";
 import { NextResponse } from "next/server";
 import { registerChatTurn, releaseChatTurn } from "@/lib/chat/turn-registry";
 import { getPolicy } from "@/lib/db";
+import { safeErrorMessage } from "@/lib/telemetry-sanitize";
 
 /** The explicit offline path: the deterministic MockLLM, intentionally keyless. Anything else is a real
  *  provider and must resolve a credential. An empty/absent hint is NOT mock and is accepted only when
@@ -178,10 +179,8 @@ export async function POST(request: Request) {
       releaseChatTurn(turnKey);
     }
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = safeErrorMessage(e);
     console.error("[chat] orchestrator error:", message);
-    // Single-operator app: forward the actual error (e.g. "invalid_api_key") so the
-    // operator can act on it. Not a multi-user SaaS where internal details must be hidden.
     return NextResponse.json({ error: "chat_failed", message }, { status: 500 });
   }
 }

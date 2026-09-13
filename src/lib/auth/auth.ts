@@ -136,6 +136,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     decode: decodeSessionToken
   },
   callbacks: {
+    async redirect({ url, baseUrl }: { url: string; baseUrl: string }) {
+      // Allows relative callback URLs starting with a single '/' (not '//' or '/\')
+      if (url.startsWith("/") && !url.startsWith("//") && !url.startsWith("/\\")) {
+        return `${baseUrl}${url}`;
+      }
+      try {
+        const parsed = new URL(url);
+        if (parsed.origin === baseUrl) {
+          return url;
+        }
+      } catch {
+        // invalid URL
+      }
+      return baseUrl;
+    },
     // Gate GitHub and Apple sign-ins.
     // - GitHub: the built-in provider picks the primary email from /user/emails without
     //   checking the `verified` flag. We call /user/emails ourselves to confirm the

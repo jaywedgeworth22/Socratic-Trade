@@ -7,6 +7,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
+import { openSentryFeedback } from "@/instrumentation-client";
 import { useOverlay } from "../ui/use-overlay";
 import {
   Activity as ActivityIcon,
@@ -112,16 +113,8 @@ export function groupedDestinations(destinations: Destination[]): { label: strin
 }
 
 function triggerFeedback(onSuccess?: () => void) {
-  if (typeof window === "undefined") return;
-  const Sentry = (window as unknown as { Sentry?: { getFeedback?: () => { createForm?: () => Promise<{ appendToDom: () => void; open: () => void }> } } }).Sentry;
-  const feedback = Sentry?.getFeedback?.();
-  if (feedback?.createForm) {
-    void feedback.createForm().then((form) => {
-      form.appendToDom();
-      form.open();
-      onSuccess?.();
-    }).catch(() => {});
-  }
+  openSentryFeedback();
+  onSuccess?.();
 }
 
 export function DesktopRail({ pendingCount, unreadCount = 0 }: { pendingCount: number; unreadCount?: number }) {

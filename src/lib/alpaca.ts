@@ -264,6 +264,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
   private keySource: string;
   /** Stable per-credential cache key.  Never includes the secret. */
   private accountCacheKey: string;
+  private hasRestKeys: boolean;
 
   constructor(private userId: string, connectedAccountId?: string) {
     const targeted = connectedAccountId ? getConnectedAccount(connectedAccountId, userId) : undefined;
@@ -285,6 +286,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
     // fails loudly instead of silently trading on the operator's Alpaca account via process.env.
     const keyId = accountKeys?.apiKey?.trim() || (!accountKeys ? resolveApiKey("alpaca_paper_api_key", userId) || "" : "");
     const secretKey = accountKeys?.apiSecret?.trim() || (!accountKeys ? resolveApiKey("alpaca_paper_secret_key", userId) || "" : "");
+    this.hasRestKeys = !!keyId;
 
     let baseUrl = accountKeys?.baseUrl?.trim();
     if (this.isMcp) {
@@ -1148,6 +1150,10 @@ class AlpacaBrokerGateway implements BrokerGateway {
   // whenever an underlying API key is configured (see the constructor) — so this degrades to a
   // best-effort no-op only on an MCP-ONLY account with no REST-capable key at all.
   async cancelBracketSiblingLegs(accountNumber: string, originalOrderId: string): Promise<{ cancelledOrderIds: string[] }> {
+    if (this.isMcp && !this.hasRestKeys) {
+      audit("alpaca_mcp_bracket_cancel_unsupported", { message: "Bracket sibling legs cannot be cancelled on MCP accounts without REST credentials", originalOrderId, accountNumber });
+      return { cancelledOrderIds: [] };
+    }
     let raw: any;
     try {
       raw = await this.trackHealth(

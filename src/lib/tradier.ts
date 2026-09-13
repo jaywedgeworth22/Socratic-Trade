@@ -292,6 +292,7 @@ function capsFromProfile(account: Record<string, unknown>): AccountCapabilities 
 }
 
 class TradierBrokerGateway implements BrokerGateway {
+  readonly ordersListIncludesTerminal = true;
   private token: string;
   private baseUrl: string;
   private label: string;
@@ -393,7 +394,7 @@ class TradierBrokerGateway implements BrokerGateway {
     // Tradier returns 200 with an { errors: { error: [...] } } envelope for validation failures.
     if (parsed && typeof parsed === "object" && "errors" in (parsed as Record<string, unknown>)) {
       const msg = formatTradierError(parsed);
-      if (msg) throw new Error(msg);
+      if (msg) throw new Error(`Tradier HTTP 422: ${msg}`);
     }
     return parsed as T;
   }
@@ -675,9 +676,29 @@ class TradierBrokerGateway implements BrokerGateway {
           if (seen.has(id)) continue;
           seen.add(id);
           newThisPage += 1;
-          // Only EQUITY-class rows are RETURNED: mapping an option/combo as an EquityOrder
-          // coerces option sides/types into equity-looking orders on the underlying.
-          for (const eq of equityRowsFromTradierOrder(o)) all.push(eq);
+          const oClass = String(o.class ?? "").toLowerCase();
+          if (oClass === "equity") {
+            all.push(o);
+          } else if (["oto", "otoco", "oco", "multileg", "combo"].includes(oClass)) {
+            // Include the container (primary entry order) for advanced orders if it represents an equity action
+            // Tradier's container for equity brackets usually carries the entry leg's details at the top level.
+            if (o.symbol && o.side) all.push(o);
+            const legField = o.leg ?? o.legs;
+            if (legField) {
+              for (const leg of arr<Record<string, unknown>>(legField)) {
+                if (String(leg.class ?? "").toLowerCase() !== "equity") continue;
+                all.push({
+                  symbol: o.symbol,
+                  status: o.status,
+                  create_date: o.create_date,
+                  transaction_date: o.transaction_date,
+                  duration: o.duration,
+                  // Deliberately omitting `tag: o.tag` for exit legs so they don't usurp the entry leg's clientOrderId
+                  ...leg
+                });
+              }
+            }
+          }
         }
         if (newThisPage === 0) break; // fully-duplicate page — done
       }

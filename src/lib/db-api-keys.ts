@@ -2399,7 +2399,7 @@ function trackOpenBracketOrder(accountNumber: string, symbol: string, userId: st
  * fixed/atr family entirely (a real style change to trailing/none/default, or the position closes),
  * never on a same-style scale-in (see trackOpenBracketOrder's doc comment for why). Never throws.
  */
-function enqueueTeardownForAllOpenBrackets(accountNumber: string, symbol: string, userId: string): void {
+export function enqueueTeardownForAllOpenBrackets(accountNumber: string, symbol: string, userId: string): void {
   try {
     const rows = getDb()
       .prepare(`SELECT order_id FROM position_stop_plan_open_brackets WHERE user_id = ? AND account_number = ? AND symbol = ?`)

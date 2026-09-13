@@ -253,6 +253,24 @@ export async function cancelWorkingOrder(input: CancelWorkingOrderInput): Promis
     );
   }
   audit("order_cancel", { accountNumber: policy.accountNumber, orderId, result, source }, userId);
+
+  if (cancelledSymbol) {
+    const { listOpenBracketOrders, enqueueTeardownForAllOpenBrackets } = await import("./db-api-keys");
+    const openBrackets = listOpenBracketOrders(policy.accountNumber, cancelledSymbol, userId);
+    if (openBrackets.length > 0) {
+      // If a user manually cancels an order on a symbol with active brackets, we conservatively tear down
+      // the sibling bracket legs. If they cancelled a take-profit or stop-loss leg, this cleans up the
+      // other side immediately rather than waiting for background sweeps.
+      enqueueTeardownForAllOpenBrackets(policy.accountNumber, cancelledSymbol, userId);
+      audit("bracket_teardown_enqueued_from_manual_cancel", { accountNumber: policy.accountNumber, symbol: cancelledSymbol, orderId }, userId, policy.connectedAccountId);
+      
+      const { reconcilePendingBracketTeardowns } = await import("./broker-protective-stops");
+      reconcilePendingBracketTeardowns(gateway, policy.accountNumber, userId, policy.connectedAccountId).catch((err) => {
+        console.error(`reconcilePendingBracketTeardowns failed after manual cancel: ${err}`);
+      });
+    }
+  }
+
   emitDashboardEvent({ type: "order", userId, at: new Date().toISOString(), detail: { orderId, action: "cancel" } });
   invalidateDashboardSnapshotCache(userId, policy.accountNumber);
   if (dust && shouldAlertCancelDustRisk(userId, policy.accountNumber, dust.symbol)) {

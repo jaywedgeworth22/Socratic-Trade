@@ -7,7 +7,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
-import { openSentryFeedback } from "@/instrumentation-client";
+import { openSentryFeedback } from "../../../instrumentation-client";
 import { useOverlay } from "../ui/use-overlay";
 import {
   Activity as ActivityIcon,

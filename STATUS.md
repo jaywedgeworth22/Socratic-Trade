@@ -1,5 +1,25 @@
 # Current Status
 
+## 2026-09-13 ANTIGRAVITY — PR #3282 (Issue #3221: Event-loop stalls, Watchdog AbortController, isTradingDay timezone)
+
+Addressed Issue #3221 via PR #3282 (auto-merge enabled):
+1. **Buffered \`api_health_log\`**: Buffered outbound API health writes in memory with a 5-second flush window (or 50 items) and made retention-pruning conditional on \`COUNT(*) > HEALTH_LOG_LANE_CAP\`, eliminating synchronous SQLite main-thread locking. Reads in \`getLaneHealth\` and \`listHealthLanes\` flush pending rows for guaranteed consistency.
+2. **Scheduler Watchdog \`AbortController\`**: Attached an \`AbortController\` pipeline (\`__tickAbortController\`) to \`tickGuardHost\` so \`runSchedulerTickWatchdog()\` unwedges hung ticks by aborting active work before subsequent ticks launch.
+3. **\`market-hours.ts\` ET Timezone**: Replaced local-server UTC date accessors with explicit \`America/New_York\` formatting so Friday late trading sessions do not get misclassified as Saturday weekend days.
+4. **Optimized \`hasLiveStrategyRunLease\`**: Swapped the full-table-scanning \`LIKE\` clause for an index-bounded range query (\`key >= ? AND key < ?;\`), leveraging SQLite index \`sqlite_autoindex_settings_1\`.
+5. **Defensive Bracket Teardown**: Refined \`order-cancel.ts\` to verify that a cancelled order belongs to open brackets before triggering teardown of sibling legs.
+Rollout: \`docs/rollouts/2026-09-12-issue-3221-event-loop-stalls.md\`.
+
+## 2026-09-12 ANTIGRAVITY — PR #3230 (Issue #3220: Tradier bracket orders & cancellation fixes — MERGED)
+
+Merged PR #3230 to address Issue #3220:
+1. Emits primary entry order alongside bracket exit legs in \`getEquityOrders\` mapping while stripping the \`tag\` on exit legs to avoid false-positive error matching.
+2. Flagged \`TradierBrokerGateway\` with \`ordersListIncludesTerminal = true\` to prevent \`uncertain\` order wedging in \`reconcilePlacementError\`.
+3. Translated Tradier HTTP 200 validation envelopes as terminal errors.
+4. Audited Alpaca MCP bracket sibling cancellations when REST credentials are not provided.
+5. Triggered teardown of sibling bracket legs upon manual cancellation.
+Rollout: \`docs/rollouts/2026-09-12-issue-3220-tradier-broker-fixes.md\`.
+
 ## 2026-09-12 ANTIGRAVITY — Comprehensive Full-Stack Audit & System Diagnostics
 
 Executed an exhaustive, multi-subagent audit across the entire codebase covering Trading Execution & Persistence, Security & API Routes, AI Strategy & Vector Retrieval, and Web Console & iOS Client.  Identified 3 Critical trading bugs (Tradier bracket entry dropping in `equityRowsFromTradierOrder`, missing `ordersListIncludesTerminal` on Tradier, and HTTP 200 rejection envelope misclassification), 2 Critical console bugs (duplicate strategy runs from mounted desktop/mobile `RunOnceButton` listeners and an un-backed-off deadline retry spin loop), 2 Critical AI engine bugs (`withDatadogLlmObs` duplicate execution on failure, and Red Team unhandled JSON parse failure aborting fallback models), plus over 15 High/Medium vulnerabilities, storage bloat drivers, and event-loop stall sources.  Logged and triaged all findings into 8 dedicated GitHub issues (#3220–#3227) with detailed reproduction mechanics and remediation steps.  Effort logs updated on both branch-neutral live board (`/Users/jay/apps/TRADING-EFFORT-LOG.md`) and repo mirror (`docs/EFFORT-LOG.md`).

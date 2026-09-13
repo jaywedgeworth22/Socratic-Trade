@@ -21,14 +21,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const userId = resolveRequestUserId(request);
-  let accepted = false;
-  try {
-    const body = (await request.json()) as { accepted?: boolean };
-    accepted = body?.accepted === true;
-  } catch {
-    accepted = false;
+  const body = (await request.json().catch(() => null)) as { accepted?: boolean } | null;
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  if (!accepted) {
+  if (body.accepted !== true) {
     return NextResponse.json(
       { error: "Sharing general market data is required to use the app." },
       { status: 400 }

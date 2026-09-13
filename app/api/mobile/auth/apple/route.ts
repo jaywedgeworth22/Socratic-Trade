@@ -4,12 +4,17 @@ import { isEmailAllowed } from "../../../../../src/lib/auth/identity";
 import { encodeSessionToken } from "../../../../../src/lib/auth/session-token";
 import { resolveAppleClientIds } from "../../../../../src/lib/auth/apple-client-id";
 import { APPLE_AUTH_MAX_BYTES, PayloadTooLargeError, readJsonWithLimit } from "../../../../../src/lib/bounded-body";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 // Module-scope JWKS: jose caches keys per resolver instance; recreate-per-request
 // re-fetches https://appleid.apple.com/auth/keys on every sign-in.
 const APPLE_JWKS = createRemoteJWKSet(new URL("https://appleid.apple.com/auth/keys"));
 
 export async function POST(request: Request) {
+  const clientIp = request.headers.get("cf-connecting-ip")?.trim() || "unknown-ip";
+  const limited = enforceRateLimit(clientIp, "mobile/auth/apple", RATE_LIMITS.oauth);
+  if (limited) return limited;
+
   try {
     const body = await readJsonWithLimit(request, APPLE_AUTH_MAX_BYTES);
     const identityToken = (body as { identityToken?: unknown })?.identityToken;

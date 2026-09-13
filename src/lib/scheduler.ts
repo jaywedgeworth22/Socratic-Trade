@@ -605,7 +605,6 @@ export function reconcileAutonomyOnBoot(): void {
   // per account) after the reconcile loop finishes, rather than notifying inline per account.
   const haltedByUser = new Map<string, string[]>();
   for (const userId of listUsers()) {
-      signal?.throwIfAborted();
     // Per-user autoResumeOnBoot setting (default false) — the individual opt-in replaces
     // the old global env var. Each user independently decides whether their accounts resume.
     if (getAutoResumeOnBoot(userId)) {

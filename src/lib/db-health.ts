@@ -250,6 +250,7 @@ export function getLaneHealth(
   streakStartedTs: string | null;
 } {
   try {
+    if (apiHealthBuffer.length > 0) flushApiHealthBuffer();
     const db = getDb();
     const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     // For a per-USER credential lane (keySource "user"), scope the failure streak to THIS user's own
@@ -512,10 +513,14 @@ export function flushApiHealthBuffer(): void {
         }
       }
 
+      const countStmt = db.prepare(`SELECT COUNT(*) as cnt FROM api_health_log WHERE service = ? AND key_source IS ?`);
       for (const lane of lanesToPrune) {
         const [service, keySourceRaw] = lane.split("::");
         const keySource = keySourceRaw === "" ? null : keySourceRaw;
-        deleteCap.run(service, keySource, service, keySource);
+        const row = countStmt.get(service, keySource) as { cnt: number } | undefined;
+        if (row && row.cnt > HEALTH_LOG_LANE_CAP) {
+          deleteCap.run(service, keySource, service, keySource);
+        }
       }
     })();
 
@@ -567,6 +572,10 @@ export function flushApiHealthBuffer(): void {
 
 export function logApiHealth(opts: ApiHealthLogOpts): void {
   apiHealthBuffer.push(opts);
+  if (apiHealthBuffer.length >= 50) {
+    flushApiHealthBuffer();
+    return;
+  }
   if (!apiHealthFlushTimeout) {
     apiHealthFlushTimeout = setTimeout(flushApiHealthBuffer, 5000);
     apiHealthFlushTimeout.unref();
@@ -579,6 +588,7 @@ interface ServiceKeyLane { service: string; key_source: string | null }
 
 function listHealthLanes(): ServiceKeyLane[] {
   try {
+    if (apiHealthBuffer.length > 0) flushApiHealthBuffer();
     const db = getDb();
     return db
       .prepare(`SELECT DISTINCT service, key_source FROM api_health_log ORDER BY service, key_source`)
@@ -590,6 +600,7 @@ function listHealthLanes(): ServiceKeyLane[] {
 
 export function listHealthServices(): string[] {
   try {
+    if (apiHealthBuffer.length > 0) flushApiHealthBuffer();
     const db = getDb();
     const rows = db
       .prepare(`SELECT DISTINCT service FROM api_health_log ORDER BY service`)

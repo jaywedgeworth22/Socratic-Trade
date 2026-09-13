@@ -257,10 +257,10 @@ export async function cancelWorkingOrder(input: CancelWorkingOrderInput): Promis
   if (cancelledSymbol) {
     const { listOpenBracketOrders, enqueueTeardownForAllOpenBrackets } = await import("./db-api-keys");
     const openBrackets = listOpenBracketOrders(policy.accountNumber, cancelledSymbol, userId);
-    if (openBrackets.length > 0) {
-      // If a user manually cancels an order on a symbol with active brackets, we conservatively tear down
-      // the sibling bracket legs. If they cancelled a take-profit or stop-loss leg, this cleans up the
-      // other side immediately rather than waiting for background sweeps.
+    const isBracketOrder = openBrackets.some((b) => b.orderId === orderId);
+    if (isBracketOrder) {
+      // If a user manually cancels a tracked bracket order, we tear down any remaining
+      // sibling bracket legs immediately rather than waiting for background sweeps.
       enqueueTeardownForAllOpenBrackets(policy.accountNumber, cancelledSymbol, userId);
       audit("bracket_teardown_enqueued_from_manual_cancel", { accountNumber: policy.accountNumber, symbol: cancelledSymbol, orderId }, userId, policy.connectedAccountId);
       

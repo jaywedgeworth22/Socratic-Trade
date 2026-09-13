@@ -65,9 +65,10 @@ export async function register() {
   if (process.env.SENTRY_DSN) {
     await import("./sentry.server.config");
     try {
-      const { nodeProfilingIntegration } = await import(
-        /* webpackIgnore: true */ "@sentry/profiling-node"
-      );
+      const profilingModule = "@sentry/profiling-node";
+      const { nodeProfilingIntegration } = (await import(
+        /* webpackIgnore: true */ profilingModule
+      )) as { nodeProfilingIntegration: () => any };
       const Sentry = await import("@sentry/nextjs");
       Sentry.addIntegration(nodeProfilingIntegration());
     } catch {

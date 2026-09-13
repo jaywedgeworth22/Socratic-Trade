@@ -47,11 +47,11 @@ if (dsn) {
         ? [
             Sentry.feedbackIntegration({
               colorScheme: "light",
-              autoInject: true,
+              autoInject: false,
               showBranding: false,
-              buttonLabel: "Report a problem",
+              buttonLabel: "Report a Problem",
               submitButtonLabel: "Send",
-              formTitle: "Report a problem",
+              formTitle: "Report a Problem",
             }),
           ]
         : []),
@@ -60,6 +60,37 @@ if (dsn) {
       return redactForTelemetry(event) as typeof event;
     }
   });
+}
+
+/** Open the Sentry user feedback dialog programmatically. */
+export function openSentryFeedback(): void {
+  try {
+    const SentryWithFeedback = Sentry as unknown as { getFeedback?: () => { createForm?: () => Promise<{ appendToDom: () => void; open: () => void }> } };
+    const feedback = SentryWithFeedback.getFeedback?.();
+    if (feedback?.createForm) {
+      void feedback.createForm().then((form) => {
+        form.appendToDom();
+        form.open();
+      }).catch(() => {});
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const windowFeedback = (window as unknown as { Sentry?: { getFeedback?: () => { createForm?: () => Promise<{ appendToDom: () => void; open: () => void }> } } }).Sentry?.getFeedback?.();
+      if (windowFeedback?.createForm) {
+        void windowFeedback.createForm().then((form) => {
+          form.appendToDom();
+          form.open();
+        }).catch(() => {});
+      }
+    }
+  } catch {
+    // Safe no-op if feedback is not initialized or fails
+  }
+}
+
+if (typeof window !== "undefined") {
+  (window as unknown as { openSentryFeedback?: typeof openSentryFeedback }).openSentryFeedback = openSentryFeedback;
 }
 
 const rumApplicationId =

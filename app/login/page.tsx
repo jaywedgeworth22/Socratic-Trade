@@ -8,6 +8,7 @@
 
 import { isAppleWebAuthConfigured } from "../../src/lib/auth/apple-web";
 import { signIn } from "../../src/lib/auth/auth";
+import { sanitizeCallbackUrl } from "../../src/lib/auth/callback-url";
 import { SENTENCE_GAP } from "../console/lib/format";
 import { HeaderLogo } from "../console/ui/header-logo";
 
@@ -30,7 +31,8 @@ const LOGIN_VALUE_BULLETS = [
 
 export default async function LoginPage(props: { searchParams?: Promise<{ callbackUrl?: string | string[] }> }) {
   const searchParams = await props.searchParams;
-  const callbackUrl = typeof searchParams?.callbackUrl === "string" ? searchParams.callbackUrl : "/";
+  const rawCallbackUrl = typeof searchParams?.callbackUrl === "string" ? searchParams.callbackUrl : undefined;
+  const callbackUrl = sanitizeCallbackUrl(rawCallbackUrl);
 
   return (
     <main className="grid min-h-screen place-items-center bg-bg px-6 text-center">

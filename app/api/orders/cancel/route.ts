@@ -17,7 +17,11 @@ export const dynamic = "force-dynamic";
  * system is stopped. Typed confirmation is the ceremony for opening live risk, not closing it.
  */
 export async function POST(request: Request) {
-  const { orderId } = await request.json();
+  const body = (await request.json().catch(() => null)) as { orderId?: unknown } | null;
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const { orderId } = body;
   const userId = resolveRequestUserId(request);
   const limited = enforceRateLimit(userId, "orders/cancel", RATE_LIMITS.orders);
   if (limited) return limited;

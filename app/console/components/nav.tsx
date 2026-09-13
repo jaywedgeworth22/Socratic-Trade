@@ -111,6 +111,19 @@ export function groupedDestinations(destinations: Destination[]): { label: strin
   return groups;
 }
 
+function triggerFeedback(onSuccess?: () => void) {
+  if (typeof window === "undefined") return;
+  const Sentry = (window as unknown as { Sentry?: { getFeedback?: () => { createForm?: () => Promise<{ appendToDom: () => void; open: () => void }> } } }).Sentry;
+  const feedback = Sentry?.getFeedback?.();
+  if (feedback?.createForm) {
+    void feedback.createForm().then((form) => {
+      form.appendToDom();
+      form.open();
+      onSuccess?.();
+    }).catch(() => {});
+  }
+}
+
 export function DesktopRail({ pendingCount, unreadCount = 0 }: { pendingCount: number; unreadCount?: number }) {
   const pathname = usePathname() ?? "";
   const guardNav = useNavDirtyGuard();
@@ -149,6 +162,16 @@ export function DesktopRail({ pendingCount, unreadCount = 0 }: { pendingCount: n
           })}
         </div>
       ))}
+      <div className="mt-auto pt-3 border-t border-[color:var(--con-line)]">
+        <button
+          type="button"
+          className="con-nav-item w-full text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)] hover:text-[color:var(--con-fg)]"
+          onClick={() => triggerFeedback()}
+          title="Report a Problem"
+        >
+          <span className="flex-1 text-left">Report a Problem</span>
+        </button>
+      </div>
     </nav>
   );
 }
@@ -323,6 +346,16 @@ function TabsSheet({
               </div>
             </div>
           ))}
+          <div className="mt-2 pt-3 border-t border-[color:var(--con-line)]">
+            <button
+              type="button"
+              className="con-nav-item w-full text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)] hover:text-[color:var(--con-fg)]"
+              onClick={() => triggerFeedback(onClose)}
+              title="Report a Problem"
+            >
+              <span className="flex-1 text-left">Report a Problem</span>
+            </button>
+          </div>
         </div>
       </div>
     </>

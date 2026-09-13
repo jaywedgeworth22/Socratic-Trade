@@ -100,25 +100,15 @@ export function isTradingDay(date: Date): boolean {
  *  backward), until it lands on a trading day. Bounded to 10 iterations — comfortably more than
  *  any real holiday cluster — so a bug here can never spin into an infinite loop. */
 function adjacentTradingDayStart(date: Date, direction: 1 | -1): Date {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).formatToParts(date);
-  const getPart = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
-  // We use UTC Date to manipulate days safely without DST jumps affecting noon-anchored math.
-  const d = new Date(Date.UTC(parseInt(getPart("year")), parseInt(getPart("month")) - 1, parseInt(getPart("day")), 12));
+  const parts = etDateParts(date);
+  let current = parts;
   for (let i = 0; i < 10; i++) {
-    d.setUTCDate(d.getUTCDate() + direction);
-    if (isTradingDay(d)) {
-      // Return a Date object representing the start of that ET day.
-      const etFormatter = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
-      const [m, d2, y] = etFormatter.format(d).split("/");
-      return new Date(`${y}-${m}-${d2}T00:00:00.000-05:00`);
+    current = addEtCalendarDays(current, direction);
+    if (isEtCalendarTradingDay(current)) {
+      return new Date(etWallClockToUtcMs(current, 0, 0));
     }
   }
-  return d;
+  return new Date(etWallClockToUtcMs(current, 0, 0));
 }
 
 /** Local-midnight start of the most recent trading day strictly BEFORE `now`'s calendar date —

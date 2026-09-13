@@ -720,6 +720,7 @@ export function startScheduler(): void {
 }
 
 async function tickInner(signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
   // Captured immediately: `tick()` bumps `__tickGeneration` synchronously right before invoking
   // `tickInner`, so this is always this call's own generation. Guards the Sentry check-in close in
   // the `finally` below the same way `tick()`'s own `finally` already guards `clearTickGuard()` —
@@ -776,6 +777,8 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
       result.providerOutbox + result.embedStageExpired + result.embedStageCapPruned;
     return { status: "ok" as const, summary: `deleted=${total}` };
   }).catch((err) => console.error("[scheduler] audit prune error:", err));
+
+  signal?.throwIfAborted();
 
   // Single-leader gate (default ON, including unset/empty). Only an explicit false/off/0/no-style
   // value disables it; otherwise only the lease holder runs the background updates and per-account tick body
@@ -1133,7 +1136,9 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
     }> = [];
 
     for (const userId of listUsers()) {
+      signal?.throwIfAborted();
       for (const account of listConnectedAccounts(userId)) {
+        signal?.throwIfAborted();
         const accountId = account.id;
         const key = scheduleKey(userId, accountId);
         // Owner ruling 2026-08-05: the internal TestBroker adapter (`broker: "test"`) is test
@@ -1440,6 +1445,7 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
       // Stagger launches so concurrent-account bursts do not blow QPM (P2.9).
       let jitterMs = 0;
       for (const { userId, accountId } of dueRuns) {
+        signal?.throwIfAborted();
         const runDelayMs = jitterMs;
         jitterMs += 2000 + Math.random() * 3000;
         void (async () => {
@@ -1454,6 +1460,9 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
       }
     }
   } catch (err) {
+    if (signal?.aborted) {
+      console.warn("[scheduler] tick aborted by watchdog unwedge signal");
+    }
     // Never let a thrown error kill the timer
     sentryStatus = "error";
     logError("scheduler.tick", { event: "tick_error", error: safeErrorMessage(err) });

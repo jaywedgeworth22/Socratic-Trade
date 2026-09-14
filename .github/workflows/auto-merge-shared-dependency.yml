@@ -7,17 +7,19 @@ name: Auto-merge congress-trading-shared PRs
 # nor ios-ship. Without a GH_PAT / SHEPHERD_TOKEN secret this workflow no-ops.
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, synchronize, reopened, labeled, ready_for_review]
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
 
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
+    if: >
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - name: Check if PR updates congress-trading-shared
         id: check

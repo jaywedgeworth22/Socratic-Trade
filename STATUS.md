@@ -4,6 +4,9 @@
 
 Hardened web and mobile API endpoints against open redirects, denial-of-service, and error leakage.  Implemented `sanitizeCallbackUrl` in `src/lib/auth/callback-url.ts` and wired into `app/login/page.tsx`, rejecting protocol-relative (`//evil.com`) and cross-origin targets.  Added strict `redirect` callback in NextAuth (`src/lib/auth/auth.ts`).  Enforced IP-based rate limiting on public mobile auth routes (`/api/mobile/auth/apple` and `/api/mobile/auth/exchange`) and bounded exchange request bodies with `APPLE_AUTH_MAX_BYTES` (returning HTTP 413 on overflow).  Added `RATE_LIMITS.orders` rate limiting to `POST /api/proposals/from-draft`.  Defensively caught JSON parse errors across `/api/orders/cancel`, `/api/profiles`, and `/api/consent`, returning HTTP 400 instead of unhandled 500 crashes.  Sanitized error reflections in `/api/chat` using `safeErrorMessage` to redact sensitive credentials.  Verified gate: `npm run lint` (0 errors), `npx tsc --noEmit` (clean), and 19 vitest tests passing.
 Rollout: `docs/rollouts/2026-09-13-issue-3224-api-security-hardening.md`.
+## 2026-09-13 FX — same-repo pull_request auto-merge
+
+`auto-merge-prs.yml` and `auto-merge-shared-dependency.yml` no longer use `pull_request_target`.  Forks are skipped.  Branch `fx/automerge-fork-guard`.
 
 ## 2026-09-12 ANTIGRAVITY — Comprehensive Full-Stack Audit & System Diagnostics
 

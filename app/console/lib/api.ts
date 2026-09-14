@@ -212,7 +212,7 @@ export function runOnce(): Promise<RunOnceResult> {
   if (_runOnceInFlight) return _runOnceInFlight;
   const p = request<RunOnceResult>("/api/strategy/run", { method: "POST", body: JSON.stringify({ manual: true }) });
   _runOnceInFlight = p;
-  p.finally(() => { _runOnceInFlight = null; });
+  p.finally(() => { _runOnceInFlight = null; }).catch(() => {});
   return p;
 }
 

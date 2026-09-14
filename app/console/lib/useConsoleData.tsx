@@ -199,14 +199,21 @@ export function ConsoleDataProvider({ children }: { children: ReactNode }) {
     // loop that replaced us is still running and owns the flag, so clearing it here would falsely
     // report "stopped trying" and drop the shell onto the error card mid-fetch.
     const stop = () => { if (mounted.current) setFetching(false); };
+    // Tracks consecutive deadline timeouts for exponential backoff — reset to 0 on any non-deadline
+    // result so the backoff only applies to repeated hung attempts.
+    let consecutiveDeadlines = 0;
     for (;;) {
       if (!mounted.current) return;
+      // If a 401 was detected mid-iteration (sessionExpiredRef set to true by runFetch), halt
+      // immediately — there is nothing left to poll for against a dead session.
+      if (sessionExpiredRef.current) { stop(); return; }
       const controller = new AbortController();
       inFlight.current = controller;
       const result = await runFetch(controller);
       if (inFlight.current !== controller) return; // superseded by a newer refresh()/backgroundRefresh()
       inFlight.current = null;
       if (result === "deadline") {
+        consecutiveDeadlines += 1;
         // An AWAITED foreground refresh() must not stay pending across retries: several mutation
         // flows `await refresh()` before clearing their busy state, and a persistently hung
         // /api/dashboard would otherwise wedge those toasts/`finally` blocks forever. The deadline
@@ -218,12 +225,19 @@ export function ConsoleDataProvider({ children }: { children: ReactNode }) {
           void runLoop(false);
           return;
         }
+        // Exponential backoff: 1s * 2^(consecutiveDeadlines-1) capped at 30s, plus ±20% jitter.
+        // This prevents a tight spin-loop hammering a degraded backend every 35s.  After 5+
+        // consecutive deadlines the delay is ~16-30s between retries rather than near-zero.
+        const backoffMs = Math.min(1_000 * Math.pow(2, consecutiveDeadlines - 1), 30_000);
+        const jitter = backoffMs * (0.8 + Math.random() * 0.4);
+        await new Promise<void>((res) => window.setTimeout(res, jitter));
         continue;
       }
+      consecutiveDeadlines = 0;
       if (!pendingBackgroundRefresh.current) { stop(); return; }
       pendingBackgroundRefresh.current = false;
     }
-  }, [runFetch]);
+  }, [runFetch, sessionExpiredRef]);
 
   // Explicit foreground refresh: the initial load and every user action/mutation (approve/reject,
   // place/cancel an order, save a setting, etc. — everything callers pull `refresh` from

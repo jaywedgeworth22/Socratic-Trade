@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MarketQuote, MarketScan } from "@/lib/types";
 import { isUnusableEmptyMarketScan } from "@/lib/scan-singleflight";
+import { redirectToLogin } from "../lib/api";
 
 function isMarketScan(value: unknown): value is MarketScan {
   return Boolean(
@@ -36,6 +37,10 @@ async function readErrorMessage(res: Response): Promise<string> {
     }
   } catch {
     /* body wasn't JSON — fall through to a generic message */
+  }
+  if (res.status === 401) {
+    redirectToLogin();
+    return "Session expired.";
   }
   if (res.status === 429) return "Scan rate limit reached — wait a minute before refreshing again.";
   return `Market scan failed (${res.status}).`;

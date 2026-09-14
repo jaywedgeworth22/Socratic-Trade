@@ -27,6 +27,7 @@ import { ALL_LLM_REASONING_EFFORTS, normalizeReasoningEffortForModel, reasoningC
 import { reasoningAdviceForModel, recommendedReasoningEffortForModel } from "@/lib/model-reasoning-recommendations";
 import { deriveReality } from "../lib/derive";
 import { cx, fmtExact } from "../lib/format";
+import { redirectToLogin } from "../lib/api";
 import { useConsoleData } from "../lib/useConsoleData";
 import { ModelBadge } from "../ui/provider-logo";
 import { Chip, Select, TextInput, Tooltip } from "../ui/primitives";
@@ -325,6 +326,10 @@ export function AssistantChat() {
               : {})
           })
         });
+        if (res.status === 401) {
+          redirectToLogin();
+          throw new Error("Session expired.");
+        }
         if (!res.ok) throw new Error(await apiErrorMessage(res, "Chat request failed"));
         const reply = (await res.json()) as LiveReply;
         // If the user cleared the conversation while this was in flight, drop

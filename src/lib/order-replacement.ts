@@ -360,11 +360,15 @@ async function stepReplacementState(row: OrderReplacementRow, input: MarketRepla
       if (provenanceSkip && !(input.allowOwnerPlaced && provenanceSkip === "not_app_placed")) {
         const errStr = provenanceSkip === "bracket_leg"
           ? `${symbol} ${originalOrder.side} order is a bracket leg — cannot be auto-replaced with a market order.`
-          : `${symbol} ${originalOrder.side} order was not placed by the app — cannot be auto-replaced.`;
+          : provenanceSkip === "owner_cancelled_stop"
+            ? `${symbol} ${originalOrder.side} order is for a manually cancelled stop — cannot be auto-replaced.`
+            : `${symbol} ${originalOrder.side} order was not placed by the app — cannot be auto-replaced.`;
         db.prepare(`UPDATE order_replacements SET status = 'aborted', error = ?, updated_at = ? WHERE id = ?`)
           .run(errStr, new Date().toISOString(), row.id);
         audit(
-          provenanceSkip === "bracket_leg" ? "stale_exit_remediation_skipped_bracket_leg" : "stale_exit_remediation_skipped_not_app_placed",
+          provenanceSkip === "bracket_leg" ? "stale_exit_remediation_skipped_bracket_leg" : 
+          provenanceSkip === "owner_cancelled_stop" ? "stale_exit_remediation_skipped_owner_cancelled_stop" :
+          "stale_exit_remediation_skipped_not_app_placed",
           { orderId: originalOrder.id, symbol, side: originalOrder.side, orderClass: originalOrder.orderClass, clientOrderId: originalOrder.clientOrderId },
           userId,
           input.policy.connectedAccountId
@@ -791,7 +795,9 @@ export async function autoRemediateStaleExitOrders(input: {
       if (provenanceSkip) {
         out.deferred++;
         audit(
-          provenanceSkip === "bracket_leg" ? "stale_exit_auto_remediation_skipped_bracket_leg" : "stale_exit_auto_remediation_skipped_not_app_placed",
+          provenanceSkip === "bracket_leg" ? "stale_exit_auto_remediation_skipped_bracket_leg" : 
+          provenanceSkip === "owner_cancelled_stop" ? "stale_exit_auto_remediation_skipped_owner_cancelled_stop" :
+          "stale_exit_auto_remediation_skipped_not_app_placed",
           { orderId: item.order.id, symbol, side, ageMinutes: item.ageMinutes, orderClass: item.order.orderClass, clientOrderId: item.order.clientOrderId },
           userId,
           input.policy.connectedAccountId

@@ -1662,8 +1662,7 @@ export class CascadingEnrichmentProvider implements MarketEnrichmentProvider {
             currentRecord?.fieldDates?.[field] ??
             (field === "asOf" && typeof resolvedValue === "string" ? resolvedValue : undefined) ??
             supplied?.observedAt ??
-            (field === "asOf" ? undefined : currentRecord?.asOf) ??
-            cascadeFetchedAt;
+            (field === "asOf" ? undefined : currentRecord?.asOf);
           const observation: FieldObservation<unknown> = {
             ...supplied,
             value: resolvedValue,

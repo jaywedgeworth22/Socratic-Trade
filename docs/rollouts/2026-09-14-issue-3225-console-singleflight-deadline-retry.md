@@ -6,7 +6,8 @@ Implemented 5 client-side resiliency and UX fixes to the console dashboard to pr
 **Changes Made**:
 - **api.ts**: Added promise coalescing to `runOnce()` so dual desktop+mobile `RunOnceButton` instances sharing the `console:run-once` event don't fire duplicate POST requests.
 - **useConsoleData.tsx**: Added exponential backoff (capped at 30s) + ±20% jitter on deadline retries in `runLoop()` to prevent hammering a degraded backend. Added `sessionExpiredRef` guard at the top of the loop.
-- **use-live-scan.ts, chat.tsx**: Added 401 HTTP intercepts that directly call `redirectToLogin()`.
+- **use-live-scan.ts, chat.tsx**: Added 401 HTTP intercepts that directly call `redirectToLogin()`.  GROK 2026-09-15: `readErrorMessage` now treats 401 as a status before JSON parse so a JSON body cannot skip the redirect.
+- **PLAN.md / STATUS.md / docs/EFFORT-LOG.md**: land-sweep handoff for the 401 JSON fix.
 - **symbol-drilldown.tsx**: Migrated `useHistory`, `useOnDemandEnrichment`, and `desk` fetches to use `AbortController` (cancelling requests on unmount instead of just ignoring the result) and added 401 intercepts to all three.
 - **app/error.tsx**: Wired `Sentry.captureException(error)` and `window.DD_RUM?.addError(error)` into the dashboard's error boundary.
 - **next.config.mjs**: Corrected a broken import for `withSentryConfig` (`@sentry/nextjs` instead of `@sentry/nextjs/config`) to allow `npm run build` to succeed.

@@ -25,6 +25,11 @@ function isMarketScan(value: unknown): value is MarketScan {
 }
 
 async function readErrorMessage(res: Response): Promise<string> {
+  // Session expiry is a status, not a body shape.  A JSON 401 must still redirect.
+  if (res.status === 401) {
+    redirectToLogin();
+    return "Session expired.";
+  }
   try {
     const body: unknown = await res.json();
     if (body && typeof body === "object") {
@@ -37,10 +42,6 @@ async function readErrorMessage(res: Response): Promise<string> {
     }
   } catch {
     /* body wasn't JSON — fall through to a generic message */
-  }
-  if (res.status === 401) {
-    redirectToLogin();
-    return "Session expired.";
   }
   if (res.status === 429) return "Scan rate limit reached — wait a minute before refreshing again.";
   return `Market scan failed (${res.status}).`;

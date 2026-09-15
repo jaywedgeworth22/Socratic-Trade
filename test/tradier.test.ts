@@ -813,8 +813,12 @@ describe("Tradier adapter — OTOCO/OCO equity legs surface for coverage (codex-
     ]);
     const { getTradierGateway } = await import("../src/lib/tradier");
     const orders = await getTradierGateway("local").getEquityOrders(ACCT);
-    // Both equity legs surface; the container itself (class 'otoco') is NOT emitted as an order.
-    expect(orders.map((o) => o.id).sort()).toEqual(["501", "502"]);
+    // Container is kept for clientOrderId identity when Tradier omits top-level side.
+    // Exit legs still omit the container tag so they cannot steal placement reconciliation.
+    expect(orders.map((o) => o.id).sort()).toEqual(["500", "501", "502"]);
+    expect(orders.find((o) => o.id === "500")?.clientOrderId).toBe("bracket");
+    expect(orders.find((o) => o.id === "501")?.clientOrderId).toBeUndefined();
+    expect(orders.find((o) => o.id === "502")?.clientOrderId).toBeUndefined();
     const stopLeg = orders.find((o) => o.type === "stop_market")!;
     expect(stopLeg).toMatchObject({ id: "502", symbol: "AAPL", side: "sell", type: "stop_market", state: "open", stopPrice: 180 });
     const { isLiveOrderState } = await import("../src/lib/broker-side");

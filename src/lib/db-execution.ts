@@ -318,9 +318,11 @@ export function hasLiveStrategyRunLease(
 ): boolean {
   try {
     const database = getDb();
+    // Optimized index scan: replaces `key = ? OR key LIKE ?` which caused a full table scan.
+    // `:` is ASCII 58, `;` is ASCII 59, so `< ...;` cleanly bounds the exact key and all `:` prefixed subkeys.
     const rows = database
-      .prepare("SELECT value FROM settings WHERE key = ? OR key LIKE ?")
-      .all(`strategy_run_lock:${userId}`, `strategy_run_lock:${userId}:%`) as Array<{ value: string }>;
+      .prepare("SELECT value FROM settings WHERE key >= ? AND key < ?")
+      .all(`strategy_run_lock:${userId}`, `strategy_run_lock:${userId};`) as Array<{ value: string }>;
     for (const row of rows) {
       let parsed: { owner?: string; expiresAt?: string; acquiredAt?: string; lockedAt?: string };
       try {

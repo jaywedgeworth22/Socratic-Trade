@@ -65,27 +65,50 @@ export function isRunAllowedNow(runDuringExtendedHours: boolean, now = new Date(
 // needing exact session boundaries must use the ET session classifier above instead.
 
 function localDateKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  // Use ET rather than the server's local timezone (which is usually UTC in prod).
+  // A late Friday evening in NY is early Saturday morning in UTC, which date.getDay()
+  // would incorrectly flag as a weekend.
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const parts = formatter.formatToParts(date);
+  const getPart = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  return `${getPart("year")}-${getPart("month")}-${getPart("day")}`;
 }
 
-/** True when `date`'s local calendar day is a US equity trading day: not a weekend, and not one
+/** True when `date`'s ET calendar day is a US equity trading day: not a weekend, and not one
  *  of the fixed-calendar holidays from getMarketHolidays. */
 export function isTradingDay(date: Date): boolean {
-  const day = date.getDay();
-  if (day === 0 || day === 6) return false;
-  return !getMarketHolidays(date.getFullYear()).has(localDateKey(date));
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short"
+  });
+  const wd = formatter.format(date);
+  if (wd === "Sun" || wd === "Sat") return false;
+  
+  // extract ET year
+  const yearFormatter = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric" });
+  const year = parseInt(yearFormatter.format(date), 10);
+  
+  return !getMarketHolidays(year).has(localDateKey(date));
 }
 
-/** Walks from `date`'s local calendar day, one day at a time in `direction` (+1 forward, -1
+/** Walks from `date`'s ET calendar day, one day at a time in `direction` (+1 forward, -1
  *  backward), until it lands on a trading day. Bounded to 10 iterations — comfortably more than
  *  any real holiday cluster — so a bug here can never spin into an infinite loop. */
 function adjacentTradingDayStart(date: Date, direction: 1 | -1): Date {
-  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const parts = etDateParts(date);
+  let current = parts;
   for (let i = 0; i < 10; i++) {
-    d.setDate(d.getDate() + direction);
-    if (isTradingDay(d)) return d;
+    current = addEtCalendarDays(current, direction);
+    if (isEtCalendarTradingDay(current)) {
+      return new Date(etWallClockToUtcMs(current, 0, 0));
+    }
   }
-  return d;
+  return new Date(etWallClockToUtcMs(current, 0, 0));
 }
 
 /** Local-midnight start of the most recent trading day strictly BEFORE `now`'s calendar date —

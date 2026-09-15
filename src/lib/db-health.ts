@@ -260,20 +260,27 @@ export function getLaneHealth(
     const withUser = (params: unknown[]): unknown[] => (scopeUser ? [...params, userId] : params);
     // Pull error_text so expected-limit (soft) failures can be excluded from the HARD consecutive
     // streak — five 429s or a daily-cap row must not trip the enrichment circuit breaker.
-    const last5 = db
+    const pendingNewestFirst = pendingHealthRows(service, keySource, userId);
+    const last5db = db
       .prepare(
         `SELECT ok, error_text, ts FROM api_health_log WHERE service = ? AND key_source IS ?${userClause} ORDER BY ts DESC, rowid DESC LIMIT 5`
       )
       .all(...withUser([service, keySource])) as Array<{ ok: number; error_text: string | null; ts: string }>;
-    const lastSuccess = db
+    const last5 = [...pendingNewestFirst, ...last5db].slice(0, 5);
+    const lastSuccessDb = db
       .prepare(`SELECT ts FROM api_health_log WHERE service = ? AND key_source IS ?${userClause} AND ok = 1 ORDER BY ts DESC, rowid DESC LIMIT 1`)
       .get(...withUser([service, keySource])) as { ts: string } | undefined;
-    const lastFailure = db
+    const lastFailureDb = db
       .prepare(`SELECT ts FROM api_health_log WHERE service = ? AND key_source IS ?${userClause} AND ok = 0 ORDER BY ts DESC, rowid DESC LIMIT 1`)
       .get(...withUser([service, keySource])) as { ts: string } | undefined;
-    const callsLastHour = (
-      db.prepare(`SELECT COUNT(*) as cnt FROM api_health_log WHERE service = ? AND key_source IS ?${userClause} AND ts >= ?`).get(...withUser([service, keySource]), hourAgo) as { cnt: number }
-    ).cnt;
+    const lastSuccess = pendingNewestFirst.find((row) => row.ok === 1) ?? lastSuccessDb;
+    const lastFailure = pendingNewestFirst.find((row) => row.ok === 0) ?? lastFailureDb;
+    const pendingLastHour = pendingNewestFirst.filter((row) => row.ts >= hourAgo).length;
+    const callsLastHour =
+      pendingLastHour +
+      (
+        db.prepare(`SELECT COUNT(*) as cnt FROM api_health_log WHERE service = ? AND key_source IS ?${userClause} AND ts >= ?`).get(...withUser([service, keySource]), hourAgo) as { cnt: number }
+      ).cnt;
 
     let stoppedWorking = false;
     let reason: string | null = null;
@@ -295,7 +302,7 @@ export function getLaneHealth(
       // Walk the capped lane history newest-first; the last hard row before a success/soft break
       // is the start of this consecutive run (may be far older than last5 on a busy lane, or
       // shorter than 5 on a sparse one).
-      const history = db
+      const historyDb = db
         .prepare(
           `SELECT ok, error_text, ts FROM api_health_log WHERE service = ? AND key_source IS ?${userClause} ORDER BY ts DESC, rowid DESC LIMIT ?`
         )
@@ -304,6 +311,7 @@ export function getLaneHealth(
           error_text: string | null;
           ts: string;
         }>;
+      const history = [...pendingNewestFirst, ...historyDb].slice(0, HEALTH_LOG_LANE_CAP);
       let runStart: string | null = null;
       let entirelyTransient = true;
       let sawHard = false;
@@ -434,182 +442,218 @@ export interface ErrorPatternRow {
 
 // ── Write ──────────────────────────────────────────────────────────────────────
 
-export function logApiHealth(opts: {
+
+type ApiHealthLogOpts = {
   service: string;
   ok: boolean;
   latencyMs?: number;
   errorText?: string;
   keySource?: string;
   userId?: string;
-  // Set ONLY by a caller that knows this failure is a daily-quota exhaustion which cannot
-  // recover before a known instant (e.g. Alpha Vantage's 25/day cap resets at midnight
-  // America/New_York) — an ISO timestamp of that reset. db-health never derives this itself
-  // (no string-matching error text here); it just threads whatever the call site passes
-  // through to alertConnectionFailure's cooldown. Omit for ordinary transient failures, which
-  // keep the generic fixed-duration cooldown.
   quotaResetAt?: string;
-  /**
-   * Mark a failure as an *expected limit* (rate limit, daily cap, proactive budget). Soft
-   * failures are still stored as ok=0 for forensics, but do not count toward the hard
-   * consecutive-failure STOPPED / enrichment circuit trip. Prefer this over inventing a success
-   * row for a call that did not succeed.
-   */
   soft?: boolean;
-}): void {
+};
+
+type BufferedHealth = ApiHealthLogOpts & { bufferedAt: string };
+
+const apiHealthBuffer: BufferedHealth[] = [];
+let apiHealthFlushTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function healthErrorTextForLog(opts: ApiHealthLogOpts): string | null {
+  let errorText = opts.errorText ?? null;
+  const filingApiAuthSoft =
+    opts.service === "filingapi" && !opts.ok && isFilingApiAuthErrorText(errorText);
+  if (!opts.ok && errorText && (opts.soft || filingApiAuthSoft || isSoftHealthFailure(errorText))) {
+    if (!errorText.startsWith(HEALTH_SOFT_FAILURE_PREFIX)) {
+      errorText = `${HEALTH_SOFT_FAILURE_PREFIX}${errorText}`;
+    }
+  } else if (!opts.ok && errorText && isTransientHealthFailure(errorText)) {
+    if (!errorText.startsWith(HEALTH_TRANSIENT_FAILURE_PREFIX)) {
+      errorText = `${HEALTH_TRANSIENT_FAILURE_PREFIX}${errorText}`;
+    }
+  }
+  return errorText;
+}
+
+function bufferMatchesLane(
+  opts: BufferedHealth,
+  service: string,
+  keySource: string | null,
+  userId?: string | null
+): boolean {
+  if (opts.service !== service) return false;
+  if ((opts.keySource ?? null) !== keySource) return false;
+  if (keySource === "user" && userId != null) return (opts.userId ?? null) === userId;
+  return true;
+}
+
+function pendingHealthRows(
+  service: string,
+  keySource: string | null,
+  userId?: string | null
+): Array<{ ok: number; error_text: string | null; ts: string }> {
+  return apiHealthBuffer
+    .filter((opts) => bufferMatchesLane(opts, service, keySource, userId))
+    .map((opts) => ({
+      ok: opts.ok ? 1 : 0,
+      error_text: healthErrorTextForLog(opts),
+      ts: opts.bufferedAt
+    }))
+    .reverse();
+}
+
+function scheduleApiHealthFlush(): void {
+  if (apiHealthFlushTimeout) return;
+  apiHealthFlushTimeout = setTimeout(flushApiHealthBuffer, 5000);
+  apiHealthFlushTimeout.unref();
+}
+
+export function flushApiHealthBuffer(): void {
+  if (apiHealthFlushTimeout) {
+    clearTimeout(apiHealthFlushTimeout);
+    apiHealthFlushTimeout = null;
+  }
+  if (apiHealthBuffer.length === 0) return;
+  const batch = apiHealthBuffer.splice(0, apiHealthBuffer.length);
+  let processed: Array<{
+    service: string;
+    ok: boolean;
+    latencyMs?: number;
+    quotaResetAt?: string;
+    now: string;
+    id: string;
+    keySource: string | null;
+    userId: string | null;
+    errorText: string | null;
+    isSoft: boolean;
+  }>;
   try {
     const db = getDb();
-    const now = new Date().toISOString();
-    const id = randomUUID();
-    const keySource = opts.keySource ?? null;
-    const userId = opts.userId ?? null;
-    // Stamp soft failures with a stable prefix so getLaneHealth / summaries can discriminate
-    // without a schema column. Do not double-prefix if the caller already used the marker or
-    // if auto-classification would match the free-text shape either way.
-    let errorText = opts.errorText ?? null;
-    const filingApiAuthSoft =
-      opts.service === "filingapi" && !opts.ok && isFilingApiAuthErrorText(errorText);
-    if (!opts.ok && errorText && (opts.soft || filingApiAuthSoft || isSoftHealthFailure(errorText))) {
-      if (!errorText.startsWith(HEALTH_SOFT_FAILURE_PREFIX)) {
-        errorText = `${HEALTH_SOFT_FAILURE_PREFIX}${errorText}`;
-      }
-    } else if (!opts.ok && errorText && isTransientHealthFailure(errorText)) {
-      // Transport blip (see HEALTH_TRANSIENT_FAILURE_PREFIX). Stamped, not softened: the row still
-      // counts toward the hard consecutive-failure streak so a genuine outage still pages — the
-      // prefix only lets the alert gate below decide whether this streak has lasted long enough
-      // to be an outage rather than a socket that died and came back. `soft: true` wins above, so
-      // a caller that already knows better (health-lane-reprobe's synthetic probes) is untouched.
-      if (!errorText.startsWith(HEALTH_TRANSIENT_FAILURE_PREFIX)) {
-        errorText = `${HEALTH_TRANSIENT_FAILURE_PREFIX}${errorText}`;
-      }
-    }
+
+    processed = batch.map((opts) => {
+      const now = opts.bufferedAt;
+      const id = randomUUID();
+      const keySource = opts.keySource ?? null;
+      const userId = opts.userId ?? null;
+      const errorText = healthErrorTextForLog(opts);
+      return {
+        service: opts.service,
+        ok: opts.ok,
+        latencyMs: opts.latencyMs,
+        quotaResetAt: opts.quotaResetAt,
+        now,
+        id,
+        keySource,
+        userId,
+        errorText,
+        isSoft: isSoftHealthFailure(errorText ?? "")
+      };
+    });
 
     db.transaction(() => {
-      // Insert log row
-      db.prepare(
-        `INSERT INTO api_health_log (id, service, ts, ok, latency_ms, error_text, key_source, user_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(id, opts.service, now, opts.ok ? 1 : 0, opts.latencyMs ?? null, errorText, keySource, userId);
-      // Enforce the FIFO cap of HEALTH_LOG_LANE_CAP rows per (service, key_source) credential lane.
-      // The cap has NO user_id predicate, but getLaneHealth scopes its counts to one user on
-      // keySource === "user" lanes — so on a multi-tenant user lane one tenant's traffic can evict
-      // another tenant's rows and shrink that tenant's callsLastHour. Benign today (the only
-      // consumer tests `callsLastHour > 0`, and eviction can only push it toward 0, i.e. the
-      // breaker fails open) but do not build anything on those per-user counts being complete.
-      // `LIMIT ${...}` interpolates a module constant, never user input.
-      db.prepare(
-        `DELETE FROM api_health_log
-         WHERE service = ? AND key_source IS ?
-           AND id NOT IN (
-             SELECT id FROM api_health_log
-             WHERE service = ? AND key_source IS ?
-             ORDER BY ts DESC, rowid DESC
-             LIMIT ${HEALTH_LOG_LANE_CAP}
-           )`
-      ).run(opts.service, keySource, opts.service, keySource);
+      const insertRow = db.prepare(`INSERT INTO api_health_log (id, service, ts, ok, latency_ms, error_text, key_source, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+      const updatePattern = db.prepare(`INSERT INTO api_health_error_patterns
+               (id, service, fingerprint, error_text, first_seen, last_seen, count, key_source)
+             VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+             ON CONFLICT(service, fingerprint, key_source) DO UPDATE SET
+               last_seen = excluded.last_seen,
+               count = count + 1`);
+      const deleteCap = db.prepare(`DELETE FROM api_health_log
+           WHERE service = ? AND key_source IS ?
+             AND id NOT IN (
+               SELECT id FROM api_health_log
+               WHERE service = ? AND key_source IS ?
+               ORDER BY ts DESC, rowid DESC
+               LIMIT ${HEALTH_LOG_LANE_CAP}
+             )`);
 
-      // Update error pattern if this is a failure.
-      // Use "" (not NULL) as the key_source sentinel so UNIQUE(service,fingerprint,key_source)
-      // deduplicates correctly — SQLite NULL values never collide in UNIQUE constraints.
-      if (!opts.ok && errorText) {
-        const normalized = errorText.trim().toLowerCase().replace(/\s+/g, " ");
-        const fingerprint = createHash("sha256").update(normalized).digest("hex").slice(0, 12);
-        const patternId = randomUUID();
-        const patternKeySource = keySource ?? "";
+      const lanesToPrune = new Set<string>();
 
-        db.prepare(
-          `INSERT INTO api_health_error_patterns
-             (id, service, fingerprint, error_text, first_seen, last_seen, count, key_source)
-           VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-           ON CONFLICT(service, fingerprint, key_source) DO UPDATE SET
-             last_seen = excluded.last_seen,
-             count = count + 1`
-        ).run(patternId, opts.service, fingerprint, errorText, now, now, patternKeySource);
+      for (const p of processed) {
+        insertRow.run(p.id, p.service, p.now, p.ok ? 1 : 0, p.latencyMs ?? null, p.errorText, p.keySource, p.userId);
+        lanesToPrune.add(`${p.service}::${p.keySource ?? ""}`);
+
+        if (!p.ok && p.errorText) {
+          const normalized = p.errorText.trim().toLowerCase().replace(/\s+/g, " ");
+          const fingerprint = createHash("sha256").update(normalized).digest("hex").slice(0, 12);
+          const patternId = randomUUID();
+          const patternKeySource = p.keySource ?? "";
+          updatePattern.run(patternId, p.service, fingerprint, p.errorText, p.now, p.now, patternKeySource);
+        }
+      }
+
+      const countStmt = db.prepare(`SELECT COUNT(*) as cnt FROM api_health_log WHERE service = ? AND key_source IS ?`);
+      for (const lane of lanesToPrune) {
+        const [service, keySourceRaw] = lane.split("::");
+        const keySource = keySourceRaw === "" ? null : keySourceRaw;
+        const row = countStmt.get(service, keySource) as { cnt: number } | undefined;
+        if (row && row.cnt > HEALTH_LOG_LANE_CAP) {
+          deleteCap.run(service, keySource, service, keySource);
+        }
       }
     })();
+  } catch {
+    apiHealthBuffer.unshift(...batch);
+    if (apiHealthBuffer.length > 200) apiHealthBuffer.length = 200;
+    if (!process.env.VITEST) scheduleApiHealthFlush();
+    return;
+  }
 
-    // Durable hard-streak start (Codex P1): clear on success/soft only. Establishment happens in
-    // getLaneHealth from the history walk (so aged rows / FIFO-truncated runs keep the true start
-    // instead of stamping `now` on the tip insert).
-    {
-      const streakKey = hardStreakStartSettingKey(opts.service, keySource, userId);
-      if (opts.ok || (errorText != null && isSoftHealthFailure(errorText))) {
+  try {
+    // Post-transaction operations
+    for (const p of processed) {
+      const streakKey = hardStreakStartSettingKey(p.service, p.keySource, p.userId);
+      if (p.ok || p.isSoft) {
         clearHardStreakStart(streakKey);
       }
-    }
 
-    // `isIntentionalOffHealthService`: FMP / Quiver / Unusual Whales are PRODUCT-RETIRED direct
-    // lanes (see retired-direct-vendors.ts). Admin Connections already renders them as muted OFF
-    // rather than red STOPPED; a residual call site that still touches one must not additionally
-    // page the operator about a vendor we deliberately stopped using.
-    if (
-      !opts.ok &&
-      errorText &&
-      !RAG_SERVICES_WITH_OWN_ALERTING.has(opts.service) &&
-      !isIntentionalOffHealthService(opts.service)
-    ) {
-      const keySource = opts.keySource ?? null;
-      // Soft/expected-limit failures (429 bursts, free-tier caps) normally do not page — they are
-      // budget/rate behavior, not a broken integration. Exception: a caller that passes
-      // `quotaResetAt` (Alpha Vantage daily-cap exhaustion) wants ONE operator heads-up pinned to
-      // the known reset instant, so allow that path through even when the row is soft-stamped.
-      // Hard failures still gate on lane health (the HARD consecutive-failure streak only).
-      const isSoft = isSoftHealthFailure(errorText);
-      if (isSoft && !opts.quotaResetAt) {
-        // pure expected-limit with no known reset: no automatic alert
-      } else {
-        // Scope the streak that gates the alert to this user's own history for user-key lanes, so
-        // tenant A's failures don't fire a provider-degraded alert to tenant B on the shared lane.
-        const lane = getLaneHealth(opts.service, keySource, opts.userId ?? null);
-        // quotaResetAt path: alert once even before a 5-hard streak (the single "pool exhausted"
-        // row is enough signal). Otherwise require the HARD streak specifically.
-        //
-        // Why the hard kind and not bare `stoppedWorking` (the dominant Sentry-noise source,
-        // 2026-08-12): `stoppedWorking` is also set by two SOFT heuristics — "active in past hour
-        // but no successful call ever" and "…no success in 60 min". On a LOW-FREQUENCY lane (a
-        // probe or a once-an-hour scheduled read) the very first transient failure satisfies one
-        // of those the instant it lands — one call this hour, zero successes — so a single blip
-        // minted a "<service> connection failed" Sentry issue with no streak required at all.
-        // Requiring HEALTH_REASON_CONSECUTIVE_FAILURES means five consecutive HARD (non-soft)
-        // failures must land first, which a genuine outage produces within minutes and a blip
-        // never does. The soft heuristics are untouched — they still paint the lane in Admin
-        // Connections; they just no longer page on their own.
-        if (opts.quotaResetAt || lane.reason === HEALTH_REASON_CONSECUTIVE_FAILURES) {
-          // A hard streak made ENTIRELY of transport blips that has not yet lasted the escalation
-          // window is not an outage — it is one upstream hiccup that five rapid calls all caught.
-          // Capture it at `warning` (recorded, greppable, never paged) instead of the `error` a
-          // global lane normally gets, and hold the operator push until it escalates.
-          //
-          // The cooldown is shortened to the same window rather than the standard six hours,
-          // and `alertConnectionFailure` stores it on a SEPARATE `:transient` key so a later hard
-          // failure (HTTP 401/500) is never suppressed by the blip warning. After the window the
-          // next failure in an unbroken streak has, by definition, been failing long enough to be
-          // an outage, and pages as usual on the hard key.
-          const escalationWindowMs = transientEscalationWindowMs();
-          const streakStartedMs = lane.streakStartedTs ? Date.parse(lane.streakStartedTs) : NaN;
-          const transientBlip =
-            !opts.quotaResetAt &&
-            lane.reason === HEALTH_REASON_CONSECUTIVE_FAILURES &&
-            lane.transientStreak &&
-            (!Number.isFinite(streakStartedMs) || Date.now() - streakStartedMs < escalationWindowMs);
-          void alertConnectionFailure(opts.service, keySource, opts.userId ?? null, errorText, {
-            // Soft/rate-limit-shaped text: skip Sentry (noise); hard outages still capture.
-            skipSentry: isSoft || /429|rate limit/i.test(errorText),
-            cooldownUntil:
-              opts.quotaResetAt ??
-              (transientBlip
-                ? new Date(
-                    (Number.isFinite(streakStartedMs) ? streakStartedMs : Date.now()) + escalationWindowMs
-                  ).toISOString()
-                : undefined),
-            transientBlip
-          });
+      if (
+        !p.ok &&
+        p.errorText &&
+        !RAG_SERVICES_WITH_OWN_ALERTING.has(p.service) &&
+        !isIntentionalOffHealthService(p.service)
+      ) {
+        if (p.isSoft && !p.quotaResetAt) {
+          // pure expected-limit with no known reset: no automatic alert
+        } else {
+          const lane = getLaneHealth(p.service, p.keySource, p.userId);
+          if (p.quotaResetAt || lane.reason === HEALTH_REASON_CONSECUTIVE_FAILURES) {
+            const escalationWindowMs = transientEscalationWindowMs();
+            const streakStartedMs = lane.streakStartedTs ? Date.parse(lane.streakStartedTs) : NaN;
+            const transientBlip =
+              !p.quotaResetAt &&
+              lane.reason === HEALTH_REASON_CONSECUTIVE_FAILURES &&
+              lane.transientStreak &&
+              (!Number.isFinite(streakStartedMs) || Date.now() - streakStartedMs < escalationWindowMs);
+            void alertConnectionFailure(p.service, p.keySource, p.userId, p.errorText, {
+              skipSentry: p.isSoft || /429|rate limit/i.test(p.errorText),
+              cooldownUntil:
+                p.quotaResetAt ??
+                (transientBlip
+                  ? new Date(
+                      (Number.isFinite(streakStartedMs) ? streakStartedMs : Date.now()) + escalationWindowMs
+                    ).toISOString()
+                  : undefined),
+              transientBlip
+            });
+          }
         }
       }
     }
   } catch {
-    // Health logging must never throw — swallow all errors
+    // Alerts must never resurrect a committed batch or throw out of health logging.
   }
 }
+
+export function logApiHealth(opts: ApiHealthLogOpts): void {
+  apiHealthBuffer.push({ ...opts, bufferedAt: new Date().toISOString() });
+  if (process.env.VITEST || apiHealthBuffer.length >= 50) {
+    flushApiHealthBuffer();
+    return;
+  }
+  scheduleApiHealthFlush();
+}
+
 // ── Read ───────────────────────────────────────────────────────────────────────
 
 interface ServiceKeyLane { service: string; key_source: string | null }
@@ -617,9 +661,17 @@ interface ServiceKeyLane { service: string; key_source: string | null }
 function listHealthLanes(): ServiceKeyLane[] {
   try {
     const db = getDb();
-    return db
+    const rows = db
       .prepare(`SELECT DISTINCT service, key_source FROM api_health_log ORDER BY service, key_source`)
       .all() as ServiceKeyLane[];
+    const seen = new Set(rows.map((row) => `${row.service}::${row.key_source ?? ""}`));
+    for (const opts of apiHealthBuffer) {
+      const key = `${opts.service}::${opts.keySource ?? ""}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push({ service: opts.service, key_source: opts.keySource ?? null });
+    }
+    return rows;
   } catch {
     return [];
   }
@@ -631,7 +683,14 @@ export function listHealthServices(): string[] {
     const rows = db
       .prepare(`SELECT DISTINCT service FROM api_health_log ORDER BY service`)
       .all() as Array<{ service: string }>;
-    return rows.map((r) => r.service);
+    const names = rows.map((r) => r.service);
+    const seen = new Set(names);
+    for (const opts of apiHealthBuffer) {
+      if (seen.has(opts.service)) continue;
+      seen.add(opts.service);
+      names.push(opts.service);
+    }
+    return names;
   } catch {
     return [];
   }

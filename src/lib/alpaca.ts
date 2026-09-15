@@ -1147,12 +1147,12 @@ class AlpacaBrokerGateway implements BrokerGateway {
   // cancelled/filled. This always goes through native REST (this.alpaca), never the MCP tool
   // surface — this repo's alpaca-mcp integration has no documented equivalent for a nested-legs
   // fetch, and `this.alpaca` is constructed with the same REST-capable keys regardless of isMcp
-  // whenever an underlying API key is configured (see the constructor) — so this degrades to a
-  // best-effort no-op only on an MCP-ONLY account with no REST-capable key at all.
+  // whenever an underlying API key is configured (see the constructor).  An MCP-only account
+  // with no REST key cannot inspect or cancel siblings — throw so teardown stays pending.
   async cancelBracketSiblingLegs(accountNumber: string, originalOrderId: string): Promise<{ cancelledOrderIds: string[] }> {
     if (this.isMcp && !this.hasRestKeys) {
       audit("alpaca_mcp_bracket_cancel_unsupported", { message: "Bracket sibling legs cannot be cancelled on MCP accounts without REST credentials", originalOrderId, accountNumber });
-      return { cancelledOrderIds: [] };
+      throw new Error("Alpaca MCP-only account cannot cancel bracket sibling legs without REST keys");
     }
     let raw: any;
     try {

@@ -32,4 +32,4 @@ Ran local gating commands:
 - `npm test` - Passed
 
 ## Next Steps
-Merge to `main` and deploy to production, then continue sequentially down the task board starting with `#3221`.
+Squash-merge when CI is green.  Merge is live (Coolify auto-deploy).  Do not click Deploy.  Continue with `#3221`.

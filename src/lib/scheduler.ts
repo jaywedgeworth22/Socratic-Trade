@@ -495,6 +495,7 @@ const tickGuardHost = globalThis as unknown as {
   __tickStartedAtMs?: number;
   __tickGeneration?: number;
   __tickSentryCheckInId?: string;
+  __tickAbortController?: AbortController;
 };
 
 /** Default wall-clock budget for one tick body before the watchdog unwedge.  2 minutes is under
@@ -523,6 +524,7 @@ function clearTickGuard(): void {
   tickGuardHost.__tickInFlight = false;
   tickGuardHost.__tickStartedAtMs = undefined;
   tickGuardHost.__tickSentryCheckInId = undefined;
+  tickGuardHost.__tickAbortController = undefined;
 }
 
 /** Test-only: drop the process-pinned in-flight bit so files sharing a vitest worker stay isolated. */
@@ -557,6 +559,9 @@ export function runSchedulerTickWatchdog(now = Date.now()): SchedulerTickWatchdo
   }
   const hungForMs =
     typeof started === "number" && Number.isFinite(started) ? now - started : Number.NaN;
+  if (tickGuardHost.__tickAbortController) {
+    tickGuardHost.__tickAbortController.abort(new Error("Scheduler tick watchdog timeout"));
+  }
   const checkInId = tickGuardHost.__tickSentryCheckInId;
   nextTickGeneration();
   clearTickGuard();
@@ -714,7 +719,8 @@ export function startScheduler(): void {
   console.log("[scheduler] started (tick every 60s; watchdog every 15s)");
 }
 
-async function tickInner(): Promise<void> {
+async function tickInner(signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
   // Captured immediately: `tick()` bumps `__tickGeneration` synchronously right before invoking
   // `tickInner`, so this is always this call's own generation. Guards the Sentry check-in close in
   // the `finally` below the same way `tick()`'s own `finally` already guards `clearTickGuard()` —
@@ -771,6 +777,8 @@ async function tickInner(): Promise<void> {
       result.providerOutbox + result.embedStageExpired + result.embedStageCapPruned;
     return { status: "ok" as const, summary: `deleted=${total}` };
   }).catch((err) => console.error("[scheduler] audit prune error:", err));
+
+  signal?.throwIfAborted();
 
   // Single-leader gate (default ON, including unset/empty). Only an explicit false/off/0/no-style
   // value disables it; otherwise only the lease holder runs the background updates and per-account tick body
@@ -1128,7 +1136,9 @@ async function tickInner(): Promise<void> {
     }> = [];
 
     for (const userId of listUsers()) {
+      signal?.throwIfAborted();
       for (const account of listConnectedAccounts(userId)) {
+        signal?.throwIfAborted();
         const accountId = account.id;
         const key = scheduleKey(userId, accountId);
         // Owner ruling 2026-08-05: the internal TestBroker adapter (`broker: "test"`) is test
@@ -1435,6 +1445,7 @@ async function tickInner(): Promise<void> {
       // Stagger launches so concurrent-account bursts do not blow QPM (P2.9).
       let jitterMs = 0;
       for (const { userId, accountId } of dueRuns) {
+        signal?.throwIfAborted();
         const runDelayMs = jitterMs;
         jitterMs += 2000 + Math.random() * 3000;
         void (async () => {
@@ -1449,6 +1460,9 @@ async function tickInner(): Promise<void> {
       }
     }
   } catch (err) {
+    if (signal?.aborted) {
+      console.warn("[scheduler] tick aborted by watchdog unwedge signal");
+    }
     // Never let a thrown error kill the timer
     sentryStatus = "error";
     logError("scheduler.tick", { event: "tick_error", error: safeErrorMessage(err) });
@@ -1495,14 +1509,25 @@ async function tick(): Promise<void> {
   }
   tickGuardHost.__tickInFlight = true;
   tickGuardHost.__tickStartedAtMs = Date.now();
+  tickGuardHost.__tickAbortController = new AbortController();
   const started = tickGuardHost.__tickStartedAtMs;
   const myGen = nextTickGeneration();
   try {
-    await tickInner();
+    await tickInner(tickGuardHost.__tickAbortController?.signal);
     const durationMs = Date.now() - started;
     recordSchedulerTick(durationMs > TICK_MS ? "overrun" : "ok", durationMs);
   } catch (err) {
     recordSchedulerTick("error", Date.now() - started);
+    const aborted =
+      tickGuardHost.__tickAbortController?.signal.aborted === true ||
+      (typeof err === "object" &&
+        err !== null &&
+        ((err as { name?: string }).name === "AbortError" ||
+          /watchdog timeout/i.test(err instanceof Error ? err.message : String(err))));
+    if (aborted) {
+      logWarn("scheduler.tick", { event: "aborted_by_watchdog" });
+      return;
+    }
     throw err;
   } finally {
     if (tickGuardHost.__tickGeneration === myGen) {

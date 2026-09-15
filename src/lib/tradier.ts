@@ -680,9 +680,10 @@ class TradierBrokerGateway implements BrokerGateway {
           if (oClass === "equity") {
             all.push(o);
           } else if (["oto", "otoco", "oco", "multileg", "combo"].includes(oClass)) {
-            // Include the container (primary entry order) for advanced orders if it represents an equity action
-            // Tradier's container for equity brackets usually carries the entry leg's details at the top level.
-            if (o.symbol && o.side) all.push(o);
+            // Keep the container for placement-reconciliation identity even when Tradier
+            // omits top-level `side`.  Legs below still omit `tag` so they cannot steal
+            // the entry's clientOrderId.
+            if (o.symbol && (o.side || o.tag)) all.push(o);
             const legField = o.leg ?? o.legs;
             if (legField) {
               for (const leg of arr<Record<string, unknown>>(legField)) {

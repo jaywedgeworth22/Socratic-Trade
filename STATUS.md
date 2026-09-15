@@ -8,6 +8,9 @@ Rollout: `docs/rollouts/2026-09-13-issue-3224-api-security-hardening.md`.
 
 Implemented backend-neutral daily ingestion point budget tracking in `rag-metering.ts` (default: 50k points/24h) and Qdrant collection point capacity breakers (`QDRANT_MAX_POINTS` / `RAG_QDRANT_MAX_POINTS`) in `qdrant-write.ts` to prevent runaway disk saturation.  Added `assertQdrantCollectionMetric` on Qdrant retrieval paths to validate `Cosine` distance metric configurations and record audit events on mismatches.  Exported `HttpProviderError` preserving response status code and headers during embedding rate limits so `retryAfterMs` can inspect and honor `Retry-After` headers.  Eliminated redundant SEC filing disk reads and JSON parsing by adding in-memory chunk caching in `sec-ingest-worker.ts`, and made FTS chunk mirror limits configurable.  Verified gate: `npm run lint` (0 errors), `npx tsc --noEmit` (clean), and all 73 vitest tests green.
 Rollout: `docs/rollouts/2026-09-13-issue-3223-qdrant-fuses-fts-optimization.md`.
+## 2026-09-13 FX — same-repo pull_request auto-merge
+
+`auto-merge-prs.yml` and `auto-merge-shared-dependency.yml` no longer use `pull_request_target`.  Forks are skipped.  Branch `fx/automerge-fork-guard`.
 
 ## 2026-09-12 ANTIGRAVITY — Comprehensive Full-Stack Audit & System Diagnostics
 

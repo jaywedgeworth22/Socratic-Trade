@@ -371,11 +371,8 @@ struct FullPolicy: Decodable {
         socraticOverrideMode = try values.decodeIfPresent(String.self, forKey: .socraticOverrideMode)
         let riskRules = try? values.nestedContainer(keyedBy: RiskRulesCodingKeys.self, forKey: .riskRules)
         stopLossPct = try riskRules?.decodeIfPresent(Double.self, forKey: .stopLossPct)
-            ?? values.decodeIfPresent(Double.self, forKey: .stopLossPct)
         trailingStopPct = try riskRules?.decodeIfPresent(Double.self, forKey: .trailingStopPct)
-            ?? values.decodeIfPresent(Double.self, forKey: .trailingStopPct)
         shortStopLossPct = try riskRules?.decodeIfPresent(Double.self, forKey: .shortStopLossPct)
-            ?? values.decodeIfPresent(Double.self, forKey: .shortStopLossPct)
         taxSettings = try values.decodeIfPresent(PolicyTaxSettings.self, forKey: .taxSettings)
     }
 
@@ -390,7 +387,7 @@ struct FullPolicy: Decodable {
         case requireTypedConfirmation, includedIndices, additionalSymbols, blocklist
         case llmModel, redTeamLlmModel, llmFallbackModels, sellToFundBuy, socraticOverrideMode
         case riskRules
-        case stopLossPct, trailingStopPct, shortStopLossPct, taxSettings
+        case taxSettings
     }
 }
 

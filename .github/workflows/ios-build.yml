@@ -14,15 +14,7 @@ name: iOS build
 # TestFlight shipping stays in the fleet ship script, which has its own guard.
 
 on:
-  pull_request:
-    paths:
-      - 'ios/**'
-      - '.github/workflows/ios-build.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'ios/**'
-      - '.github/workflows/ios-build.yml'
+  workflow_call:
   workflow_dispatch:
 
 permissions:

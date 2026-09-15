@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MarketQuote, MarketScan } from "@/lib/types";
 import { isUnusableEmptyMarketScan } from "@/lib/scan-singleflight";
+import { redirectToLogin } from "../lib/api";
 
 function isMarketScan(value: unknown): value is MarketScan {
   return Boolean(
@@ -24,6 +25,11 @@ function isMarketScan(value: unknown): value is MarketScan {
 }
 
 async function readErrorMessage(res: Response): Promise<string> {
+  // Session expiry is a status, not a body shape.  A JSON 401 must still redirect.
+  if (res.status === 401) {
+    redirectToLogin();
+    return "Session expired.";
+  }
   try {
     const body: unknown = await res.json();
     if (body && typeof body === "object") {

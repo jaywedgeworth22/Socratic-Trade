@@ -4,6 +4,10 @@
 
 Merged origin/main (phantom).  Budget/capacity now use the caller userId, skip the pending→committed promotion, and `storeContexts` gates before embed.  FTS cache key includes task id.  Merge is live — no Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-13-issue-3223-qdrant-fuses-fts-optimization.md`.
+## 2026-09-15 GROK — PR #3296 401 JSON still redirects
+
+Sentry thread on `use-live-scan.ts`: `readErrorMessage` parsed JSON before the 401 check, so a JSON 401 body would skip `redirectToLogin()`.  Status is checked first now.  Merge is live — no Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-14-issue-3225-console-singleflight-deadline-retry.md`.
 
 ## 2026-09-13 ANTIGRAVITY — API Security Hardening: Open Redirect Sanitization, Public Auth Rate Limiting & Defensive JSON Parsing (Issue #3224)
 

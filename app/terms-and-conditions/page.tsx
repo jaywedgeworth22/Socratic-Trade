@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import { Card } from "../ui/primitives";
 
+// The CDN-cached prerender (`s-maxage=31536000`) was leaving a deployed docs edit stale
+// for up to a year. A docs-only deploy can change the terms the consent gate links to
+// without invalidating the CDN copy. Background-revalidate hourly.
+export const revalidate = 3600;
+
 export const metadata: Metadata = {
   title: "Terms and Conditions",
   description: "The terms governing use of Socratic Trade, including SMS notification terms. Not investment advice.",

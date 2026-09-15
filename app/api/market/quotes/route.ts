@@ -40,9 +40,15 @@ export async function GET(req: Request) {
 
   const allowDelayed = ["1", "true", "yes"].includes((sp.get("allowDelayed") ?? "").toLowerCase());
   const quotes = await fetchRealtimeQuotes(symbols, undefined, { allowDelayed });
+  // The top-level field is the moment we SERVED the response — not the freshness of
+  // any quote inside it (per-quote freshness lives on each quote's own `at` field;
+  // see /api/market/quotes peer routes that already use `servedAt`).  Older code
+  // stamped this with `new Date()` under the `asOf` name, which a point-in-time
+  // consumer could read as quote freshness even when the cascade had served a
+  // delayed Yahoo fallback.
   return NextResponse.json({
     ok: true,
-    asOf: new Date().toISOString(),
+    servedAt: new Date().toISOString(),
     requested: symbols.length,
     returned: Object.keys(quotes).length,
     allowDelayed,

@@ -948,10 +948,15 @@ async function computeDashboardSnapshot(userId: string = "local", currentUser?: 
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 100);
 
-  // Unified fills for the feed: merge the pre-fetched live + paper arrays (oldest-first, capped at
-  // 500) instead of re-issuing the unfiltered listFillEvents query the feed builder used to trigger.
+  // Unified fills for the feed: merge the pre-fetched live + paper arrays and keep the
+  // NEWEST 500 (the dashboard surfaces recent activity; the old `slice(0,500)` after an ASC
+  // sort silently dropped any fill past the cap). Feed consumers are expected to display
+  // these in chronological order downstream.
   const unifiedFills: FillEvent[] = accountNumber
-    ? [...liveFills, ...paperFills].sort((a, b) => a.filledAt.localeCompare(b.filledAt)).slice(0, 500)
+    ? [...liveFills, ...paperFills]
+        .sort((a, b) => b.filledAt.localeCompare(a.filledAt))
+        .slice(0, 500)
+        .sort((a, b) => a.filledAt.localeCompare(b.filledAt))
     : [];
 
   // Batch every proposal point-query the audit/unified-feed builders would otherwise issue one-by-one:

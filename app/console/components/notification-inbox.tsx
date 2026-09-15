@@ -115,7 +115,10 @@ export function NotificationInbox({ snapshot }: { snapshot: DashboardSnapshot })
                       key={event.id}
                       className={cx(
                         "rounded-control border border-[color:var(--con-line)] bg-[color:var(--con-surface-2)] px-3 py-2.5",
-                        read && "opacity-60"
+                        // WCAG AA on muted surface: opacity-60 collapses the 13.5px title to 4.24:1
+                        // and the muted body to 2.79:1. opacity-70 lifts both above 4.5:1 (5.86:1
+                        // measured in light mode; dark theme unaffected).
+                        read && "opacity-70"
                       )}
                     >
                       <div className="flex items-start justify-between gap-2">

@@ -1,51 +1,75 @@
 ---
 name: codex-triage
-description: Triage unresolved review threads from codex-connector bot on a PR -- classify findings, fix in one batch, then reply and resolve. Invoke when gating a merge.
+description: Triage unresolved GitHub review threads (chatgpt-codex-connector, Cursor Bugbot, and any other review bot or human) — classify against current HEAD, fix real findings in one batch, reply, then resolve. Use when gating a merge, when branch protection blocks on conversation resolution, or when a bot re-reviews after push.
 ---
 
-# Codex-Connector Review Thread Triage
+# Review-thread triage (Universal)
 
-## Procedure
+Name is historical (`codex-connector`).  Apply to **every** unresolved thread on the PR: Codex, Cursor Bugbot, Copilot, humans.
 
-1. **Fetch unresolved threads with full context.** Substitute PR number `<N>`:
+Unresolved threads block merge on every protected fleet repo even when checks are green.
+
+## 1. Fetch unresolved threads
+
 ```bash
-gh api graphql -f query='query{repository(owner:"jaywedgeworth22",name:"Socratic.Trade"){pullRequest(number:<N>){reviewThreads(first:100){nodes{id isResolved path line comments(first:10){nodes{author{login} body diffHunk}}}}}}}' --jq '.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved==false))'
+OWNER="$(gh repo view --json owner --jq .owner.login)"
+REPO="$(gh repo view --json name --jq .name)"
+gh api graphql -f query="query { repository(owner:\"$OWNER\", name:\"$REPO\") { pullRequest(number: <N>) { reviewThreads(first: 100) { nodes { id isResolved path line comments(first: 10) { nodes { author { login } body diffHunk } } } } } } }" \
+  --jq '.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved==false))'
 ```
 
-2. **Classify each thread against current branch HEAD** -- not the stale hunk in the comment. Three categories only:
-   - **addressed** -- fixed in a recent commit on this branch.
-   - **false_positive** -- bot misread context, or rule does not apply to this codebase.
-   - **real** -- finding is valid. For money-path files (`src/lib/db*.ts`, `src/lib/execution*.ts`, `src/lib/performance.ts`, `src/lib/policy.ts`), have a second agent adversarially verify before acting.
+## 2. Classify against current HEAD
 
-3. **Fix all real findings in one batch.** Commit with a regression test per behavior change. Push the commit before resolving any threads (race condition in step 5).
+Three buckets only:
 
-4. **Reply to each thread, then resolve.** Do NOT resolve without a reply first.
+- **addressed** — already fixed on this branch after the comment.
+- **false_positive** — bot misread context, or the rule does not apply here.
+- **real** — valid.  For money-path / auth / execution / policy / billing files, have a second agent (or a frontier child) adversarially verify before you change behavior.
 
-   Reply (substitute `<threadId>` and `<text>`):
+Do not classify from the stale diff hunk.  Read the file at HEAD.
+
+## 3. Fix reals in one batch
+
+One commit with a regression test per behavior change.  **Push before resolving any thread** (race in step 5).
+
+## 4. Reply, then resolve
+
+Do not resolve without a reply.
+
 ```bash
 gh api graphql -f query='mutation($t:ID!,$b:String!){addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$t,body:$b}){comment{id}}}' -F t=<threadId> -f b=<text>
-```
 
-   Reply format: **Real findings:** "Fixed in <short-sha>. [Function refs]. [Test added: test/foo.test.ts]." (1-3 sentences, factual, no hedging.)
-   **False positives:** Brief reason why the rule does not apply here, then resolve.
-
-   Resolve (substitute `<threadId>`):
-```bash
 gh api graphql -f query='mutation($t:ID!){resolveReviewThread(input:{threadId:$t}){thread{isResolved}}}' -F t=<threadId>
 ```
 
-5. **THE AUTO-MERGE RACE.** The instant the final thread resolves and CI is green, auto-merge fires. The bot re-reviews every push and never converges. Consequence:
-   - Resolving the last thread = merging the PR. Triple-check first.
-   - Round-2 findings often land on an already-merged PR. Before resolving any thread as "fixed," verify the fix reached main:
+Reply shape (file/PR text = two ASCII spaces between sentences):
+
+- **Real:** `Fixed in <short-sha>.  <function>.  Test: test/foo.test.ts.`
+- **False positive:** why the rule does not apply, then resolve.
+- **Addressed already:** cite the SHA that landed the fix.
+
+Never blind-resolve to force a merge.  The gate exists because some findings are real (commit-author, licenses, money-path).
+
+## 5. Auto-merge race
+
+The instant the last thread resolves and CI is green, auto-merge fires.  Bots re-review every push and often never converge.
+
+- Resolving the last thread **is** merging the PR.  Triple-check first.
+- Round-2 comments often land on an already-merged PR.  Before resolving as "fixed," confirm the fix reached main:
+
 ```bash
+git fetch origin
 git merge-base --is-ancestor <fix-sha> origin/main && echo "on main" || echo "NOT on main"
 ```
-   If NOT on main, open a follow-up PR from the same branch (expect merge conflicts from squash -- merge main in, this branch's newer rounds win in its own files).
 
-6. **Stop at round 2-3.** Later rounds are noise on a merged PR. Triage only for genuine hazards; surface the rest to the owner.
+If NOT on main, open a follow-up PR from the same branch.  Expect squash-merge conflicts — merge main in; this branch's newer rounds win in its own files.
 
-## Canon (source of truth -- read these if anything conflicts)
+## 6. Stop at round 2–3
 
-- **Pre-Commit / Handoff Protocol:** `AGENTS.md`
-- **Codex triage decision history:** memory `codex-review-loop`
-- **Auto-merge race + follow-up pattern:** `docs/rollouts/2026-07-09-monet-usage-cap-pickup.md`
+Later rounds on a merged PR are mostly noise.  Triage genuine hazards; surface the rest to the owner (Notes + board comment).  the agent's job on these is the security/contract read, not infinite bot ping-pong.
+
+## Canon
+
+- `/Users/jay/apps/AGENT-SYNC.md` — Merge requirements
+- App `AGENTS.md` Pre-Commit / Handoff
+- Skills: `unstick-pr`, `land-lane`

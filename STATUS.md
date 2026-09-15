@@ -1,5 +1,29 @@
 # Current Status
 
+## 2026-09-15 GROK — PR #3282 land-sweep (review threads + health-buffer CI)
+
+Unstuck #3282 against `origin/main` (real conflict only in `instrumentation.ts`, took main's Sentry profiling import).  Codex P1s: watchdog abort no longer rethrows from `tick()` (pre-leader `throwIfAborted` used to become an unhandled rejection); manual cancel tears down any open brackets on the symbol; `getLaneHealth` no longer sync-flushes the health buffer (reads merge pending rows; failed flushes are restored); Tradier listing keeps a tagged container when `side` is omitted; Alpaca MCP-only bracket teardown throws so the pending row is not deleted as success.  Vitest flushes the health buffer immediately so table assertions stay honest.  Merge is live — no Coolify Deploy.  Worktree `~/apps/trading-grok-land-sweep`.
+Rollout: `docs/rollouts/2026-09-12-issue-3221-event-loop-stalls.md`.
+
+## 2026-09-13 ANTIGRAVITY — PR #3282 (Issue #3221: Event-loop stalls, Watchdog AbortController, isTradingDay timezone)
+
+Addressed Issue #3221 via PR #3282 (auto-merge enabled):
+1. **Buffered \`api_health_log\`**: Buffered outbound API health writes in memory with a 5-second flush window (or 50 items) and made retention-pruning conditional on \`COUNT(*) > HEALTH_LOG_LANE_CAP\`, eliminating synchronous SQLite main-thread locking. Reads in \`getLaneHealth\` and \`listHealthLanes\` flush pending rows for guaranteed consistency.
+2. **Scheduler Watchdog \`AbortController\`**: Attached an \`AbortController\` pipeline (\`__tickAbortController\`) to \`tickGuardHost\` so \`runSchedulerTickWatchdog()\` unwedges hung ticks by aborting active work before subsequent ticks launch.
+3. **\`market-hours.ts\` ET Timezone**: Replaced local-server UTC date accessors with explicit \`America/New_York\` formatting so Friday late trading sessions do not get misclassified as Saturday weekend days.
+4. **Optimized \`hasLiveStrategyRunLease\`**: Swapped the full-table-scanning \`LIKE\` clause for an index-bounded range query (\`key >= ? AND key < ?;\`), leveraging SQLite index \`sqlite_autoindex_settings_1\`.
+5. **Defensive Bracket Teardown**: Refined \`order-cancel.ts\` to verify that a cancelled order belongs to open brackets before triggering teardown of sibling legs.
+Rollout: \`docs/rollouts/2026-09-12-issue-3221-event-loop-stalls.md\`.
+
+## 2026-09-12 ANTIGRAVITY — PR #3230 (Issue #3220: Tradier bracket orders & cancellation fixes — MERGED)
+
+Merged PR #3230 to address Issue #3220:
+1. Emits primary entry order alongside bracket exit legs in \`getEquityOrders\` mapping while stripping the \`tag\` on exit legs to avoid false-positive error matching.
+2. Flagged \`TradierBrokerGateway\` with \`ordersListIncludesTerminal = true\` to prevent \`uncertain\` order wedging in \`reconcilePlacementError\`.
+3. Translated Tradier HTTP 200 validation envelopes as terminal errors.
+4. Audited Alpaca MCP bracket sibling cancellations when REST credentials are not provided.
+5. Triggered teardown of sibling bracket legs upon manual cancellation.
+Rollout: \`docs/rollouts/2026-09-12-issue-3220-tradier-broker-fixes.md\`.
 ## 2026-09-15 GROK — PR #3296 401 JSON still redirects
 
 Sentry thread on `use-live-scan.ts`: `readErrorMessage` parsed JSON before the 401 check, so a JSON 401 body would skip `redirectToLogin()`.  Status is checked first now.  Merge is live — no Coolify Deploy.

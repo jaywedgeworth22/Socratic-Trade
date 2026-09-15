@@ -42,6 +42,14 @@ import {
   equityOrdersDefaultSinceIso,
   withDeadline
 } from "./inflight-deadline";
+import { createRequire } from "module";
+
+// Alpaca SDK does not configure a timeout, so broker sockets can hang indefinitely (axios default 0).
+// Since the SDK uses a bundled CommonJS axios instance, we must require it from the CJS cache
+// to successfully mutate its defaults (an ESM import of axios would get a different wrapper object).
+const requireCJS = createRequire(import.meta.url);
+const axios = requireCJS("axios");
+axios.defaults.timeout = ALPACA_BROKER_IO_DEADLINE_MS;
 
 /**
  * Fill in a usable price for any symbol the broker didn't quote (>0). Alpaca's latest-quote feed

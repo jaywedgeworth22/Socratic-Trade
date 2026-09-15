@@ -8,6 +8,9 @@ Rollout: `docs/rollouts/2026-09-13-issue-3224-api-security-hardening.md`.
 
 Resolved issue #3222: decoupled `llmobs.wrap` tracer setup from execution in `withDatadogLlmObs` so errors do not retry `fn()` and double-bill LLM providers; added safe JSON parsing to `red-team.ts` so HTML proxy responses fail over cleanly to candidate fallback reviewers instead of failing closed immediately; annotated HTTP error status codes on Datadog and Sentry GenAI spans; intercepted `response.json()` to capture `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens` directly before span finalization; added Moonshot to LLM host hints; resolved `@sentry/profiling-node` import in Next.js instrumentation. Verified with lint (0 errors), tsc (0 errors), and vitest (16 passed).
 Rollout: `docs/rollouts/2026-09-13-issue-3222-llm-observability-resilience.md`.
+## 2026-09-13 FX — same-repo pull_request auto-merge
+
+`auto-merge-prs.yml` and `auto-merge-shared-dependency.yml` no longer use `pull_request_target`.  Forks are skipped.  Branch `fx/automerge-fork-guard`.
 
 ## 2026-09-12 ANTIGRAVITY — Comprehensive Full-Stack Audit & System Diagnostics
 

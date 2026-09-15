@@ -17,7 +17,7 @@ Issue #3221 aims to address event-loop stalls triggered by synchronous SQLite wr
 - `npm run lint` — passed
 - `npx tsc --noEmit` — passed
 - `npm test` — passed
-- `gh pr create` — ready to merge.
+- `npm run build` — recorded on the GROK land-sweep tip after review-thread fixes.
 
 ## Next Steps
-- Move to issue #3222 (Datadog LLMObs duplicate invocation fix).
+- Squash-merge PR #3282.  Merge is live (Coolify auto-deploy).  Do not click Deploy.

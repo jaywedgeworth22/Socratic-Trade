@@ -250,7 +250,6 @@ export function getLaneHealth(
   streakStartedTs: string | null;
 } {
   try {
-    if (apiHealthBuffer.length > 0) flushApiHealthBuffer();
     const db = getDb();
     const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     // For a per-USER credential lane (keySource "user"), scope the failure streak to THIS user's own
@@ -261,20 +260,27 @@ export function getLaneHealth(
     const withUser = (params: unknown[]): unknown[] => (scopeUser ? [...params, userId] : params);
     // Pull error_text so expected-limit (soft) failures can be excluded from the HARD consecutive
     // streak — five 429s or a daily-cap row must not trip the enrichment circuit breaker.
-    const last5 = db
+    const pendingNewestFirst = pendingHealthRows(service, keySource, userId);
+    const last5db = db
       .prepare(
         `SELECT ok, error_text, ts FROM api_health_log WHERE service = ? AND key_source IS ?${userClause} ORDER BY ts DESC, rowid DESC LIMIT 5`
       )
       .all(...withUser([service, keySource])) as Array<{ ok: number; error_text: string | null; ts: string }>;
-    const lastSuccess = db
+    const last5 = [...pendingNewestFirst, ...last5db].slice(0, 5);
+    const lastSuccessDb = db
       .prepare(`SELECT ts FROM api_health_log WHERE service = ? AND key_source IS ?${userClause} AND ok = 1 ORDER BY ts DESC, rowid DESC LIMIT 1`)
       .get(...withUser([service, keySource])) as { ts: string } | undefined;
-    const lastFailure = db
+    const lastFailureDb = db
       .prepare(`SELECT ts FROM api_health_log WHERE service = ? AND key_source IS ?${userClause} AND ok = 0 ORDER BY ts DESC, rowid DESC LIMIT 1`)
       .get(...withUser([service, keySource])) as { ts: string } | undefined;
-    const callsLastHour = (
-      db.prepare(`SELECT COUNT(*) as cnt FROM api_health_log WHERE service = ? AND key_source IS ?${userClause} AND ts >= ?`).get(...withUser([service, keySource]), hourAgo) as { cnt: number }
-    ).cnt;
+    const lastSuccess = pendingNewestFirst.find((row) => row.ok === 1) ?? lastSuccessDb;
+    const lastFailure = pendingNewestFirst.find((row) => row.ok === 0) ?? lastFailureDb;
+    const pendingLastHour = pendingNewestFirst.filter((row) => row.ts >= hourAgo).length;
+    const callsLastHour =
+      pendingLastHour +
+      (
+        db.prepare(`SELECT COUNT(*) as cnt FROM api_health_log WHERE service = ? AND key_source IS ?${userClause} AND ts >= ?`).get(...withUser([service, keySource]), hourAgo) as { cnt: number }
+      ).cnt;
 
     let stoppedWorking = false;
     let reason: string | null = null;
@@ -296,7 +302,7 @@ export function getLaneHealth(
       // Walk the capped lane history newest-first; the last hard row before a success/soft break
       // is the start of this consecutive run (may be far older than last5 on a busy lane, or
       // shorter than 5 on a sparse one).
-      const history = db
+      const historyDb = db
         .prepare(
           `SELECT ok, error_text, ts FROM api_health_log WHERE service = ? AND key_source IS ?${userClause} ORDER BY ts DESC, rowid DESC LIMIT ?`
         )
@@ -305,6 +311,7 @@ export function getLaneHealth(
           error_text: string | null;
           ts: string;
         }>;
+      const history = [...pendingNewestFirst, ...historyDb].slice(0, HEALTH_LOG_LANE_CAP);
       let runStart: string | null = null;
       let entirelyTransient = true;
       let sawHard = false;
@@ -447,8 +454,59 @@ type ApiHealthLogOpts = {
   soft?: boolean;
 };
 
-const apiHealthBuffer: ApiHealthLogOpts[] = [];
+type BufferedHealth = ApiHealthLogOpts & { bufferedAt: string };
+
+const apiHealthBuffer: BufferedHealth[] = [];
 let apiHealthFlushTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function healthErrorTextForLog(opts: ApiHealthLogOpts): string | null {
+  let errorText = opts.errorText ?? null;
+  const filingApiAuthSoft =
+    opts.service === "filingapi" && !opts.ok && isFilingApiAuthErrorText(errorText);
+  if (!opts.ok && errorText && (opts.soft || filingApiAuthSoft || isSoftHealthFailure(errorText))) {
+    if (!errorText.startsWith(HEALTH_SOFT_FAILURE_PREFIX)) {
+      errorText = `${HEALTH_SOFT_FAILURE_PREFIX}${errorText}`;
+    }
+  } else if (!opts.ok && errorText && isTransientHealthFailure(errorText)) {
+    if (!errorText.startsWith(HEALTH_TRANSIENT_FAILURE_PREFIX)) {
+      errorText = `${HEALTH_TRANSIENT_FAILURE_PREFIX}${errorText}`;
+    }
+  }
+  return errorText;
+}
+
+function bufferMatchesLane(
+  opts: BufferedHealth,
+  service: string,
+  keySource: string | null,
+  userId?: string | null
+): boolean {
+  if (opts.service !== service) return false;
+  if ((opts.keySource ?? null) !== keySource) return false;
+  if (keySource === "user" && userId != null) return (opts.userId ?? null) === userId;
+  return true;
+}
+
+function pendingHealthRows(
+  service: string,
+  keySource: string | null,
+  userId?: string | null
+): Array<{ ok: number; error_text: string | null; ts: string }> {
+  return apiHealthBuffer
+    .filter((opts) => bufferMatchesLane(opts, service, keySource, userId))
+    .map((opts) => ({
+      ok: opts.ok ? 1 : 0,
+      error_text: healthErrorTextForLog(opts),
+      ts: opts.bufferedAt
+    }))
+    .reverse();
+}
+
+function scheduleApiHealthFlush(): void {
+  if (apiHealthFlushTimeout) return;
+  apiHealthFlushTimeout = setTimeout(flushApiHealthBuffer, 5000);
+  apiHealthFlushTimeout.unref();
+}
 
 export function flushApiHealthBuffer(): void {
   if (apiHealthFlushTimeout) {
@@ -457,28 +515,39 @@ export function flushApiHealthBuffer(): void {
   }
   if (apiHealthBuffer.length === 0) return;
   const batch = apiHealthBuffer.splice(0, apiHealthBuffer.length);
+  let processed: Array<{
+    service: string;
+    ok: boolean;
+    latencyMs?: number;
+    quotaResetAt?: string;
+    now: string;
+    id: string;
+    keySource: string | null;
+    userId: string | null;
+    errorText: string | null;
+    isSoft: boolean;
+  }>;
   try {
     const db = getDb();
-    
-    // Compute derived values outside transaction
-    const processed = batch.map(opts => {
-      const now = new Date().toISOString();
+
+    processed = batch.map((opts) => {
+      const now = opts.bufferedAt;
       const id = randomUUID();
       const keySource = opts.keySource ?? null;
       const userId = opts.userId ?? null;
-      let errorText = opts.errorText ?? null;
-      const filingApiAuthSoft =
-        opts.service === "filingapi" && !opts.ok && isFilingApiAuthErrorText(errorText);
-      if (!opts.ok && errorText && (opts.soft || filingApiAuthSoft || isSoftHealthFailure(errorText))) {
-        if (!errorText.startsWith(HEALTH_SOFT_FAILURE_PREFIX)) {
-          errorText = `${HEALTH_SOFT_FAILURE_PREFIX}${errorText}`;
-        }
-      } else if (!opts.ok && errorText && isTransientHealthFailure(errorText)) {
-        if (!errorText.startsWith(HEALTH_TRANSIENT_FAILURE_PREFIX)) {
-          errorText = `${HEALTH_TRANSIENT_FAILURE_PREFIX}${errorText}`;
-        }
-      }
-      return { ...opts, now, id, keySource, userId, errorText, isSoft: isSoftHealthFailure(errorText ?? "") };
+      const errorText = healthErrorTextForLog(opts);
+      return {
+        service: opts.service,
+        ok: opts.ok,
+        latencyMs: opts.latencyMs,
+        quotaResetAt: opts.quotaResetAt,
+        now,
+        id,
+        keySource,
+        userId,
+        errorText,
+        isSoft: isSoftHealthFailure(errorText ?? "")
+      };
     });
 
     db.transaction(() => {
@@ -523,7 +592,14 @@ export function flushApiHealthBuffer(): void {
         }
       }
     })();
+  } catch {
+    apiHealthBuffer.unshift(...batch);
+    if (apiHealthBuffer.length > 200) apiHealthBuffer.length = 200;
+    if (!process.env.VITEST) scheduleApiHealthFlush();
+    return;
+  }
 
+  try {
     // Post-transaction operations
     for (const p of processed) {
       const streakKey = hardStreakStartSettingKey(p.service, p.keySource, p.userId);
@@ -564,22 +640,18 @@ export function flushApiHealthBuffer(): void {
         }
       }
     }
-  } catch (e) {
-    // Health logging must never throw — swallow all errors
-    // console.error(e);
+  } catch {
+    // Alerts must never resurrect a committed batch or throw out of health logging.
   }
 }
 
 export function logApiHealth(opts: ApiHealthLogOpts): void {
-  apiHealthBuffer.push(opts);
-  if (apiHealthBuffer.length >= 50) {
+  apiHealthBuffer.push({ ...opts, bufferedAt: new Date().toISOString() });
+  if (process.env.VITEST || apiHealthBuffer.length >= 50) {
     flushApiHealthBuffer();
     return;
   }
-  if (!apiHealthFlushTimeout) {
-    apiHealthFlushTimeout = setTimeout(flushApiHealthBuffer, 5000);
-    apiHealthFlushTimeout.unref();
-  }
+  scheduleApiHealthFlush();
 }
 
 // ── Read ───────────────────────────────────────────────────────────────────────
@@ -588,11 +660,18 @@ interface ServiceKeyLane { service: string; key_source: string | null }
 
 function listHealthLanes(): ServiceKeyLane[] {
   try {
-    if (apiHealthBuffer.length > 0) flushApiHealthBuffer();
     const db = getDb();
-    return db
+    const rows = db
       .prepare(`SELECT DISTINCT service, key_source FROM api_health_log ORDER BY service, key_source`)
       .all() as ServiceKeyLane[];
+    const seen = new Set(rows.map((row) => `${row.service}::${row.key_source ?? ""}`));
+    for (const opts of apiHealthBuffer) {
+      const key = `${opts.service}::${opts.keySource ?? ""}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push({ service: opts.service, key_source: opts.keySource ?? null });
+    }
+    return rows;
   } catch {
     return [];
   }
@@ -600,12 +679,18 @@ function listHealthLanes(): ServiceKeyLane[] {
 
 export function listHealthServices(): string[] {
   try {
-    if (apiHealthBuffer.length > 0) flushApiHealthBuffer();
     const db = getDb();
     const rows = db
       .prepare(`SELECT DISTINCT service FROM api_health_log ORDER BY service`)
       .all() as Array<{ service: string }>;
-    return rows.map((r) => r.service);
+    const names = rows.map((r) => r.service);
+    const seen = new Set(names);
+    for (const opts of apiHealthBuffer) {
+      if (seen.has(opts.service)) continue;
+      seen.add(opts.service);
+      names.push(opts.service);
+    }
+    return names;
   } catch {
     return [];
   }

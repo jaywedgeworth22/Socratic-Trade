@@ -1,5 +1,10 @@
 # Current Status
 
+## 2026-09-15 GROK — PR #3282 land-sweep (review threads + health-buffer CI)
+
+Unstuck #3282 against `origin/main` (real conflict only in `instrumentation.ts`, took main's Sentry profiling import).  Codex P1s: watchdog abort no longer rethrows from `tick()` (pre-leader `throwIfAborted` used to become an unhandled rejection); manual cancel tears down any open brackets on the symbol; `getLaneHealth` no longer sync-flushes the health buffer (reads merge pending rows; failed flushes are restored); Tradier listing keeps a tagged container when `side` is omitted; Alpaca MCP-only bracket teardown throws so the pending row is not deleted as success.  Vitest flushes the health buffer immediately so table assertions stay honest.  Merge is live — no Coolify Deploy.  Worktree `~/apps/trading-grok-land-sweep`.
+Rollout: `docs/rollouts/2026-09-12-issue-3221-event-loop-stalls.md`.
+
 ## 2026-09-13 ANTIGRAVITY — PR #3282 (Issue #3221: Event-loop stalls, Watchdog AbortController, isTradingDay timezone)
 
 Addressed Issue #3221 via PR #3282 (auto-merge enabled):
@@ -19,6 +24,13 @@ Merged PR #3230 to address Issue #3220:
 4. Audited Alpaca MCP bracket sibling cancellations when REST credentials are not provided.
 5. Triggered teardown of sibling bracket legs upon manual cancellation.
 Rollout: \`docs/rollouts/2026-09-12-issue-3220-tradier-broker-fixes.md\`.
+## 2026-09-13 ANTIGRAVITY — API Security Hardening: Open Redirect Sanitization, Public Auth Rate Limiting & Defensive JSON Parsing (Issue #3224)
+
+Hardened web and mobile API endpoints against open redirects, denial-of-service, and error leakage.  Implemented `sanitizeCallbackUrl` in `src/lib/auth/callback-url.ts` and wired into `app/login/page.tsx`, rejecting protocol-relative (`//evil.com`) and cross-origin targets.  Added strict `redirect` callback in NextAuth (`src/lib/auth/auth.ts`).  Enforced IP-based rate limiting on public mobile auth routes (`/api/mobile/auth/apple` and `/api/mobile/auth/exchange`) and bounded exchange request bodies with `APPLE_AUTH_MAX_BYTES` (returning HTTP 413 on overflow).  Added `RATE_LIMITS.orders` rate limiting to `POST /api/proposals/from-draft`.  Defensively caught JSON parse errors across `/api/orders/cancel`, `/api/profiles`, and `/api/consent`, returning HTTP 400 instead of unhandled 500 crashes.  Sanitized error reflections in `/api/chat` using `safeErrorMessage` to redact sensitive credentials.  Verified gate: `npm run lint` (0 errors), `npx tsc --noEmit` (clean), and 19 vitest tests passing.
+Rollout: `docs/rollouts/2026-09-13-issue-3224-api-security-hardening.md`.
+## 2026-09-13 FX — same-repo pull_request auto-merge
+
+`auto-merge-prs.yml` and `auto-merge-shared-dependency.yml` no longer use `pull_request_target`.  Forks are skipped.  Branch `fx/automerge-fork-guard`.
 
 ## 2026-09-12 ANTIGRAVITY — Comprehensive Full-Stack Audit & System Diagnostics
 

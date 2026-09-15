@@ -34,12 +34,15 @@ import type { PolicyDecision, ReviewedOrder } from "@/lib/types";
 import { shouldEscalateDecision } from "@/lib/strategy-risk";
 import { fetchFreshQuotesCascade } from "@/lib/quotes-cascade";
 import { normalizeSymbol } from "@/lib/money";
+import { enforceRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { draft?: ChatDraft; dryRun?: boolean; userId?: unknown };
   const userId = resolveRequestUserId(request, body);
+  const limited = enforceRateLimit(userId, "proposals/from-draft", RATE_LIMITS.orders);
+  if (limited) return limited;
 
   if (!body.draft || typeof body.draft !== "object") {
     return NextResponse.json({ error: "draft is required" }, { status: 400 });

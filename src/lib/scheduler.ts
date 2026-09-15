@@ -1518,6 +1518,16 @@ async function tick(): Promise<void> {
     recordSchedulerTick(durationMs > TICK_MS ? "overrun" : "ok", durationMs);
   } catch (err) {
     recordSchedulerTick("error", Date.now() - started);
+    const aborted =
+      tickGuardHost.__tickAbortController?.signal.aborted === true ||
+      (typeof err === "object" &&
+        err !== null &&
+        ((err as { name?: string }).name === "AbortError" ||
+          /watchdog timeout/i.test(err instanceof Error ? err.message : String(err))));
+    if (aborted) {
+      logWarn("scheduler.tick", { event: "aborted_by_watchdog" });
+      return;
+    }
     throw err;
   } finally {
     if (tickGuardHost.__tickGeneration === myGen) {

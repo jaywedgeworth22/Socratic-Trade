@@ -8631,3 +8631,35 @@ export async function retrieveContext(
   const chunks = await retrieveContextDetailed(query, symbol, limit, userId, options);
   return chunks.map((c) => c.text).filter(Boolean);
 }
+
+/**
+ * Boot-time warmup to ensure Qdrant's cold-cache fault-in doesn't delay the first real user query.
+ * Dispatched in the background at server start (instrumentation.ts) for the three globally-shared
+ * namespaces (default, managed, fmp-transcripts). Private/per-user namespaces are not globally
+ * warmed up. Fire-and-forget; failure is logged but doesn't crash the boot.
+ */
+export async function warmupQdrantHotTenants(): Promise<void> {
+  const { qdrantConfigured, qdrantQueryTier, vectorReadBackend } = await import("./vector-store/qdrant-read");
+  if (!qdrantConfigured() || vectorReadBackend() !== "qdrant") return;
+
+  const namespaces = [
+    vectorNamespaceName("default"),
+    vectorNamespaceName("managed", managedVectorLedgerAuthority()),
+    vectorNamespaceName("fmp-transcripts", managedVectorLedgerAuthority()),
+  ];
+
+  const dummyVector = new Array(EMBEDDING_DIMENSION).fill(0);
+
+  await Promise.allSettled(
+    namespaces.map(async (ns) => {
+      try {
+        await qdrantQueryTier(ns, {
+          vector: dummyVector,
+          topK: 1,
+        });
+      } catch (e) {
+        logWarn(`Qdrant boot warmup failed for namespace "${ns}": ${e instanceof Error ? e.message : String(e)}`);
+      }
+    })
+  );
+}

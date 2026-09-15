@@ -22,6 +22,9 @@ function resolveSentryMod(mod: unknown): SentryMod | null {
 }
 
 function loadSentry(): Promise<SentryMod | null> {
+  // llm-request is imported by console client components. Never pull the
+  // Node Sentry SDK (node:async_hooks) into the webpack client graph.
+  if (typeof window !== "undefined") return Promise.resolve(null);
   if (!process.env.SENTRY_DSN && !process.env.NEXT_PUBLIC_SENTRY_DSN) {
     return Promise.resolve(null);
   }
@@ -75,6 +78,23 @@ function operationFromUrl(url: string): GenAiOperation {
   return "chat";
 }
 
+let lastGenAiSpanRecord: { span: any; timestamp: number } | null = null;
+
+function applyGenAiUsageAttrs(span: { setAttributes?: (attrs: Record<string, string | number>) => void } | null | undefined, data: unknown): void {
+  if (!span || !data || typeof data !== "object" || !("usage" in data)) return;
+  const u = (data as { usage?: { prompt_tokens?: number; input_tokens?: number; completion_tokens?: number; output_tokens?: number } }).usage;
+  const promptTokens = u?.prompt_tokens ?? u?.input_tokens;
+  const completionTokens = u?.completion_tokens ?? u?.output_tokens;
+  const attrs: Record<string, string | number> = {};
+  if (typeof promptTokens === "number" && Number.isFinite(promptTokens)) {
+    attrs["gen_ai.usage.input_tokens"] = promptTokens;
+  }
+  if (typeof completionTokens === "number" && Number.isFinite(completionTokens)) {
+    attrs["gen_ai.usage.output_tokens"] = completionTokens;
+  }
+  if (Object.keys(attrs).length > 0) span.setAttributes?.(attrs);
+}
+
 export async function withGenAiSpan<T>(
   url: string,
   init: RequestInit | undefined,
@@ -96,7 +116,31 @@ export async function withGenAiSpan<T>(
         ...(model ? { "gen_ai.request.model": model } : {})
       }
     },
-    fn
+    async (span?: any) => {
+      const activeSpan = span ?? Sentry.getActiveSpan?.();
+      if (activeSpan) {
+        lastGenAiSpanRecord = { span: activeSpan, timestamp: Date.now() };
+      }
+      // Do not import node:async_hooks here: llm-request pulls this file into the
+      // console client bundle and webpack cannot resolve the node: scheme.
+      const result = await fn();
+      if (result && typeof result === "object") {
+        if ("ok" in result && (result as { ok?: boolean }).ok === false) {
+          const status = (result as { status?: number }).status;
+          activeSpan?.setStatus?.({ code: 2, message: `HTTP ${status ?? "error"}` });
+        }
+        const maybeClone = (result as { clone?: () => { json: () => Promise<unknown> } }).clone;
+        if (typeof maybeClone === "function") {
+          try {
+            const data = await maybeClone.call(result).json();
+            applyGenAiUsageAttrs(activeSpan, data);
+          } catch {
+            // non-JSON body; original stream is still unread
+          }
+        }
+      }
+      return result;
+    }
   );
 }
 
@@ -120,7 +164,8 @@ export function setGenAiUsageOnActiveSpan(usage: {
 }): void {
   void loadSentry().then((Sentry) => {
     try {
-      const span = Sentry?.getActiveSpan?.();
+      const activeSpan = Sentry?.getActiveSpan?.();
+      const span = activeSpan ?? (lastGenAiSpanRecord && (Date.now() - lastGenAiSpanRecord.timestamp < 30000) ? lastGenAiSpanRecord.span : null);
       if (!span) return;
       const attrs: Record<string, string | number> = {};
       if (usage.provider) attrs["gen_ai.system"] = usage.provider;

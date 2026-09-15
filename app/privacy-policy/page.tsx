@@ -1,6 +1,12 @@
 import type { Metadata } from "next";
 import { Card } from "../ui/primitives";
 
+// The CDN-cached prerender (`s-maxage=31536000`) was leaving a deployed docs edit stale
+// for up to a year. A docs-only deploy can change the policy the consent gate links to
+// without invalidating the CDN copy. Background-revalidate hourly: the SSR-generated
+// HTML/CDN stamp refreshes; stale-while-revalidate keeps page-loads fast in between.
+export const revalidate = 3600;
+
 export const metadata: Metadata = {
   title: "Privacy Policy",
   description: "How Socratic Trade collects, uses, and protects account and usage data, including SMS notification data.",

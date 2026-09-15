@@ -4,6 +4,10 @@ import { Card } from "../ui/primitives";
 import { DecisionTraceIllustration } from "./decision-trace-illustration";
 import { landingPageEnabled } from "@/lib/landing-page";
 
+// Background-revalidate hourly: same fix as the legal pages — the CDN-cached prerender
+// was leaving a deployed docs edit stale for up to a year.
+export const revalidate = 3600;
+
 export const metadata: Metadata = {
   title: { absolute: "Socratic Trade" },
   description:

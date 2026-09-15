@@ -96,6 +96,13 @@ if [ -z "$EXPECTED_SHA" ]; then
   fail_usage "cannot resolve expected ref '${EXPECTED_REF}' to a commit in this repo."
 fi
 
+# watch_paths in Coolify skips docs/**, so a docs-only commit never deploys.
+# Compare against the newest image-affecting commit instead.
+IMAGE_AFFECTING_SHA="$(git log -1 --format="%H" "$EXPECTED_SHA" -- . ":(exclude)docs" 2>/dev/null || true)"
+if [ -n "$IMAGE_AFFECTING_SHA" ]; then
+  EXPECTED_SHA="$IMAGE_AFFECTING_SHA"
+fi
+
 log "expecting ${EXPECTED_SHA} (${EXPECTED_REF})"
 log "probing ${URL} every ${INTERVAL_SECONDS}s for up to ${TIMEOUT_SECONDS}s"
 

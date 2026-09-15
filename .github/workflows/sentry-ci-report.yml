@@ -60,7 +60,7 @@ on:
       - Deploy freshness
       - RTH Deploy Latch
       - Sentry Deploy
-    types: [completed]
+    types: [requested, completed]
 
 permissions:
   contents: read
@@ -77,12 +77,20 @@ jobs:
     # still spinning up a full runner + checkout for every one of ~95 completions/day.
     # Gate the whole job so those no-op cases skip at ZERO runner minutes while the
     # two real signals (failure alerts, cron missed-check-in detection) are unchanged.
-    if: ${{ github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.event == 'schedule' }}
+    if: >-
+      (github.event.action == 'requested' && github.event.workflow_run.event == 'schedule') ||
+      (github.event.action == 'completed' && (github.event.workflow_run.conclusion == 'failure' ||
+      github.event.workflow_run.conclusion == 'timed_out' ||
+      github.event.workflow_run.conclusion == 'startup_failure' ||
+      github.event.workflow_run.event == 'schedule'))
     # Prefer a separate observer lane when one exists. As of 2026-07-24 the
     # ci-cpx32 box has systemd runners for socratic-ci / socratic-ci-2 only —
     # there is no socratic-deploy unit under /opt/actions-runners, so jobs that
     # target that label queue forever. Route the short failure/schedule-only
     # reporter onto socratic-ci until a dedicated observer runner is restored.
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (for the reporter script only; does not touch observed workflows)
@@ -102,14 +110,15 @@ jobs:
         shell: bash
         env:
           SENTRY_FLEET_DSN: ${{ secrets.SENTRY_FLEET_DSN }}
-          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          GITHUB_TOKEN: ${{ github.token }}
+          WORKFLOW_RUN_ACTION: ${{ github.event.action }}
+          WORKFLOW_          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
           WORKFLOW_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           WORKFLOW_EVENT: ${{ github.event.workflow_run.event }}
           WORKFLOW_BRANCH: ${{ github.event.workflow_run.head_branch }}
           WORKFLOW_ACTOR: ${{ github.event.workflow_run.actor.login }}
           WORKFLOW_RUN_URL: ${{ github.event.workflow_run.html_url }}
-          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
-        run: python3 scripts/sentry-ci-report.py
+                  run: python3 scripts/sentry-ci-report.py
 
       - name: Disable sparse checkout (prevent poisoning self-hosted runner workspace)
         if: always()

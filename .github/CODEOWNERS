@@ -1,0 +1,10 @@
+# Trading Execution Paths
+# Require human review from owner before agent code touches live money paths
+
+/src/lib/broker.ts @jaywedgeworth22
+/src/lib/tradier.ts @jaywedgeworth22
+/src/lib/robinhood.ts @jaywedgeworth22
+/src/lib/execution* @jaywedgeworth22
+/src/lib/strategy-execution.ts @jaywedgeworth22
+/src/lib/scheduler.ts @jaywedgeworth22
+/scripts/execute-tradier-trades.ts @jaywedgeworth22

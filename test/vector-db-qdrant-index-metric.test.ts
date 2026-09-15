@@ -135,4 +135,46 @@ describe("assertIndexMetric on the Qdrant read path", () => {
     expect(chunks.length).toBeGreaterThan(0);
     expect(chunks[0].id).toBe("sec-filings:AAPL:10-k:2026:chunk-1");
   });
+
+  it("assertQdrantCollectionMetric validates Cosine distance and audits mismatch on Euclid", async () => {
+    const { assertQdrantCollectionMetric, resetQdrantMetricCheckedForTests } = await import(
+      "../src/lib/vector-store/qdrant-read"
+    );
+    const { getDb } = await import("../src/lib/db");
+
+    resetQdrantMetricCheckedForTests();
+
+    // Stub fetch returning Euclid distance for the collection
+    vi.stubGlobal("fetch", async (url: string | URL | Request) => {
+      const urlStr = String(url);
+      if (urlStr.includes("/collections/")) {
+        return new Response(
+          JSON.stringify({
+            result: {
+              status: "green",
+              points_count: 500,
+              config: {
+                params: {
+                  vectors: {
+                    size: 1024,
+                    distance: "Euclid"
+                  }
+                }
+              }
+            }
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await assertQdrantCollectionMetric();
+
+    const auditRow = getDb()
+      .prepare("SELECT * FROM audit_events WHERE kind = 'vector_index_metric_mismatch' ORDER BY id DESC LIMIT 1")
+      .get() as { payload?: string; details?: string } | undefined;
+    expect(auditRow).toBeDefined();
+    expect(auditRow?.payload).toContain("Euclid");
+  });
 });

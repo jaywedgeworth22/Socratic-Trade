@@ -23,7 +23,7 @@
 
 import crypto from "crypto";
 import { isAbortOrTimeoutError, isTransientNetworkError } from "../network-errors";
-import { recordRagUsage } from "../rag-metering";
+import { hasRagIngestPointsBudget, recordRagUsage } from "../rag-metering";
 import { serverKnobOverride } from "../server-knobs";
 import {
   qdrantTenantFilter,
@@ -62,6 +62,7 @@ export interface QdrantCollectionInfo {
   pointsCount?: number;
   dimension?: number;
   status?: string;
+  distance?: string;
 }
 
 let warnedUnconfigured = false;
@@ -242,12 +243,47 @@ function chunkItems<T>(items: T[], size: number): T[][] {
   return out;
 }
 
+export function qdrantMaxPointsCapacity(): number | null {
+  const configured = Number(process.env.QDRANT_MAX_POINTS ?? process.env.RAG_QDRANT_MAX_POINTS);
+  return Number.isFinite(configured) && configured > 0
+    ? Math.floor(configured)
+    : null;
+}
+
 export async function qdrantUpsertPoints(options: {
   namespace: string | undefined | null;
   records: QdrantUpsertRecord[];
   wait?: boolean;
+  userId?: string;
+  /** Same IDs already written this request (pending → committed).  Skip growth/budget charges. */
+  replacingExisting?: boolean;
 }): Promise<{ upserted: number }> {
   if (options.records.length === 0) return { upserted: 0 };
+  const userId = options.userId ?? "local";
+  if (!options.replacingExisting && !hasRagIngestPointsBudget(userId, options.records.length, "qdrant")) {
+    throw new Error(
+      `[qdrant-write] Daily vector point ingestion budget exceeded; refusing upsert of ${options.records.length} points.`
+    );
+  }
+  const maxCapacity = qdrantMaxPointsCapacity();
+  if (maxCapacity !== null && !options.replacingExisting) {
+    try {
+      const info = await qdrantCollectionInfo();
+      if (
+        info.exists &&
+        typeof info.pointsCount === "number" &&
+        info.pointsCount + options.records.length > maxCapacity
+      ) {
+        throw new Error(
+          `[qdrant-write] Qdrant collection point capacity exceeded (${info.pointsCount} points, limit ${maxCapacity}); upsert refused to prevent disk saturation.`
+        );
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("capacity exceeded")) {
+        throw err;
+      }
+    }
+  }
   const collection = encodeURIComponent(qdrantCollectionName());
   const wait = options.wait !== false;
   let upserted = 0;
@@ -480,14 +516,21 @@ export async function qdrantCollectionInfo(): Promise<QdrantCollectionInfo> {
       };
     };
     const vectors = parsed.result?.config?.params?.vectors;
-    const dimension = vectors && typeof vectors === "object" && "size" in vectors
-      ? Number((vectors as { size?: unknown }).size)
+    const vectorObj = vectors && typeof vectors === "object"
+      ? ("size" in vectors || "distance" in vectors ? vectors : Object.values(vectors)[0])
+      : undefined;
+    const dimension = vectorObj && typeof vectorObj === "object" && "size" in vectorObj
+      ? Number((vectorObj as { size?: unknown }).size)
+      : undefined;
+    const distance = vectorObj && typeof vectorObj === "object" && "distance" in vectorObj
+      ? String((vectorObj as { distance?: unknown }).distance)
       : undefined;
     return {
       exists: true,
       collection,
       pointsCount: Number(parsed.result?.points_count ?? parsed.result?.indexed_vectors_count ?? 0),
       ...(Number.isFinite(dimension) ? { dimension } : {}),
+      ...(distance ? { distance } : {}),
       ...(typeof parsed.result?.status === "string" ? { status: parsed.result.status } : {})
     };
   } catch (error) {

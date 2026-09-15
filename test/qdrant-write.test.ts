@@ -411,3 +411,47 @@ describe("qdrantUpsertPoints — retry on a transient network failure", () => {
     expect(attempt).toBe(1);
   });
 });
+
+describe("Qdrant spend fuses and storage breakers", () => {
+  it("refuses upsert when daily point budget is exceeded", async () => {
+    process.env.QDRANT_URL = "http://qdrant.example:6333";
+    process.env.RAG_MAX_DAILY_INGEST_POINTS = "5";
+
+    meterQdrantUpsert(5, "local");
+
+    await expect(
+      qdrantUpsertPoints({ namespace: "test", records: [{ id: "p1", values: [0.1] }] })
+    ).rejects.toThrow(/Daily vector point ingestion budget exceeded/);
+
+    delete process.env.RAG_MAX_DAILY_INGEST_POINTS;
+  });
+
+  it("refuses upsert when collection capacity limit is reached", async () => {
+    process.env.QDRANT_URL = "http://qdrant.example:6333";
+    process.env.QDRANT_MAX_POINTS = "100";
+
+    vi.stubGlobal("fetch", async (url: string | URL | Request) => {
+      const urlStr = String(url);
+      if (urlStr.includes("/collections/") && !urlStr.includes("/points")) {
+        return new Response(
+          JSON.stringify({
+            result: {
+              status: "green",
+              points_count: 100,
+              config: { params: { vectors: { size: 1024, distance: "Cosine" } } }
+            }
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return new Response(JSON.stringify({ result: { status: "ok" } }), { status: 200 });
+    });
+
+    await expect(
+      qdrantUpsertPoints({ namespace: "test", records: [{ id: "p1", values: [0.1] }] })
+    ).rejects.toThrow(/Qdrant collection point capacity exceeded/);
+
+    delete process.env.QDRANT_MAX_POINTS;
+  });
+});
+

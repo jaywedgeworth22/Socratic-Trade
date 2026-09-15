@@ -22,6 +22,9 @@ function resolveSentryMod(mod: unknown): SentryMod | null {
 }
 
 function loadSentry(): Promise<SentryMod | null> {
+  // llm-request is imported by console client components. Never pull the
+  // Node Sentry SDK (node:async_hooks) into the webpack client graph.
+  if (typeof window !== "undefined") return Promise.resolve(null);
   if (!process.env.SENTRY_DSN && !process.env.NEXT_PUBLIC_SENTRY_DSN) {
     return Promise.resolve(null);
   }

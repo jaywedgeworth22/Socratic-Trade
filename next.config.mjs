@@ -1,7 +1,11 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import dns from "node:dns";
 import { withSentryConfig } from "@sentry/nextjs";
+
+const require = createRequire(import.meta.url);
+const webpack = require("webpack");
 
 dns.setDefaultResultOrder("ipv4first");
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -57,7 +61,15 @@ const nextConfig = {
         "node:net": false,
         "node:os": false,
         "node:child_process": false,
+        "node:async_hooks": false,
       };
+      // webpack 5 rejects the node: URI scheme before aliases apply
+      // (`UnhandledSchemeError` on node:async_hooks via @sentry/nextjs).
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
+          resource.request = resource.request.replace(/^node:/, "");
+        })
+      );
       config.resolve.fallback = {
         ...(config.resolve.fallback ?? {}),
         fs: false,
@@ -70,6 +82,7 @@ const nextConfig = {
         net: false,
         os: false,
         http: false,
+        async_hooks: false,
         // node:http2 is the APNs provider transport (src/lib/apns.ts, reachable from the
         // src/lib/db.ts barrel). Server-only — stubbed out for client/edge bundles.
         http2: false,

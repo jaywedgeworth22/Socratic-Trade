@@ -1341,7 +1341,7 @@ export function setActiveConnectedAccount(id: string, userId: string = "local"):
       .get(id, userId) as { id: string; is_draining: number } | undefined;
     if (!row) throw new Error("Connected account not found.");
     if (row.is_draining === 1) {
-      throw new Error("This account is disconnected and being wound down — it can no longer be made active.");
+      throw new Error("This account is disconnected and being wound down — it can no longer be made active."); // Guard: prevent reactivation of draining account
     }
     db.prepare("UPDATE connected_accounts SET is_active = 0 WHERE user_id = ?").run(userId);
     db.prepare("UPDATE connected_accounts SET is_active = 1 WHERE id = ? AND user_id = ?").run(id, userId);

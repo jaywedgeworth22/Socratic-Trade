@@ -36,7 +36,7 @@ import { RetrievalStageTrace, type RetrievalTraceSnapshot } from "./rag/retrieva
 import { dedupeSimilar, type DedupeSimilarReport } from "./rag/dedupe-similar";
 import { getCachedQueryEmbedding, setCachedQueryEmbedding } from "./rag/query-embed-cache";
 import { recordRagOperation, shouldDegradeForBudget } from "./rag/run-budget";
-import { estimateRagDispatchCost, getRagUsageSummary, hashQuery, meterEmbed, meterPineconeQuery, meterPineconeUpsert, meterRerank, recordRetrievalQuality, retrievalTelemetryEnabled, type RagEmbedRerankProvider } from "./rag-metering";
+import { estimateRagDispatchCost, getRagUsageSummary, hasRagIngestPointsBudget, hashQuery, meterEmbed, meterPineconeQuery, meterPineconeUpsert, meterRerank, recordRetrievalQuality, retrievalTelemetryEnabled, type RagEmbedRerankProvider } from "./rag-metering";
 import {
   EMBED_REQUEST_TOKEN_BUDGET,
   embedRequestFits,
@@ -62,7 +62,7 @@ import {
   type UserOperationClaim
 } from "./user-write-fence";
 import { hasInFlightStrategyWork, shouldSkipWholeIndexInventory } from "./db-execution";
-import { meterQdrantQuery, qdrantQueryTier, vectorReadBackend } from "./vector-store/qdrant-read";
+import { assertQdrantCollectionMetric, meterQdrantQuery, qdrantQueryTier, vectorReadBackend } from "./vector-store/qdrant-read";
 import {
   meterQdrantUpsert,
   qdrantCollectionInfo,
@@ -2619,6 +2619,17 @@ function isRateLimitError(error: unknown): boolean {
   return /\b429\b|rate limit|too many requests|RPM|TPM/i.test(message);
 }
 
+export class HttpProviderError extends Error {
+  readonly status: number;
+  readonly headers: Headers;
+  constructor(message: string, status: number, headers: Headers) {
+    super(message);
+    this.name = "HttpProviderError";
+    this.status = status;
+    this.headers = headers;
+  }
+}
+
 export function retryAfterMs(error: unknown, attempt: number): number {
   const headers =
     (error as { headers?: { get?: (name: string) => string | null } })?.headers ??
@@ -2721,7 +2732,12 @@ async function embedWithRetry(
             { operation: "embeddings", model: modelName, system: isOpenRouter ? "openrouter" : "siliconflow" }
           );
           if (!response.ok) {
-            throw new Error(`Embedding API failed (isOpenRouter=${isOpenRouter}): ${response.status} ${await response.text()}`);
+            const body = await response.text();
+            throw new HttpProviderError(
+              `Embedding API failed (isOpenRouter=${isOpenRouter}): ${response.status} ${body}`,
+              response.status,
+              response.headers
+            );
           }
           return await response.json();
         };
@@ -2896,7 +2912,12 @@ export async function rerankMatches(
           body: JSON.stringify(rerankBody)
         });
         if (!response.ok) {
-          throw new Error(`Rerank API failed (isOpenRouter=${isOpenRouter}): ${response.status} ${await response.text()}`);
+          const body = await response.text();
+          throw new HttpProviderError(
+            `Rerank API failed (isOpenRouter=${isOpenRouter}): ${response.status} ${body}`,
+            response.status,
+            response.headers
+          );
         }
         const res = await response.json();
         return res;
@@ -3311,6 +3332,17 @@ async function storeContextsImpl(
       );
       return { attempted: validDocuments.length, indexed: 0, skipped: true, wuExhausted: true, wuExhaustedUntil };
     }
+  }
+  if (writeBackend === "qdrant" && !hasRagIngestPointsBudget(userId, validDocuments.length, "qdrant")) {
+    console.warn(
+      `[vector-db] Qdrant daily point ingestion budget exceeded for ${userId}; skipping storeContexts of ${validDocuments.length} docs.`
+    );
+    return {
+      attempted: validDocuments.length,
+      indexed: 0,
+      skipped: true,
+      writeUnitBudgetSkipped: validDocuments.length
+    };
   }
   const privateLedgerAuthority = scope === PRIVATE_SCOPE && !options?.managedCommit
     ? managedVectorLedgerAuthority()
@@ -3856,7 +3888,7 @@ async function storeContextsImpl(
             ? "upsert fmp-derived private memory"
             : "upsert";
         if (writeBackend === "qdrant") {
-          await qdrantUpsertPoints({ namespace: namespaceName, records });
+          await qdrantUpsertPoints({ namespace: namespaceName, records, userId });
           meterQdrantUpsert(records.length, userId);
         } else {
           const estimatedWriteUnits = estimatePineconeWriteUnitsForRecords(records);
@@ -3920,8 +3952,12 @@ async function storeContextsImpl(
           metadata: { ...record.metadata, ingest_state: "committed" }
         }));
         if (writeBackend === "qdrant") {
-          await qdrantUpsertPoints({ namespace: namespaceName, records: committedRecords });
-          meterQdrantUpsert(committedRecords.length, userId);
+          await qdrantUpsertPoints({
+            namespace: namespaceName,
+            records: committedRecords,
+            userId,
+            replacingExisting: true
+          });
         } else {
           const estimatedWriteUnits = estimatePineconeWriteUnitsForRecords(committedRecords);
           await withRagApiHealth(
@@ -4324,6 +4360,16 @@ async function storeDocumentImpl(
         documentComplete: false
       };
     }
+  }
+  if (writeBackend === "qdrant" && !hasRagIngestPointsBudget(userId, chunked.length, "qdrant")) {
+    console.warn(`[vector-db] Qdrant daily point ingestion budget exceeded for ${userId}; skipping ${chunked.length} chunks.`);
+    return {
+      attempted: chunked.length,
+      indexed: 0,
+      skipped: true,
+      writeUnitBudgetSkipped: chunked.length,
+      documentComplete: false
+    };
   }
   // Daily write fuse: refuse BEFORE provider discovery and beginVectorCommit.  The monthly
   // breaker above parks on a calendar marker; this one parks when the rolling 24h ledger is
@@ -7370,6 +7416,14 @@ export async function retrieveContextDetailed(
       }
       if (readBackend === "pinecone") {
         stableProviderAuthority = stableProviderAuthorityForInitKey(initCacheKey);
+      }
+    }
+
+    if (readBackend === "qdrant") {
+      try {
+        await assertQdrantCollectionMetric();
+      } catch {
+        // fail-soft on Qdrant metric check
       }
     }
 

@@ -4,6 +4,10 @@
 
 Merged origin/main (phantom).  Sentry gen_ai usage is parsed from a cloned body while the span is open; span handle is request-scoped via AsyncLocalStorage.  Red Team JSON catch rethrows abort/transport.  PLAN.md records the implementation.  Merge is live — no Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-13-issue-3222-llm-observability-resilience.md`.
+## 2026-09-15 GROK — PR #3284 Qdrant fuse review P1s
+
+Merged origin/main (phantom).  Budget/capacity now use the caller userId, skip the pending→committed promotion, and `storeContexts` gates before embed.  FTS cache key includes task id.  Merge is live — no Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-13-issue-3223-qdrant-fuses-fts-optimization.md`.
 ## 2026-09-15 GROK — PR #3282 land-sweep (review threads + health-buffer CI)
 
 Unstuck #3282 against `origin/main` (real conflict only in `instrumentation.ts`, took main's Sentry profiling import).  Codex P1s: watchdog abort no longer rethrows from `tick()` (pre-leader `throwIfAborted` used to become an unhandled rejection); manual cancel tears down any open brackets on the symbol; `getLaneHealth` no longer sync-flushes the health buffer (reads merge pending rows; failed flushes are restored); Tradier listing keeps a tagged container when `side` is omitted; Alpaca MCP-only bracket teardown throws so the pending row is not deleted as success.  Vitest flushes the health buffer immediately so table assertions stay honest.  Merge is live — no Coolify Deploy.  Worktree `~/apps/trading-grok-land-sweep`.
@@ -41,6 +45,10 @@ Rollout: `docs/rollouts/2026-09-13-issue-3224-api-security-hardening.md`.
 
 Resolved issue #3222: decoupled `llmobs.wrap` tracer setup from execution in `withDatadogLlmObs` so errors do not retry `fn()` and double-bill LLM providers; added safe JSON parsing to `red-team.ts` so HTML proxy responses fail over cleanly to candidate fallback reviewers instead of failing closed immediately; annotated HTTP error status codes on Datadog and Sentry GenAI spans; intercepted `response.json()` to capture `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens` directly before span finalization; added Moonshot to LLM host hints; resolved `@sentry/profiling-node` import in Next.js instrumentation. Verified with lint (0 errors), tsc (0 errors), and vitest (16 passed).
 Rollout: `docs/rollouts/2026-09-13-issue-3222-llm-observability-resilience.md`.
+## 2026-09-13 ANTIGRAVITY — Qdrant Write Spend Fuses, Distance Metric Assertions & SEC FTS Ingest Worker (Issue #3223)
+
+Implemented backend-neutral daily ingestion point budget tracking in `rag-metering.ts` (default: 50k points/24h) and Qdrant collection point capacity breakers (`QDRANT_MAX_POINTS` / `RAG_QDRANT_MAX_POINTS`) in `qdrant-write.ts` to prevent runaway disk saturation.  Added `assertQdrantCollectionMetric` on Qdrant retrieval paths to validate `Cosine` distance metric configurations and record audit events on mismatches.  Exported `HttpProviderError` preserving response status code and headers during embedding rate limits so `retryAfterMs` can inspect and honor `Retry-After` headers.  Eliminated redundant SEC filing disk reads and JSON parsing by adding in-memory chunk caching in `sec-ingest-worker.ts`, and made FTS chunk mirror limits configurable.  Verified gate: `npm run lint` (0 errors), `npx tsc --noEmit` (clean), and all 73 vitest tests green.
+Rollout: `docs/rollouts/2026-09-13-issue-3223-qdrant-fuses-fts-optimization.md`.
 ## 2026-09-13 FX — same-repo pull_request auto-merge
 
 `auto-merge-prs.yml` and `auto-merge-shared-dependency.yml` no longer use `pull_request_target`.  Forks are skipped.  Branch `fx/automerge-fork-guard`.

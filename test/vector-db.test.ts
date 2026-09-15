@@ -434,6 +434,16 @@ describe("vector-db", () => {
     expect(maxDelay - minDelay).toBeGreaterThan(20000);
   });
 
+  it("honors Retry-After header from HttpProviderError", async () => {
+    const { HttpProviderError, retryAfterMs } = await import("../src/lib/vector-db");
+    const headers = new Headers();
+    headers.set("retry-after", "15");
+    const error = new HttpProviderError("Rate limited", 429, headers);
+
+    const delay = retryAfterMs(error, 0);
+    expect(delay).toBe(15_000);
+  });
+
   it("prepends publication date for string, number, and Date object timestamps", async () => {
     mocks.listIndexes.mockResolvedValue({ indexes: [{ name: "socratic-trade" }] });
     mocks.embed.mockResolvedValue({ data: [{ embedding: [0.1, 0.2] }] });

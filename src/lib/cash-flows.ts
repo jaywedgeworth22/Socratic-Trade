@@ -38,7 +38,7 @@ export function isoDate(ts: string | number | undefined): string | null {
     const d = new Date(ts);
     return Number.isNaN(d.getTime()) ? null : centralTradingDayKey(d);
   }
-  if (/^\d{4}-\d{2}-\d{2}/.test(ts)) return ts.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(ts)) return ts;
   const d = new Date(ts);
   return Number.isNaN(d.getTime()) ? null : centralTradingDayKey(d);
 }

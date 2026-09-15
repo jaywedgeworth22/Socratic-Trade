@@ -36,7 +36,7 @@ import {
   SignalSummarySection,
   SourcesSection
 } from "./drilldown-sections";
-import { activateAccount } from "../lib/api";
+import { activateAccount, redirectToLogin } from "../lib/api";
 import { deriveProtection } from "../lib/derive";
 import type { SymbolDesk } from "@/lib/symbol-desk";
 
@@ -62,23 +62,25 @@ function useHistory(symbol: string, enabled: boolean): HistoryState {
 
   useEffect(() => {
     if (!enabled) return;
-    let cancelled = false;
+    const controller = new AbortController();
     setState({ status: "loading" });
     (async () => {
       try {
-        const res = await fetch(`/api/history?symbol=${encodeURIComponent(symbol)}`);
+        const res = await fetch(`/api/history?symbol=${encodeURIComponent(symbol)}`, { signal: controller.signal });
+        if (res.status === 401) {
+          redirectToLogin();
+          return;
+        }
         if (!res.ok) throw new Error(`history ${res.status}`);
         const json: { bars?: HistoryBar[] } = await res.json();
         const bars = (json.bars ?? []).filter((b) => typeof b.close === "number" && Number.isFinite(b.close));
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setState(bars.length >= 2 ? { status: "ready", bars } : { status: "empty" });
-      } catch {
-        if (!cancelled) setState({ status: "error" });
+      } catch (err) {
+        if (!controller.signal.aborted) setState({ status: "error" });
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [symbol, enabled]);
 
   return state;
@@ -102,23 +104,25 @@ function useOnDemandEnrichment(symbol: string, enabled: boolean): EnrichmentStat
       setState({ status: "idle" });
       return;
     }
-    let cancelled = false;
+    const controller = new AbortController();
     setState({ status: "loading" });
     (async () => {
       try {
-        const res = await fetch(`/api/quote?symbol=${encodeURIComponent(symbol)}`);
+        const res = await fetch(`/api/quote?symbol=${encodeURIComponent(symbol)}`, { signal: controller.signal });
+        if (res.status === 401) {
+          redirectToLogin();
+          return;
+        }
         if (!res.ok) throw new Error(`quote ${res.status}`);
         const json: Record<string, unknown> = await res.json();
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         const view = toQuoteViewFromEnrichment(symbol, json);
         setState(hasEnrichedData(view) ? { status: "ready", view } : { status: "empty" });
-      } catch {
-        if (!cancelled) setState({ status: "error" });
+      } catch (err) {
+        if (!controller.signal.aborted) setState({ status: "error" });
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [symbol, enabled]);
 
   return state;
@@ -290,21 +294,23 @@ export function SymbolDrilldownSheet({
 
   const [desk, setDesk] = useState<SymbolDesk | null>(null);
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     setDesk(null);
     void (async () => {
       try {
-        const res = await fetch(`/api/symbol-desk?symbol=${encodeURIComponent(normalized)}`);
+        const res = await fetch(`/api/symbol-desk?symbol=${encodeURIComponent(normalized)}`, { signal: controller.signal });
+        if (res.status === 401) {
+          redirectToLogin();
+          return;
+        }
         if (!res.ok) return;
         const json = (await res.json()) as SymbolDesk;
-        if (!cancelled) setDesk(json);
-      } catch {
+        if (!controller.signal.aborted) setDesk(json);
+      } catch (err) {
         // Desk extras are optional — the sheet still shows quote, position, and scan research.
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [normalized]);
 
   const position = snapshot?.positions?.find((p) => p.symbol.trim().toUpperCase() === normalized);

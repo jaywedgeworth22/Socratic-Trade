@@ -4,6 +4,10 @@
 
 Merged origin/main (phantom).  Sentry gen_ai usage is parsed from a cloned body while the span is open; span handle is request-scoped via AsyncLocalStorage.  Red Team JSON catch rethrows abort/transport.  PLAN.md records the implementation.  Merge is live — no Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-13-issue-3222-llm-observability-resilience.md`.
+## 2026-09-15 GROK — PR #3296 401 JSON still redirects
+
+Sentry thread on `use-live-scan.ts`: `readErrorMessage` parsed JSON before the 401 check, so a JSON 401 body would skip `redirectToLogin()`.  Status is checked first now.  Merge is live — no Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-14-issue-3225-console-singleflight-deadline-retry.md`.
 
 ## 2026-09-13 ANTIGRAVITY — API Security Hardening: Open Redirect Sanitization, Public Auth Rate Limiting & Defensive JSON Parsing (Issue #3224)
 

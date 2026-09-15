@@ -43,8 +43,8 @@ interface CachedFtsRows {
 
 const ftsRowsCache = new Map<string, CachedFtsRows>();
 
-function getFtsCacheKey(cik: string, accession: string, sequence: number): string {
-  return `${cik}:${accession}:${sequence}`;
+function getFtsCacheKey(taskId: string, cik: string, accession: string, sequence: number): string {
+  return `${taskId}:${cik}:${accession}:${sequence}`;
 }
 
 export function clearFtsRowsCacheForTests(): void {
@@ -487,7 +487,7 @@ export class SecIngestWorker {
         // (delete+insert keyed on symbol/source/accession/hash).  The worker now feeds the
         // batch helper a bounded slice per tick; insertDocumentChunkFtsBatch keeps its
         // internal 250ms yield.  Resume cursor is the durable FTS row count.
-        const cacheKey = getFtsCacheKey(task.cik, task.accession, sequence);
+        const cacheKey = getFtsCacheKey(task.id, task.cik, task.accession, sequence);
         let ftsRows = ftsRowsCache.get(cacheKey)?.rows;
         if (!ftsRows) {
           const chunksJson = await readLocalArtifact(task.cik, task.accession, sequence, "chunks.json");

@@ -70,8 +70,7 @@ All local gate checks passed cleanly:
 
 ## 5. Next Steps & Blockers
 
-- Proceed with Issue #3224: API security hardening (open redirect sanitization, public auth rate limiting, and defensive JSON parsing).
-- Monitor PR #3282 (Issue #3221) and PR #3283 (Issue #3222) auto-merge progression.
+- Squash-merge PR #3284.  Merge is live (Coolify auto-deploy).  Do not click Deploy.
 
 ---
 

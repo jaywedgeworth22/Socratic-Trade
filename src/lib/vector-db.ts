@@ -3333,6 +3333,17 @@ async function storeContextsImpl(
       return { attempted: validDocuments.length, indexed: 0, skipped: true, wuExhausted: true, wuExhaustedUntil };
     }
   }
+  if (writeBackend === "qdrant" && !hasRagIngestPointsBudget(userId, validDocuments.length, "qdrant")) {
+    console.warn(
+      `[vector-db] Qdrant daily point ingestion budget exceeded for ${userId}; skipping storeContexts of ${validDocuments.length} docs.`
+    );
+    return {
+      attempted: validDocuments.length,
+      indexed: 0,
+      skipped: true,
+      writeUnitBudgetSkipped: validDocuments.length
+    };
+  }
   const privateLedgerAuthority = scope === PRIVATE_SCOPE && !options?.managedCommit
     ? managedVectorLedgerAuthority()
     : undefined;
@@ -3877,7 +3888,7 @@ async function storeContextsImpl(
             ? "upsert fmp-derived private memory"
             : "upsert";
         if (writeBackend === "qdrant") {
-          await qdrantUpsertPoints({ namespace: namespaceName, records });
+          await qdrantUpsertPoints({ namespace: namespaceName, records, userId });
           meterQdrantUpsert(records.length, userId);
         } else {
           const estimatedWriteUnits = estimatePineconeWriteUnitsForRecords(records);
@@ -3941,8 +3952,12 @@ async function storeContextsImpl(
           metadata: { ...record.metadata, ingest_state: "committed" }
         }));
         if (writeBackend === "qdrant") {
-          await qdrantUpsertPoints({ namespace: namespaceName, records: committedRecords });
-          meterQdrantUpsert(committedRecords.length, userId);
+          await qdrantUpsertPoints({
+            namespace: namespaceName,
+            records: committedRecords,
+            userId,
+            replacingExisting: true
+          });
         } else {
           const estimatedWriteUnits = estimatePineconeWriteUnitsForRecords(committedRecords);
           await withRagApiHealth(

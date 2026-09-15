@@ -254,15 +254,19 @@ export async function qdrantUpsertPoints(options: {
   namespace: string | undefined | null;
   records: QdrantUpsertRecord[];
   wait?: boolean;
+  userId?: string;
+  /** Same IDs already written this request (pending → committed).  Skip growth/budget charges. */
+  replacingExisting?: boolean;
 }): Promise<{ upserted: number }> {
   if (options.records.length === 0) return { upserted: 0 };
-  if (!hasRagIngestPointsBudget("local", options.records.length, "qdrant")) {
+  const userId = options.userId ?? "local";
+  if (!options.replacingExisting && !hasRagIngestPointsBudget(userId, options.records.length, "qdrant")) {
     throw new Error(
       `[qdrant-write] Daily vector point ingestion budget exceeded; refusing upsert of ${options.records.length} points.`
     );
   }
   const maxCapacity = qdrantMaxPointsCapacity();
-  if (maxCapacity !== null) {
+  if (maxCapacity !== null && !options.replacingExisting) {
     try {
       const info = await qdrantCollectionInfo();
       if (

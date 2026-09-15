@@ -177,12 +177,12 @@ describe("nextMarketOpenHint (item 29: cheap next-open hint for the paused/marke
   });
 
   it("names the next trading day once today's session has already ended", () => {
-    // 18:00 ET Wed is post-market; the next open (non-extended) is Thursday's regular session.
-    expect(nextMarketOpenHint(etDate("2026-06-10", 18, 0), false)).toBe("Thu, Jun 11, 9:30 AM ET");
+    // 16:30 ET Wed is post-market; the next open (non-extended) is Thursday's regular session.
+    expect(nextMarketOpenHint(etDate("2026-06-10", 16, 30), false)).toBe("Thu, Jun 11, 9:30 AM ET");
   });
 
   it("skips the weekend for a Friday-evening check", () => {
-    expect(nextMarketOpenHint(etDate("2026-06-12", 18, 0), false)).toBe("Mon, Jun 15, 9:30 AM ET");
+    expect(nextMarketOpenHint(etDate("2026-06-12", 16, 30), false)).toBe("Mon, Jun 15, 9:30 AM ET");
   });
 });
 

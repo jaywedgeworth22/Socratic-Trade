@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { Button } from "./ui/primitives";
 
 export default function Error({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     console.error(error);
+    Sentry.captureException(error);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).DD_RUM?.addError(error);
   }, [error]);
 
   const message = error.message?.trim() || "The dashboard failed to render.";

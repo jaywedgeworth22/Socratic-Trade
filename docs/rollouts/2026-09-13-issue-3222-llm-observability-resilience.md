@@ -10,8 +10,8 @@ Resolves issue #3222 by eliminating duplicate billable provider calls on LLM exe
   - Added HTTP status annotation and error tagging to spans when responses are non-2xx.
 - **`src/lib/sentry-gen-ai.ts`**:
   - Annotated span status with error codes and `HTTP <status>` messages on non-ok responses.
-  - Intercepted `response.json()` inside `withGenAiSpan` so `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens` are populated on the active span prior to resolution.
-  - Extended `setGenAiUsageOnActiveSpan` to fall back to the most recent GenAI span within a 30-second window if `getActiveSpan()` has already concluded.
+  - Parse a cloned JSON body inside `withGenAiSpan` so token attrs land before the span ends.  Request-scoped span via AsyncLocalStorage; 30s global fallback remains.
+  - Extended `setGenAiUsageOnActiveSpan` to prefer ALS then `getActiveSpan()` then the 30-second fallback.
 - **`src/lib/red-team.ts`**:
   - Wrapped `await response.json()` in safe try/catch block to prevent unhandled `SyntaxError` from terminating the fallback reviewer sequence when proxies or upstream endpoints return HTML error pages with HTTP 200.
   - Added `err instanceof SyntaxError` to retryable error classification in the attempt loop.

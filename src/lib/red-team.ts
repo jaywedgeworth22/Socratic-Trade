@@ -494,7 +494,10 @@ export async function debateProposal(
             let payload: unknown;
             try {
               payload = await response.json();
-            } catch {
+            } catch (err) {
+              const name = err && typeof err === "object" ? (err as { name?: string }).name : "";
+              if (name === "AbortError" || name === "TimeoutError") throw err;
+              if (err instanceof TypeError) throw err;
               if (!isLast) {
                 lastError = new Error("Malformed response returned from LLM API.");
                 console.warn(`[RedTeam] ${attempt.model}/${attempt.provider} returned a malformed HTTP-200 body; failing over to ${next.model}/${next.provider}.`);

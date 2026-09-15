@@ -125,8 +125,8 @@ export async function withDatadogLlmObs<T>(
               ml_app: DD_LLMOBS_ML_APP,
               fleet: "core",
               ...(status ? { http_status: String(status) } : {}),
+              ...(isError ? { error: "true", error_type: "http" } : {}),
             },
-            ...(isError ? { error: { message: `HTTP ${status ?? "error"}` } } : {}),
           });
         } catch {
           // annotation is best-effort

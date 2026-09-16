@@ -785,9 +785,9 @@ enum DeskCopy {
     static let openConnectionsButton = "Open Connections"
     static let openGuardrailsButton = "Open Guardrails"
     static let accountNeedsConnection =
-        "Use Open Connections, then select the account here."
+        "Use Open Connections to connect a broker account on the website, then select the account here."
     static let accountNeedsConnectionInline =
-        "Use Open Connections to connect a broker account, then select it here."
+        "Use Open Connections to connect a broker account on the website, then select it here."
 
     /// Same destination as web readiness (`/console/guardrails`).  The in-app
     /// Guardrails tab is the universe editor, not a Strategy Safari handoff.

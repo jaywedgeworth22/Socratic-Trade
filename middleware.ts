@@ -501,11 +501,17 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
     // (APP_B_INGEST_TOKEN) strictly validates it. /api/market/flatfile stays session-gated.
   } else {
     // No verified identity and auth is configured (or armed) → FAIL CLOSED.
-    return withSecurityHeaders(
-      pathname.startsWith("/api/")
-        ? new NextResponse("Unauthorized", { status: 401 })
-        : NextResponse.redirect(new URL("/login", req.url))
-    );
+    if (pathname.startsWith("/api/")) {
+      return withSecurityHeaders(
+        new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    }
+    const loginUrl = new URL("/login", req.url);
+    loginUrl.searchParams.set("callbackUrl", req.nextUrl.pathname + req.nextUrl.search);
+    return withSecurityHeaders(NextResponse.redirect(loginUrl));
   }
 
   // --- Admin role gate for the operator page tree ---

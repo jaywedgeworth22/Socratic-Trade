@@ -359,7 +359,10 @@ final class DeskModelsTests: XCTestCase {
         XCTAssertTrue(DeskCopy.universeNeedsIndex.contains("S&P 500"))
         XCTAssertFalse(DeskCopy.universeNeedsIndex.contains("Strategy page"))
         XCTAssertEqual(DeskCopy.openGuardrailsButton, "Open Guardrails")
-        XCTAssertEqual(DeskCopy.accountNeedsConnection, "Use Open Connections, then select the account here.")
+        XCTAssertEqual(
+            DeskCopy.accountNeedsConnection,
+            "Use Open Connections to connect a broker account on the website, then select the account here."
+        )
         XCTAssertFalse(DeskCopy.accountNeedsConnection.contains("Alpaca"))
         XCTAssertFalse(DeskCopy.accountNeedsConnection.contains("Robinhood"))
         XCTAssertEqual(

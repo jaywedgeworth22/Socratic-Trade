@@ -72,6 +72,13 @@ fi
 EXPECTED_SHA="$(resolve_commit "$EXPECTED_REF")"
 [ -n "$EXPECTED_SHA" ] || fail_usage "cannot resolve expected ref '${EXPECTED_REF}' to a commit in this repo."
 
+# watch_paths in Coolify skips docs/**, so a docs-only commit never deploys.
+# Compare against the newest image-affecting commit instead.
+IMAGE_AFFECTING_SHA="$(git log -1 --format="%H" "$EXPECTED_SHA" -- . ":(exclude)docs" 2>/dev/null || true)"
+if [ -n "$IMAGE_AFFECTING_SHA" ]; then
+  EXPECTED_SHA="$IMAGE_AFFECTING_SHA"
+fi
+
 # Single-shot reuse of the existing gate. Capture both streams; the gate logs to stderr.
 set +e
 VERIFY_OUT="$(

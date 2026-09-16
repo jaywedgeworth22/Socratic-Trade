@@ -150,6 +150,7 @@ struct CurrentUser: Decodable {
 struct Readiness: Decodable {
     let hasAccount: Bool
     let hasUniverse: Bool
+    let hasLlmKey: Bool?
     let systemState: String
     let strategyAuthority: String
     let selectedAccountNumber: String?

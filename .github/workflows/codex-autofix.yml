@@ -29,7 +29,6 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  id-token: write
 
 # One run per PR; let an in-flight run finish rather than cancel mid-push.
 concurrency:

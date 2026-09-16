@@ -371,11 +371,8 @@ struct FullPolicy: Decodable {
         socraticOverrideMode = try values.decodeIfPresent(String.self, forKey: .socraticOverrideMode)
         let riskRules = try? values.nestedContainer(keyedBy: RiskRulesCodingKeys.self, forKey: .riskRules)
         stopLossPct = try riskRules?.decodeIfPresent(Double.self, forKey: .stopLossPct)
-            ?? values.decodeIfPresent(Double.self, forKey: .stopLossPct)
         trailingStopPct = try riskRules?.decodeIfPresent(Double.self, forKey: .trailingStopPct)
-            ?? values.decodeIfPresent(Double.self, forKey: .trailingStopPct)
         shortStopLossPct = try riskRules?.decodeIfPresent(Double.self, forKey: .shortStopLossPct)
-            ?? values.decodeIfPresent(Double.self, forKey: .shortStopLossPct)
         taxSettings = try values.decodeIfPresent(PolicyTaxSettings.self, forKey: .taxSettings)
     }
 
@@ -390,7 +387,7 @@ struct FullPolicy: Decodable {
         case requireTypedConfirmation, includedIndices, additionalSymbols, blocklist
         case llmModel, redTeamLlmModel, llmFallbackModels, sellToFundBuy, socraticOverrideMode
         case riskRules
-        case stopLossPct, trailingStopPct, shortStopLossPct, taxSettings
+        case taxSettings
     }
 }
 
@@ -788,9 +785,9 @@ enum DeskCopy {
     static let openConnectionsButton = "Open Connections"
     static let openGuardrailsButton = "Open Guardrails"
     static let accountNeedsConnection =
-        "Use Open Connections, then select the account here."
+        "Use Open Connections to connect a broker account on the website, then select the account here."
     static let accountNeedsConnectionInline =
-        "Use Open Connections to connect a broker account, then select it here."
+        "Use Open Connections to connect a broker account on the website, then select it here."
 
     /// Same destination as web readiness (`/console/guardrails`).  The in-app
     /// Guardrails tab is the universe editor, not a Strategy Safari handoff.

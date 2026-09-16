@@ -1,4 +1,4 @@
-import { clearStopPlans, deriveExitContractFromOpening, getMaturedSkippedCounterfactualByRunSymbol, getPolicy, getSkippedCounterfactualCoverage, insertFillEvent, insertPortfolioSnapshot, listAudit, listAuditByKind, listFillEvents, listMaturedSkippedCounterfactuals, listPortfolioSnapshots, listRecentMaturedSkippedCounterfactuals, listSkippedCounterfactualsByStatus, recordStopPlan, recordTakeProfitTrimBand, type SkippedCounterfactualCoverage } from "./db";
+import { clearStopPlans, deriveExitContractFromOpening, getMaturedSkippedCounterfactualByRunSymbol, getPolicy, getSkippedCounterfactualCoverage, insertFillEvent, insertPortfolioSnapshot, listAudit, listAuditByKind, listFillEvents, listMaturedSkippedCounterfactuals, listPortfolioSnapshots, listDailyPortfolioSnapshots, listRecentMaturedSkippedCounterfactuals, listSkippedCounterfactualsByStatus, recordStopPlan, recordTakeProfitTrimBand, type SkippedCounterfactualCoverage } from "./db";
 import { applyExecutionCost, estimateExecutionCostBps, executionCostConfig } from "./execution-cost";
 import { canonicalModelId } from "./model-identity";
 import { normalizeSymbol } from "./money";
@@ -562,8 +562,8 @@ export function getPerformanceSummary(
   const allFills = [...liveFills, ...paperFills].sort((a, b) => a.filledAt.localeCompare(b.filledAt));
   const livePnl = prefetchedPnl?.live ?? calculatePnl(liveFills, currentPrices);
   const paperPnl = prefetchedPnl?.paper ?? calculatePnl(paperFills, currentPrices);
-  const liveSnapshots = listPortfolioSnapshots(accountNumber, "live", 100, userId);
-  const paperSnapshots = listPortfolioSnapshots(accountNumber, "paper", 100, userId);
+  const liveSnapshots = listDailyPortfolioSnapshots(accountNumber, "live", userId);
+  const paperSnapshots = listDailyPortfolioSnapshots(accountNumber, "paper", userId);
 
   return {
     liveEquityCurve: liveSnapshots.map((snapshot) => ({

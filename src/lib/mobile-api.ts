@@ -1338,6 +1338,8 @@ export function mobileControlCatalog() {
   };
 }
 
+import { userHasAnyLlmCredential } from "./db-api-keys";
+
 export function mobileReadiness(userId: string) {
   const policy = getPolicy(userId);
   const consent = getDataPoolConsent(userId);
@@ -1345,6 +1347,7 @@ export function mobileReadiness(userId: string) {
   return {
     hasAccount: Boolean(policy.accountNumber),
     hasUniverse: policy.includedIndices.length > 0 || policy.additionalSymbols.length > 0,
+    hasLlmKey: userHasAnyLlmCredential(userId),
     systemState: policy.systemState,
     strategyAuthority: policy.strategyAuthority,
     selectedAccountNumber: policy.accountNumber ?? null,

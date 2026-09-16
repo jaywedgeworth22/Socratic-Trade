@@ -230,6 +230,7 @@ export default function ResultsPage() {
               title={compareState.account.label}
               tone={compareState.account.environment}
               {...bucketFor(compareState.performance, compareState.account.environment, compareState.pricesUnavailable)}
+              grossAnnotate={subtractFromResults}
             />
           ) : compareState.status === "error" ? (
             <Card title="Comparison">
@@ -1002,6 +1003,7 @@ function BucketCard({
   closedLotCount,
   curve,
   netOfTax = false,
+  grossAnnotate = false,
   unmatchedClosingFills = 0
 }: {
   title: string;
@@ -1017,6 +1019,7 @@ function BucketCard({
   closedLotCount: number;
   curve: Array<{ timestamp: string; equity: number; source: "live" | "paper" }>;
   netOfTax?: boolean;
+  grossAnnotate?: boolean;
   unmatchedClosingFills?: number;
 }) {
   const realizedBasisNote =
@@ -1031,7 +1034,7 @@ function BucketCard({
             className="con-card-title"
             title={netOfTax ? `${realizedBasisNote} Net of estimated tax at your configured short- and long-term rates.` : realizedBasisNote}
           >
-            Realized P&amp;L{netOfTax ? " (net of est. tax)" : ""}
+            Realized P&amp;L{netOfTax ? " (net of est. tax)" : grossAnnotate ? " (gross — no tax adjustment)" : ""}
           </div>
           <div className="con-num mt-0.5 text-[length:var(--con-fs-lg)] font-semibold">
             {typeof realized === "number" ? <SignedText value={realized}>{fmtSignedMoney(realized)}</SignedText> : <Dash />}

@@ -37,8 +37,15 @@ export function HeaderLogo({ height = 18 }: { height?: number }) {
 
     let raf = 0, start: number | null = null, lastTick = -1;
     const loop = (now: number) => {
-      if (start == null) start = now;
-      const tick = Math.floor((now - start) / 1000);
+      // RAF is specified to pass a DOMHighResTimeStamp, but extension- and
+      // polyfill-injected RAF shims exist that invoke the callback with no
+      // argument. `undefined` then flowed into `start` (`undefined == null`),
+      // every tick became NaN, and drawTicker indexed its unit array with NaN —
+      // an unhandled TypeError on every frame (SOCRATIC-TRADE-2H on /login).
+      // Fall back to the clock so the ticker still animates on those browsers.
+      const ts = Number.isFinite(now) ? now : performance.now();
+      if (start == null) start = ts;
+      const tick = Math.floor((ts - start) / 1000);
       if (tick !== lastTick) { lastTick = tick; render(tick); }
       raf = requestAnimationFrame(loop);
     };

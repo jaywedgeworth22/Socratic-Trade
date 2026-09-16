@@ -7,6 +7,32 @@ import { redactForTelemetry } from "./src/lib/telemetry-sanitize";
 
 const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
 
+/**
+ * Third-party noise only. Keep this list SHORT and every entry justified — a broad
+ * pattern here silently hides our own bugs, and on a live trading app a swallowed
+ * client error is worse than a noisy one. Nothing thrown by code in this repo
+ * belongs here; if an app error is noisy, fix the app error.
+ *
+ * Exported so test/instrumentation-client.test.ts can assert these stay narrow.
+ */
+export const SENTRY_CLIENT_IGNORE_ERRORS: RegExp[] = [
+  // SOCRATIC-TRADE-2J. Cloudflare's edge-injected Web Analytics/RUM beacon reads
+  // the Chromium-only `chrome` global with no typeof guard, so it throws on
+  // Safari. A third-party script we do not ship and cannot patch.
+  /Can't find variable: chrome/,
+  /\bchrome is not defined\b/,
+  // Benign layout-loop notices browsers emit, which Sentry's own docs call out as
+  // non-actionable; not errors in any user-visible sense.
+  /^ResizeObserver loop/
+];
+
+/** Errors whose top frame is a browser extension are, by construction, not ours. */
+export const SENTRY_CLIENT_DENY_URLS: RegExp[] = [
+  /^chrome-extension:\/\//i,
+  /^moz-extension:\/\//i,
+  /^safari-(web-)?extension:\/\//i
+];
+
 if (dsn) {
   // Designer 2026-09-04 update: ST web Session Replay defaults to 10%
   // session / 100% error, mask-all.  Kill switch:
@@ -37,6 +63,8 @@ if (dsn) {
       /^https:\/\/([\w-]+\.)?jays\.services/,
       /^https:\/\/usage\.jays\.services/,
     ],
+    ignoreErrors: SENTRY_CLIENT_IGNORE_ERRORS,
+    denyUrls: SENTRY_CLIENT_DENY_URLS,
     replaysSessionSampleRate: !replayDisabled ? replaySessionSampleRate : 0,
     replaysOnErrorSampleRate: !replayDisabled ? replayErrorSampleRate : 0,
     integrations: [

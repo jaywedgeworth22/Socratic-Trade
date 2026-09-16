@@ -405,6 +405,9 @@ function isUniqueConstraintError(e: unknown): boolean {
  * bearing, not tidiness: an entry and its partial exit booked in the SAME millisecond (one strategy
  * run placing both legs) are indistinguishable by `filled_at` alone, and if the exit replays first
  * the FIFO walk finds no lot to close and books the position at the wrong size.
+ *
+ * NOTE: The old bug where `LIMIT 500` was applied with `ORDER BY filled_at ASC` causing it
+ * to read the oldest fills has been fixed as of PR #2955.
  */
 export function listFillEvents(accountNumber: string, source?: FillSource, limit?: number, userId: string = "local"): FillEvent[] {
   const database = getDb();

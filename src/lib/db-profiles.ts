@@ -901,8 +901,8 @@ export function importAccountSettings(
   const policy = mergePolicy({
     ...cleaned,
     scoringWeights: sourceScoringWeights,
-    systemState: targetPolicy.systemState,
-    strategyAuthority: targetPolicy.strategyAuthority,
+    systemState: targetPolicy.systemState, // Guard: preserve target lifecycle state
+    strategyAuthority: targetPolicy.strategyAuthority, // Guard: preserve target autonomy
     activeProfileId: derivedFromProfileId ?? undefined
   });
 

@@ -483,7 +483,8 @@ export function deriveDayPnl(
       cash: portfolio.cash,
       positionsValue: currentEquity - portfolio.cash
     };
-    const dayFills = fillsForDay(performance.fills, todayStart, now.getTime());
+    const baselineMs = new Date(baseline.timestamp).getTime();
+    const dayFills = fillsForDay(performance.fills, baselineMs, now.getTime());
     const flowMap = inferExternalCashFlows([baseline, fakeCurrent], dayFills);
     flow = flowMap.get(todayKey) ?? 0;
     cashFlowSource = "inferred";

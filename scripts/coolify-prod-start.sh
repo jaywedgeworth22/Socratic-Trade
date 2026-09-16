@@ -68,7 +68,13 @@ install_from_tarball() {
   tmp="$(mktemp -d)"
   fetch "$url" "$tmp/pkg.tar.gz"
   tar -xzf "$tmp/pkg.tar.gz" -C "$tmp"
-  found="$(find "$tmp" -type f -name "$binary" | head -1)"
+  # NOT `find ... | head -1`: this script runs under `set -euo pipefail`, so head
+  # closing the pipe early makes find take SIGPIPE, the pipeline report 141, and the
+  # BOOT abort -- a race on tarball size, not a deterministic failure. Same class as
+  # FLEET-INFRA-BH in CI. Take the first line with parameter expansion instead; no
+  # pipe, and no dependency on `find -quit` being present in the base image.
+  found="$(find "$tmp" -type f -name "$binary")"
+  found="${found%%$'\n'*}"
   if [ -z "$found" ]; then
     log "ERROR: $binary not found in $url"
     exit 1

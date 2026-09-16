@@ -192,7 +192,14 @@ LIVE_SHA="$(extract_live_sha)"
 LIVE_FULL="$(resolve_commit "$LIVE_SHA")"
 [ -n "$LIVE_FULL" ] || fail_usage "cannot resolve live sha '${LIVE_SHA}' after a behind verdict."
 
-OLDEST_UNDEPLOYED="$(git log --format=%H --reverse "${LIVE_FULL}..${EXPECTED_SHA}" | head -n 1)"
+# NOT `git log ... | head -n 1`: under `set -euo pipefail` head closes the pipe as
+# soon as it has its line, git takes SIGPIPE, the pipeline reports 141, and the
+# script dies with 141 instead of its real verdict. That is a race on how much git
+# has written when head exits, so it fired intermittently in CI and took the whole
+# `verify-hosted` lane -- and therefore the required `verify` gate -- down with it
+# (FLEET-INFRA-BH). Take the first line with parameter expansion; no pipe, no race.
+UNDEPLOYED_LIST="$(git rev-list --reverse "${LIVE_FULL}..${EXPECTED_SHA}")"
+OLDEST_UNDEPLOYED="${UNDEPLOYED_LIST%%$'\n'*}"
 [ -n "$OLDEST_UNDEPLOYED" ] || fail_usage "live is behind expected but git log ${LIVE_FULL}..${EXPECTED_SHA} is empty."
 
 OLDEST_CT="$(git log -1 --format=%ct "$OLDEST_UNDEPLOYED")"

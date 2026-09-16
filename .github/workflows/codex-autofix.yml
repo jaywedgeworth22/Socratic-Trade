@@ -48,12 +48,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      # SHA-pinned, not tag-pinned. This job is the highest-value supply-chain
+      # target in the repo: `contents: write` + `pull-requests: write`, a GH_PAT
+      # that re-triggers workflows, and an autonomous agent running with
+      # Edit/Write/Bash on PR-branch code. A moving tag here is a one-commit path
+      # to arbitrary code with a write token; every other privileged workflow in
+      # .github/workflows already pins by SHA.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
 
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@7b0b255830a1fab6e602658672acad11c12d841d # v1
         # Routed to DeepSeek via its Anthropic-compatible endpoint to control cost:
         # this action drives the Claude Code CLI in a 60-turn loop, and on Opus 4.8
         # that was ~$15/day. The CLI honors ANTHROPIC_BASE_URL / _AUTH_TOKEN / _MODEL,

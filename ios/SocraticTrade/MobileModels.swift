@@ -173,12 +173,13 @@ struct Readiness: Decodable {
     )
 
     private enum CodingKeys: String, CodingKey {
-        case hasAccount, hasUniverse, systemState, strategyAuthority, selectedAccountNumber, activeConnectedAccount, commandBacklog, needsAppConsent
+        case hasAccount, hasUniverse, hasLlmKey, systemState, strategyAuthority, selectedAccountNumber, activeConnectedAccount, commandBacklog, needsAppConsent
     }
 
     init(
         hasAccount: Bool,
         hasUniverse: Bool,
+        hasLlmKey: Bool? = nil,
         systemState: String,
         strategyAuthority: String,
         selectedAccountNumber: String?,
@@ -188,6 +189,7 @@ struct Readiness: Decodable {
     ) {
         self.hasAccount = hasAccount
         self.hasUniverse = hasUniverse
+        self.hasLlmKey = hasLlmKey
         self.systemState = systemState
         self.strategyAuthority = strategyAuthority
         self.selectedAccountNumber = selectedAccountNumber
@@ -200,6 +202,10 @@ struct Readiness: Decodable {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         hasAccount = (try? values.decode(Bool.self, forKey: .hasAccount)) ?? false
         hasUniverse = (try? values.decode(Bool.self, forKey: .hasUniverse)) ?? false
+        // Missing on older payloads: treat as unknown so we do not nag for a
+        // key the server never reported.  A present non-Boolean is malformed
+        // and degrades to unknown rather than claiming a key exists.
+        hasLlmKey = try? values.decodeIfPresent(Bool.self, forKey: .hasLlmKey)
         systemState = (try? values.decode(String.self, forKey: .systemState)) ?? "stopped"
         strategyAuthority = (try? values.decode(String.self, forKey: .strategyAuthority)) ?? "advisory"
         selectedAccountNumber = try? values.decodeIfPresent(String.self, forKey: .selectedAccountNumber)

@@ -800,9 +800,9 @@ export async function shareWithCongressTrade(payload: CongressSharePayload): Pro
         }
         // Downstream 5xx errors (e.g. transient D1 overload): retry with backoff before hard failure.
         if (res.status >= 500 && attempt < maxAttempts) {
-          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          const delay = process.env.NODE_ENV === "test" ? 0 : Math.min(1000 * Math.pow(2, attempt - 1), 5000);
           console.warn(`[congress-share] import got HTTP ${res.status}; retrying attempt ${attempt + 1}/${maxAttempts} in ${delay}ms`);
-          await new Promise((r) => setTimeout(r, delay));
+          if (delay > 0) await new Promise((r) => setTimeout(r, delay));
           continue;
         }
         console.error(`[congress-share] import failed: ${errorText}`);
@@ -818,9 +818,9 @@ export async function shareWithCongressTrade(payload: CongressSharePayload): Pro
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       if (attempt < maxAttempts && isTransientNetworkError(err)) {
-        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+        const delay = process.env.NODE_ENV === "test" ? 0 : Math.min(1000 * Math.pow(2, attempt - 1), 5000);
         console.warn(`[congress-share] import transient error: ${error}; retrying attempt ${attempt + 1}/${maxAttempts} in ${delay}ms`);
-        await new Promise((r) => setTimeout(r, delay));
+        if (delay > 0) await new Promise((r) => setTimeout(r, delay));
         continue;
       }
       // Include payload sizes so a timeout/abort points at which dataset was too big.

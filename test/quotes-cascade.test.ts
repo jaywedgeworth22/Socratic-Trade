@@ -294,7 +294,7 @@ describe("fetchFreshQuotesCascade", () => {
 
     mockGetPolicy.mockReturnValue({
       activeBroker: "tradier",
-      accountNumber: "VA93389646",
+      accountNumber: "VA00000000",
       connectedAccountId: "tr-sand",
       maxQuoteAgeSec: 120
     });
@@ -311,9 +311,9 @@ describe("fetchFreshQuotesCascade", () => {
       MSFT: { price: 305, asOf: liveIso, bid: 304, ask: 306, volume: 1000 }
     });
 
-    const result = await fetchFreshQuotesCascade(["MSFT"], "local", "VA93389646", "tr-sand");
+    const result = await fetchFreshQuotesCascade(["MSFT"], "local", "VA00000000", "tr-sand");
 
-    expect(mockGetEquityQuotes).toHaveBeenCalledWith("VA93389646", ["MSFT"]);
+    expect(mockGetEquityQuotes).toHaveBeenCalledWith("VA00000000", ["MSFT"]);
     // Must not chase a fresher external print — sandbox fills against delayed tape.
     expect(mockEnrich).not.toHaveBeenCalled();
     expect(mockFetchYahooFinanceQuotesBatch).not.toHaveBeenCalled();

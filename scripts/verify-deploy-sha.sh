@@ -215,7 +215,10 @@ while true; do
 
   NOW_EPOCH="$(date +%s)"
   ELAPSED=$((NOW_EPOCH - START_EPOCH))
-  log "waiting (${ELAPSED}s elapsed, exit-code-so-far ${LAST_CODE}): $(printf '%s\n' "$LAST_MESSAGE" | head -n 1)"
+  # First line of LAST_MESSAGE via parameter expansion, not `printf | head` -- head
+  # closing the pipe early makes the pipeline 141 under pipefail, and `set -e` would
+  # kill the poll loop over a log line. Same class as FLEET-INFRA-BH.
+  log "waiting (${ELAPSED}s elapsed, exit-code-so-far ${LAST_CODE}): ${LAST_MESSAGE%%$'\n'*}"
 
   # Only keep polling for states a pending deploy can still resolve: unreachable (container
   # restarting), behind (build still queued), unknown commit (objects still propagating). A missing

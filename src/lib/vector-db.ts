@@ -141,6 +141,7 @@ function shouldEmitPineconeWuBudgetSentry(nowMs: number = Date.now()): boolean {
 const RAG_CONNECTION_ALERT_COOLDOWN_MS = 60 * 60_000;
 const RAG_INGEST_BUDGET_ALERT_PREFIX = "vectorStore:ingestBudgetAlert";
 const RAG_INGEST_BUDGET_ALERT_COOLDOWN_MS = 30 * 60_000;
+const inMemoryRagIngestBudgetAlertCooldown = new Map<string, number>();
 
 /**
  * A persistent daily-ingest-budget exhaustion must page ONCE per cooldown window, not once per
@@ -150,23 +151,31 @@ const RAG_INGEST_BUDGET_ALERT_COOLDOWN_MS = 30 * 60_000;
  * condition) and buried the handful of real "embed connection failed" events underneath it.
  */
 function shouldEmitRagIngestBudgetSentry(userId: string, nowMs: number = Date.now()): boolean {
-  // Fail-soft (2026-09-07 P2 fix): getInternalSetting/setInternalSetting are synchronous SQLite
-  // calls and can throw (e.g. SQLITE_BUSY under contention). This helper only gates an optional
-  // Sentry warning — it must never let a persistence error escape into storeContextsImpl's
-  // control flow and turn an expected budget-skip into a rejected store operation. On any read/
-  // write failure, fail open (emit) rather than throw or silently suppress forever.
+  // Fail-soft: getInternalSetting/setInternalSetting are synchronous SQLite calls and can throw
+  // (e.g. SQLITE_BUSY under contention). To prevent alert storms (SOCRATIC-TRADE-2E) when SQLite
+  // contention causes getInternalSetting to fail repeatedly, check and update an in-memory fallback
+  // cooldown map alongside SQLite persistence.
+  const memLastMs = inMemoryRagIngestBudgetAlertCooldown.get(userId);
+  if (memLastMs && nowMs - memLastMs < RAG_INGEST_BUDGET_ALERT_COOLDOWN_MS) {
+    return false;
+  }
   try {
     const key = `${RAG_INGEST_BUDGET_ALERT_PREFIX}:${userId}`;
     const last = getInternalSetting<string>(key);
     const lastMs = last ? Date.parse(last) : Number.NaN;
-    if (Number.isFinite(lastMs) && nowMs - lastMs < RAG_INGEST_BUDGET_ALERT_COOLDOWN_MS) return false;
+    if (Number.isFinite(lastMs) && nowMs - lastMs < RAG_INGEST_BUDGET_ALERT_COOLDOWN_MS) {
+      inMemoryRagIngestBudgetAlertCooldown.set(userId, lastMs);
+      return false;
+    }
     setInternalSetting(key, new Date(nowMs).toISOString());
+    inMemoryRagIngestBudgetAlertCooldown.set(userId, nowMs);
     return true;
   } catch (err) {
     logWarn("rag.ingest_budget_cooldown_persist_failed", {
       userId,
       error: err instanceof Error ? err.message : String(err)
     });
+    inMemoryRagIngestBudgetAlertCooldown.set(userId, nowMs);
     return true;
   }
 }
@@ -2755,9 +2764,13 @@ async function embedWithRetry(
         if (signal?.aborted) {
           throw signal.reason instanceof Error ? signal.reason : error;
         }
-        if (!isRateLimitError(error) || attempt >= attempts) throw error;
-        const delay = retryAfterMs(error, attempt);
-        console.warn(`[vector-db] Embedding rate limited for inputType=${inputType}; retrying in ${Math.round(delay / 1000)}s.`);
+        const isRate = isRateLimitError(error);
+        const isTransient = isTransientNetworkError(error);
+        if ((!isRate && !isTransient) || attempt >= attempts) throw error;
+        const delay = isRate ? retryAfterMs(error, attempt) : Math.min(1000 * Math.pow(2, attempt), 5000);
+        console.warn(
+          `[vector-db] Embedding ${isRate ? "rate limited" : "transient network failure"} for inputType=${inputType}; retrying in ${Math.round(delay / 1000)}s.`
+        );
         await sleep(delay, signal);
       }
     }
@@ -2906,21 +2919,45 @@ export async function rerankMatches(
           rerankHeaders["X-Title"] = "Socratic.Trade";
           applyOpenRouterClassifierEnrichment(rerankBody, { userId, service: "rag", feature: "rerank" });
         }
-        const response = await fetch(url, {
-          method: "POST",
-          headers: rerankHeaders,
-          body: JSON.stringify(rerankBody)
-        });
-        if (!response.ok) {
-          const body = await response.text();
-          throw new HttpProviderError(
-            `Rerank API failed (isOpenRouter=${isOpenRouter}): ${response.status} ${body}`,
-            response.status,
-            response.headers
-          );
+        const maxAttempts = 3;
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const response = await fetch(url, {
+              method: "POST",
+              headers: rerankHeaders,
+              body: JSON.stringify(rerankBody)
+            });
+            if (!response.ok) {
+              const body = await response.text();
+              const err = new HttpProviderError(
+                `Rerank API failed (isOpenRouter=${isOpenRouter}): ${response.status} ${body}`,
+                response.status,
+                response.headers
+              );
+              if (attempt < maxAttempts - 1 && (isRateLimitError(err) || response.status >= 500)) {
+                const delay = isRateLimitError(err) ? retryAfterMs(err, attempt) : Math.min(1000 * Math.pow(2, attempt), 5000);
+                console.warn(
+                  `[vector-db] Rerank ${isRateLimitError(err) ? "rate limited" : `HTTP ${response.status}`}; retrying in ${Math.round(delay / 1000)}s.`
+                );
+                await sleep(delay);
+                continue;
+              }
+              throw err;
+            }
+            return await response.json();
+          } catch (error) {
+            if (attempt < maxAttempts - 1 && (isRateLimitError(error) || isTransientNetworkError(error))) {
+              const isRate = isRateLimitError(error);
+              const delay = isRate ? retryAfterMs(error, attempt) : Math.min(1000 * Math.pow(2, attempt), 5000);
+              console.warn(
+                `[vector-db] Rerank ${isRate ? "rate limited" : "transient network failure"}; retrying in ${Math.round(delay / 1000)}s.`
+              );
+              await sleep(delay);
+              continue;
+            }
+            throw error;
+          }
         }
-        const res = await response.json();
-        return res;
       },
       undefined,
       { estimatedCostUsd: estimateRagDispatchCost([query, ...documents], "rerank", modelName, provider) },

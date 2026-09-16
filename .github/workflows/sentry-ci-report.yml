@@ -112,13 +112,15 @@ jobs:
           SENTRY_FLEET_DSN: ${{ secrets.SENTRY_FLEET_DSN }}
           GITHUB_TOKEN: ${{ github.token }}
           WORKFLOW_RUN_ACTION: ${{ github.event.action }}
-          WORKFLOW_          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
           WORKFLOW_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           WORKFLOW_EVENT: ${{ github.event.workflow_run.event }}
           WORKFLOW_BRANCH: ${{ github.event.workflow_run.head_branch }}
           WORKFLOW_ACTOR: ${{ github.event.workflow_run.actor.login }}
           WORKFLOW_RUN_URL: ${{ github.event.workflow_run.html_url }}
-                  run: python3 scripts/sentry-ci-report.py
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          WORKFLOW_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: python3 scripts/sentry-ci-report.py
 
       - name: Disable sparse checkout (prevent poisoning self-hosted runner workspace)
         if: always()

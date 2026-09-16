@@ -163,7 +163,10 @@ function shouldEmitRagIngestBudgetSentry(userId: string, nowMs: number = Date.no
     const key = `${RAG_INGEST_BUDGET_ALERT_PREFIX}:${userId}`;
     const last = getInternalSetting<string>(key);
     const lastMs = last ? Date.parse(last) : Number.NaN;
-    if (Number.isFinite(lastMs) && nowMs - lastMs < RAG_INGEST_BUDGET_ALERT_COOLDOWN_MS) return false;
+    if (Number.isFinite(lastMs) && nowMs - lastMs < RAG_INGEST_BUDGET_ALERT_COOLDOWN_MS) {
+      inMemoryRagIngestBudgetAlertCooldown.set(userId, lastMs);
+      return false;
+    }
     setInternalSetting(key, new Date(nowMs).toISOString());
     inMemoryRagIngestBudgetAlertCooldown.set(userId, nowMs);
     return true;

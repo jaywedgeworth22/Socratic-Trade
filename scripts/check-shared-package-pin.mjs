@@ -88,7 +88,7 @@ function ghRaw(repo, filePath, token) {
     }
     lastErr = (result.stderr || result.stdout || "gh api failed").trim();
     if (attempt < maxAttempts) {
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000 * attempt);
+      spawnSync(process.execPath, ["-e", `setTimeout(() => {}, ${1000 * attempt})`]);
     }
   }
   throw new Error(`${repo}/${filePath}: ${lastErr}`);

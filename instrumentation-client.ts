@@ -19,7 +19,10 @@ export const SENTRY_CLIENT_IGNORE_ERRORS: RegExp[] = [
   // SOCRATIC-TRADE-2J. Cloudflare's edge-injected Web Analytics/RUM beacon reads
   // the Chromium-only `chrome` global with no typeof guard, so it throws on
   // Safari. A third-party script we do not ship and cannot patch.
-  /Can't find variable: chrome/,
+  // The apostrophe class covers both U+0027 and U+2019: the events we have carry
+  // the straight one, but the message is a browser string we do not control and
+  // a one-character miss here silently un-fixes the issue.
+  /Can['’]t find variable: chrome/,
   /\bchrome is not defined\b/,
   // Benign layout-loop notices browsers emit, which Sentry's own docs call out as
   // non-actionable; not errors in any user-visible sense.

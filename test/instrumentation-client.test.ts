@@ -61,6 +61,15 @@ describe("instrumentation-client Sentry noise filters", () => {
     expect(matchesAny(SENTRY_CLIENT_IGNORE_ERRORS, "ReferenceError: chrome is not defined")).toBe(true);
   });
 
+  it("drops it with a curly apostrophe too", () => {
+    // The message is a browser-authored string we do not control. Our events carry
+    // U+0027, but a one-character miss would silently un-fix the issue, so the
+    // pattern accepts U+2019 as well and this pins that.
+    expect(
+      matchesAny(SENTRY_CLIENT_IGNORE_ERRORS, "ReferenceError: Can’t find variable: chrome")
+    ).toBe(true);
+  });
+
   it("drops benign ResizeObserver layout-loop notices", () => {
     expect(matchesAny(SENTRY_CLIENT_IGNORE_ERRORS, "ResizeObserver loop limit exceeded")).toBe(true);
     expect(matchesAny(SENTRY_CLIENT_IGNORE_ERRORS, "ResizeObserver loop completed with undelivered notifications.")).toBe(true);

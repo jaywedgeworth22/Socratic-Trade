@@ -82,9 +82,33 @@ export function sampleWordmark(text: string): Wordmark {
   const key = (nx: number) => Math.round(nx * 1000);
   const uniq = [...new Set(cells.map((c) => key(c.nx)))].sort((a, b) => a - b);
   const map = new Map(uniq.map((v, i) => [v, i]));
-  const hcol = cells.map((c) => map.get(key(c.nx))!);
+  // `?? 0` instead of a non-null assertion: the map is built from these exact
+  // keys so a miss should be impossible, but a `!` here turns any future drift
+  // into `undefined` flowing silently into the ticker index arithmetic as NaN.
+  // Column 0 is a correct-looking fallback; a crash in the RAF loop is not.
+  const hcol = cells.map((c) => map.get(key(c.nx)) ?? 0);
   const hshort = cells.map((c) => c.nh < 0.16);
   return { cells, ar: s.w / s.h, ncol: uniq.length, hcol, hshort };
+}
+
+/** The ticker unit for column `col` at integer `tick`, marching one unit left
+ *  per tick. ALWAYS returns a unit when `units` is non-empty.
+ *
+ *  Why this is defensive rather than a bare `units[(((col + tick) % P) + P) % P]`:
+ *  `x % P` is NaN for any non-finite `x`, and `units[NaN]` is `undefined`, so a
+ *  single bad `tick` crashed the whole logo with "Cannot read properties of
+ *  undefined (reading 'frac')" (SOCRATIC-TRADE-2H, unhandled inside
+ *  requestAnimationFrame on /login). A non-finite `tick` reaches here whenever a
+ *  RAF callback is invoked without its DOMHighResTimeStamp argument — which some
+ *  extension/polyfill RAF shims do — because the callers derive `tick` from that
+ *  timestamp. The animation frame is cosmetic; freezing it at the base frame is
+ *  always better than throwing. */
+export function tickerUnitAt(units: TickerUnit[], col: number, tick: number): TickerUnit | null {
+  const P = units.length;
+  if (P === 0) return null;
+  const c = Number.isFinite(col) ? col : 0;
+  const t = Number.isFinite(tick) ? tick : 0;
+  return units[(((Math.trunc(c + t) % P) + P) % P)] ?? units[0];
 }
 
 /** The green-biased price walk of P candle "units" (colour + body fraction +
@@ -114,10 +138,12 @@ export function drawTicker(
   box: { x: number; y: number; w: number; h: number },
   tick: number,
 ) {
-  const P = units.length, bw = Math.max(1, box.w / wm.ncol * 0.55);
+  if (units.length === 0 || wm.ncol === 0) return;
+  const bw = Math.max(1, box.w / wm.ncol * 0.55);
   for (let j = 0; j < wm.cells.length; j++) {
     const c = wm.cells[j], top = box.y + c.ntop * box.h, h = c.nh * box.h;
-    const u = units[(((wm.hcol[j] + tick) % P) + P) % P];
+    const u = tickerUnitAt(units, wm.hcol[j], tick);
+    if (!u) continue;
     const frac = wm.hshort[j] ? Math.max(u.frac, 0.82) : u.frac, bh = Math.max(1, h * frac);
     const bt = top + (h - bh) * u.off, x = box.x + c.nx * box.w;
     ctx.strokeStyle = u.col; ctx.lineWidth = Math.max(0.8, bw * 0.26); ctx.lineCap = "round";

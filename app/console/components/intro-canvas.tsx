@@ -10,7 +10,7 @@
  *  reveal/slide-away) goes through ../ui/intro-bus.ts. */
 
 import { useEffect, useRef, useState } from "react";
-import { sampleCells, buildTickerUnits, TICKER_GREENS, TICKER_REDS, WORDMARK_AR } from "../ui/candle-ticker";
+import { sampleCells, buildTickerUnits, tickerUnitAt, TICKER_GREENS, TICKER_REDS, WORDMARK_AR } from "../ui/candle-ticker";
 import { setIntroPhase } from "../ui/intro-bus";
 
 type Cell = { nx: number; ntop: number; nh: number };
@@ -143,9 +143,16 @@ function buildModel(): Model {
     for (let i = 0; i < Math.max(0, rem); i++) alloc[ord[i]]++;
     let out: { cx: number; top: number; h: number }[] = [];
     for (let i = 0; i < runs.length; i++) { const c = Math.max(1, alloc[i]); for (let k = 0; k < c; k++) out.push({ cx: runs[i].cx, top: runs[i].top, h: runs[i].h }); } // overlap on the natural stroke (one clean candle), don't subdivide
-    while (out.length < m) out.push({ ...out[out.length - 1] });
+    // If sampling produced nothing (canvas blocked, or the font never rasterized)
+    // `out[out.length - 1]` is undefined and the pad loop below would fill the
+    // wordmark with `{}` — every cell NaN. Pad from a real zero-cell instead so
+    // the intro degrades to an invisible-but-valid wordmark rather than NaN
+    // geometry that propagates into the ticker.
+    const pad = out.length ? out[out.length - 1] : { cx: 0, top: 0, h: 0 };
+    while (out.length < m) out.push({ ...(out[out.length - 1] ?? pad) });
     out = out.slice(0, m);
-    return { cells: out.map((c) => ({ nx: c.cx / s.w, ntop: c.top / s.h, nh: c.h / s.h })) as Cell[], ar: s.w / s.h };
+    const sw = s.w > 0 ? s.w : 1, sh = s.h > 0 ? s.h : 1;
+    return { cells: out.map((c) => ({ nx: c.cx / sw, ntop: c.top / sh, nh: c.h / sh })) as Cell[], ar: sw / sh };
   }
   const HL = lineToM("SOCRATIC TRADE", M), HEADER = HL.cells, HEADER_AR = HL.ar;
 
@@ -185,11 +192,13 @@ function buildModel(): Model {
   // splash's final ticker and the persistent HeaderLogo march through the identical
   // colours. Each header column shows one unit; the pattern marches one column left
   // per second (see headerTick), so neighbouring columns differ — never a solid block.
-  const UNITS = buildTickerUnits(), P = UNITS.length;
+  const UNITS = buildTickerUnits();
   const hxKey = (nx: number) => Math.round(nx * 1000);
   const uniqHx = [...new Set(HEADER.map((c) => hxKey(c.nx)))].sort((a, b) => a - b);
   const hColMap = new Map(uniqHx.map((v, i) => [v, i]));
-  const HCOL = HEADER.map((c) => hColMap.get(hxKey(c.nx))!), HSHORT = HEADER.map((c) => c.nh < 0.16), NCOL = uniqHx.length;
+  // `?? 0` not `!`: see sampleWordmark in candle-ticker.ts — an undefined column
+  // index becomes NaN in the tick arithmetic and crashes the RAF loop.
+  const HCOL = HEADER.map((c) => hColMap.get(hxKey(c.nx)) ?? 0), HSHORT = HEADER.map((c) => c.nh < 0.16), NCOL = uniqHx.length;
 
   const layout = (vw: number, vh: number): Layout => {
     const portrait = vh > vw;
@@ -256,7 +265,8 @@ function buildModel(): Model {
   // the modulo handles negative offsets, so early-landing candles tick before the anchor.
   const TICK_T0 = CENTER_WORDMARK_STEP ? T4 : T2B;
   const headerTick = (s: Geo, j: number, t: number) => {
-    const u = UNITS[(((HCOL[j] + Math.floor(t - TICK_T0)) % P) + P) % P];
+    const u = tickerUnitAt(UNITS, HCOL[j], Math.floor(t - TICK_T0));
+    if (!u) return;
     const wh = s.wb - s.wt, frac = HSHORT[j] ? Math.max(u.frac, 0.82) : u.frac, bh = Math.max(1.4, wh * frac);
     s.bt = s.wt + (wh - bh) * u.off; s.bb = s.bt + bh; s.col = u.col;
   };
@@ -412,9 +422,13 @@ export function ConsoleIntro() {
     // instantly regardless.
     const MEASURE_WAIT = 45;
     const loop = (now: number) => {
-      if (introStart == null) introStart = now;
-      const t = (now - introStart) / 1000;
-      const dt = lastNow == null ? 0.016 : Math.min(0.1, (now - lastNow) / 1000); lastNow = now;
+      // Same RAF-timestamp guard as header-logo.tsx: a shim that calls back with
+      // no argument made every derived time NaN, which crashed the ticker's unit
+      // lookup (SOCRATIC-TRADE-2H). Fall back to the clock.
+      const ts = Number.isFinite(now) ? now : performance.now();
+      if (introStart == null) introStart = ts;
+      const t = (ts - introStart) / 1000;
+      const dt = lastNow == null ? 0.016 : Math.min(0.1, (ts - lastNow) / 1000); lastNow = ts;
       // Solid backdrop holds until the first candle lifts off, then dissolves so the
       // console/page reveals behind the rising candles (the canvas stays opaque).
       if (!dissolved && t >= model.LIFT) { dissolved = true; if (bg) bg.style.opacity = "0"; }

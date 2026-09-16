@@ -38,7 +38,7 @@ import { ConsoleIntro } from "./intro-canvas";
 import { HeaderLogo } from "../ui/header-logo";
 import { WORDMARK_AR } from "../ui/candle-ticker";
 import { getIntroPhase, subscribeIntroPhase, type IntroPhase } from "../ui/intro-bus";
-import { DesktopRail, MobileTabBar } from "./nav";
+import { DesktopRail, MobileTabBar, destinationLabel } from "./nav";
 import { NotificationInbox } from "./notification-inbox";
 import { Btn } from "../ui/primitives";
 import { unreadNotificationCount } from "@/lib/notification-history";
@@ -90,6 +90,17 @@ function ShellFrame({ children }: { children: ReactNode }) {
   const { dataTextBoxFont } = useConsoleTextBoxFont();
   const { dataConsoleFont } = useConsoleFont();
   const pathname = usePathname();
+
+  // Per-page tab title: route via destinationLabel so the rail label and tab title
+  // share one source (h1 === rail label, the 2026-07-16 naming canon). On desktop
+  // multi-tab this is the difference between "Socratic Trade" on every tab and
+  // "Orders · Socratic Trade" / "Guardrails · Socratic Trade" / etc.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const label = pathname ? destinationLabel(pathname) : "";
+    const title = label && label !== pathname ? `${label} · Socratic Trade` : "Socratic Trade";
+    if (document.title !== title) document.title = title;
+  }, [pathname]);
 
   // A 401 anywhere in the console (the polled snapshot or a mutation) means the session is
   // gone, not merely slow — api.ts's redirectToLogin is already sending the browser to /login.

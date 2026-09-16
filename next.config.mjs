@@ -109,6 +109,14 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: "1mb"
     }
+  },
+  async redirects() {
+    return [
+      // Nav labels this destination 'Proposals' (nav.tsx:58 → /console/approvals).
+      // An unaided guess of /console/proposals shows Next's stock 404 with no
+      // console chrome (see board da8a93bf). Permanent redirect to /approvals.
+      { source: "/console/proposals", destination: "/console/approvals", permanent: true }
+    ];
   }
 };
 

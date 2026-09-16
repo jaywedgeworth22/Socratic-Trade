@@ -949,7 +949,7 @@ class TradierBrokerGateway implements BrokerGateway {
    * Side-effect-free order-path probe: submit a 1-share limit PREVIEW. A 200 with a structured
    * validation/BP error means the OMS is reachable (ok). HTTP 5xx / "backend" / "unexpected
    * (server) error" means paper/live OMS is down — the case that was burning strategy LLM runs
-   * on VA93389646. Base throttle is once per 2 minutes per account; a failing probe backs off
+   * on a live Tradier account. Base throttle is once per 2 minutes per account; a failing probe backs off
    * exponentially (see tradierProbeTtlMs) so a sustained condition does not re-probe (and the
    * caller does not re-warn) every single 60s scheduler tick — see tradierProbeCache doc comment.
    * `retryTransient: true` is safe here specifically because `preview: "true"` makes this call

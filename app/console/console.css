@@ -121,6 +121,20 @@
   min-height: 100dvh;
 }
 
+/* Phone type-scale override */
+@media (max-width: 639px) {
+  .console-root {
+    --con-fs-2xs: 11px;
+    --con-fs-xs: 12.5px;
+    --con-fs-sm: 14px;
+    --con-fs-base: 15px;
+    --con-fs-md: 17px;
+    --con-fs-lg: 20px;
+    --con-fs-xl: 24px;
+    --con-fs-xxl: 32px;
+  }
+}
+
 .console-root[data-textbox-font="lato"] {
   --con-control-font: var(--con-font-lato);
 }
@@ -470,14 +484,21 @@
   .ac-expand-toggle,
   .con-tab-item,
   .con-watch-btn,
-  .con-toast-dismiss {
+  .con-toast-dismiss,
+  .con-theme-btn,
+  .con-segmented-btn,
+  .con-disclosure > summary,
+  input[type="checkbox"] {
     min-height: 44px;
   }
   .con-bar-ctl:not(.con-bar-ctl-scope),
   .con-cmdk-trigger,
   .con-icon-btn,
   .con-watch-btn,
-  .con-toast-dismiss {
+  .con-toast-dismiss,
+  .con-theme-btn,
+  .con-segmented-btn,
+  input[type="checkbox"] {
     min-width: 44px;
   }
 }

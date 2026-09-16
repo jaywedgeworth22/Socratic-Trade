@@ -65,11 +65,12 @@ export const EquityChart = memo(function EquityChart({ points, label }: { points
     <figure>
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className="h-auto w-full"
+        preserveAspectRatio="none"
+        className="w-full h-[120px] sm:h-auto"
         role="img"
         aria-label={`${label} equity from ${fmtMoney(data[0].v)} to ${fmtMoney(data[data.length - 1].v)}`}
       >
-        <path d={path} fill="none" stroke={stroke} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <path d={path} fill="none" stroke={stroke} strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
       </svg>
       <figcaption className="con-num mt-1 flex justify-between text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">
         <span title={fmtExact(points[0]?.timestamp)}>

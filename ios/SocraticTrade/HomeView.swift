@@ -51,6 +51,7 @@ private struct ReadinessChecklistHero: View {
 
     private var needsAccount: Bool { !snapshot.readiness.hasAccount }
     private var needsUniverse: Bool { !snapshot.readiness.hasUniverse }
+    private var needsLlmKey: Bool { !(snapshot.readiness.hasLlmKey ?? true) }
 
     var body: some View {
         AppCard {
@@ -90,17 +91,16 @@ private struct ReadinessChecklistHero: View {
                             ? DeskCopy.universeNeedsIndex
                             : "Universe ready for strategy runs"
                     )
+                    if needsLlmKey {
+                        ChecklistRow(
+                            done: false,
+                            title: "Add an LLM API key",
+                            detail: "Use the website to provide an API key for the strategy agent."
+                        )
+                    }
                 }
 
                 if needsAccount {
-                    Button(action: openSettings) {
-                        Label("Account & Settings", systemImage: "gearshape")
-                            .font(.appBody.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: 44)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(AppPalette.accent)
                     ConsoleHandoffButton(
                         title: DeskCopy.openConnectionsButton,
                         systemImage: "link",

@@ -56,7 +56,8 @@ import {
   listWatchlistSymbols,
   setInternalSetting
 } from "./db";
-import { logApiHealth } from "./db-health";
+import { HEALTH_TRANSIENT_FAILURE_PREFIX, logApiHealth } from "./db-health";
+import { isTransientNetworkError } from "./network-errors";
 import { createDurableMap } from "./durable-state";
 import { fetchDailyOHLC, toBusinessDay } from "./history";
 import { INDEX_UNIVERSES, symbolsForPolicyUniverse } from "./index-universes";
@@ -772,51 +773,71 @@ export async function shareWithCongressTrade(payload: CongressSharePayload): Pro
 
   const url = `${congressTradeBaseUrl()}${API_PATHS.ADMIN_SECURITIES_IMPORT}`;
   const timeoutMs = Number(process.env.CONGRESS_SHARE_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    // Stamp our origin so the counterpart never echoes our own rows back to us (no-echo-loop guard).
-    const body = { ...clean, origin: clean.origin ?? APP_B_ORIGIN_TAG };
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-      cache: "no-store"
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      const errorText = `HTTP ${res.status} ${text.slice(0, 300)}`;
-      console.error(`[congress-share] import failed: ${errorText}`);
-      const isAuthFailure = res.status === 401 || res.status === 403;
-      if (isAuthFailure) tripCongressAuthBreaker(now, errorText, token);
-      // Surface every failure to the shared health store: feeds Sentry (via logApiHealth's own
-      // 5-consecutive-hard-failure alertConnectionFailure path — same mechanism "roic"/
-      // "congress.trade" already use) AND the "congress-share" entry in /api/health's
-      // `checks.dependencies` map. keySource "env" matches how CONGRESS_TRADE_TOKEN is resolved
-      // (process.env only — see congressTradeToken above).
-      logApiHealth({ service: "congress-share", ok: false, errorText, keySource: "env" });
-      return { ok: false, status: res.status, error: text.slice(0, 500) || `HTTP ${res.status}`, sent };
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      // Stamp our origin so the counterpart never echoes our own rows back to us (no-echo-loop guard).
+      const body = { ...clean, origin: clean.origin ?? APP_B_ORIGIN_TAG };
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+        cache: "no-store"
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        const errorText = `HTTP ${res.status} ${text.slice(0, 300)}`;
+        const isAuthFailure = res.status === 401 || res.status === 403;
+        if (isAuthFailure) {
+          console.error(`[congress-share] import failed: ${errorText}`);
+          tripCongressAuthBreaker(now, errorText, token);
+          logApiHealth({ service: "congress-share", ok: false, errorText, keySource: "env" });
+          return { ok: false, status: res.status, error: text.slice(0, 500) || `HTTP ${res.status}`, sent };
+        }
+        // Downstream 5xx errors (e.g. transient D1 overload): retry with backoff before hard failure.
+        if (res.status >= 500 && attempt < maxAttempts) {
+          const delay = process.env.NODE_ENV === "test" ? 0 : Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          console.warn(`[congress-share] import got HTTP ${res.status}; retrying attempt ${attempt + 1}/${maxAttempts} in ${delay}ms`);
+          if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
+        console.error(`[congress-share] import failed: ${errorText}`);
+        // Surface failure to health store: prefix 5xx as transient to allow escalation window.
+        const formattedError = res.status >= 500 ? `${HEALTH_TRANSIENT_FAILURE_PREFIX}${errorText}` : errorText;
+        logApiHealth({ service: "congress-share", ok: false, errorText: formattedError, keySource: "env" });
+        return { ok: false, status: res.status, error: text.slice(0, 500) || `HTTP ${res.status}`, sent };
+      }
+      const response = await res.json().catch(() => undefined);
+      clearCongressAuthBreaker(); // a successful call proves the token is good again
+      logApiHealth({ service: "congress-share", ok: true, keySource: "env" });
+      return { ok: true, status: res.status, response, sent };
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      if (attempt < maxAttempts && isTransientNetworkError(err)) {
+        const delay = process.env.NODE_ENV === "test" ? 0 : Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+        console.warn(`[congress-share] import transient error: ${error}; retrying attempt ${attempt + 1}/${maxAttempts} in ${delay}ms`);
+        if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      // Include payload sizes so a timeout/abort points at which dataset was too big.
+      console.error(
+        `[congress-share] import error: ${error} ` +
+          `(refs=${sent.refs} spx=${sent.spx} prices=${sent.prices} closes=${sent.closes} ` +
+          `insider=${sent.insider} shortVolume=${sent.shortVolume} fundamentals=${sent.fundamentals} analyst=${sent.analyst})`
+      );
+      const isTransient = isTransientNetworkError(err);
+      const formattedError = isTransient ? `${HEALTH_TRANSIENT_FAILURE_PREFIX}${error}` : error;
+      logApiHealth({ service: "congress-share", ok: false, errorText: formattedError, keySource: "env" });
+      return { ok: false, error, sent };
+    } finally {
+      clearTimeout(timer);
     }
-    const response = await res.json().catch(() => undefined);
-    clearCongressAuthBreaker(); // a successful call proves the token is good again
-    logApiHealth({ service: "congress-share", ok: true, keySource: "env" });
-    return { ok: true, status: res.status, response, sent };
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    // Include payload sizes so a timeout/abort points at which dataset was too big.
-    console.error(
-      `[congress-share] import error: ${error} ` +
-        `(refs=${sent.refs} spx=${sent.spx} prices=${sent.prices} closes=${sent.closes} ` +
-        `insider=${sent.insider} shortVolume=${sent.shortVolume} fundamentals=${sent.fundamentals} analyst=${sent.analyst})`
-    );
-    // Transport/timeout failures are NOT auth failures — do not trip the auth breaker, but still
-    // surface them to the health store (same 5-consecutive-hard-failure gate before Sentry fires).
-    logApiHealth({ service: "congress-share", ok: false, errorText: error, keySource: "env" });
-    return { ok: false, error, sent };
-  } finally {
-    clearTimeout(timer);
   }
+  return { ok: false, error: "max-attempts-exceeded", sent };
 }
 
 // ── Chunking ────────────────────────────────────────────────────────────────────

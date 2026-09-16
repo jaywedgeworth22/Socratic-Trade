@@ -75,16 +75,23 @@ function readJson(path) {
 function ghRaw(repo, filePath, token) {
   const env = { ...process.env };
   if (token) env.GH_TOKEN = token;
-  const result = spawnSync(
-    "gh",
-    ["api", `repos/${repo}/contents/${filePath}`, "-H", "Accept: application/vnd.github.raw"],
-    { encoding: "utf8", env }
-  );
-  if (result.status !== 0) {
-    const err = (result.stderr || result.stdout || "gh api failed").trim();
-    throw new Error(`${repo}/${filePath}: ${err}`);
+  const maxAttempts = 3;
+  let lastErr = "";
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const result = spawnSync(
+      "gh",
+      ["api", `repos/${repo}/contents/${filePath}`, "-H", "Accept: application/vnd.github.raw"],
+      { encoding: "utf8", env }
+    );
+    if (result.status === 0) {
+      return result.stdout;
+    }
+    lastErr = (result.stderr || result.stdout || "gh api failed").trim();
+    if (attempt < maxAttempts) {
+      spawnSync(process.execPath, ["-e", `setTimeout(() => {}, ${1000 * attempt})`]);
+    }
   }
-  return result.stdout;
+  throw new Error(`${repo}/${filePath}: ${lastErr}`);
 }
 
 function fail(msg) {

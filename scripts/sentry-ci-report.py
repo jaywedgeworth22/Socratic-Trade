@@ -102,8 +102,17 @@ CRON_SCHEDULES = {
 _CRON_SCHEDULES_FOLDED = {name.casefold(): expr for name, expr in CRON_SCHEDULES.items()}
 
 DEFAULT_CHECKIN_MARGIN = 15
+# GitHub `schedule` delivery is best-effort.  These two weekday/hourly
+# monitors always eventually run, but the start is hours late, so a 15-minute
+# margin false-pages a healthy job.  600 min matches #3194 (FLEET-INFRA-C1)
+# and sits above the RTH latch's measured weekday delay (typical 114-154 min,
+# worst ~8h on 2026-08-28).  Do not copy this onto 30-min macos ship crons
+# (FLEET-INFRA-CC / DA / CX): those drop ticks entirely, so a wider margin
+# still misses.  FLEET-INFRA-C3 is the pre-#3302 slug `ci-rth-deploy-latch`;
+# HEAD upserts `ci-socratic-trade-rth-deploy-latch`.
 CHECKIN_MARGIN_OVERRIDES = {
     "Deploy freshness": 600,
+    "RTH Deploy Latch": 600,
 }
 _CHECKIN_MARGINS_FOLDED = {name.casefold(): margin for name, margin in CHECKIN_MARGIN_OVERRIDES.items()}
 

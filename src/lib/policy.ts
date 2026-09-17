@@ -284,7 +284,7 @@ export function applyOpeningOrderHeadroom(value: number): number {
  * and systemState (halted / close-only / liquidating).
  */
 export const HARD_GATE_REASON_PATTERNS: readonly string[] = [
-  "No Robinhood account is selected.", // account boundary — the one absolute rule
+  "No broker account is selected.", // account boundary — the one absolute rule
   "not tradable", // broker: symbol not tradable
   "buying power", // broker/accounting: can't spend more than available
   "Sell quantity exceeds", // accounting: can't sell more than held
@@ -338,7 +338,7 @@ export function evaluateTradeProposal(proposal: TradeProposal, context: PolicyCo
   }
   if (context.policy.systemState === "liquidating" && proposal.side !== "sell" && proposal.side !== "cover") reasons.push("System is liquidating. Only close orders allowed.");
   if (context.policy.systemState === "close_only" && proposal.side !== "sell" && proposal.side !== "cover") reasons.push("System is close-only. New entries are disabled.");
-  if (!context.policy.accountNumber) reasons.push("No Robinhood account is selected.");
+  if (!context.policy.accountNumber) reasons.push("No broker account is selected.");
   // Universe/blocklist applies to OPENING trades only. Never block a risk-reducing exit
   // (sell/cover) because the symbol was removed from the universe or blocklisted — that
   // would trap a position in a name you flagged precisely to get out of.

@@ -487,8 +487,7 @@
   .con-toast-dismiss,
   .con-theme-btn,
   .con-segmented-btn,
-  .con-disclosure > summary,
-  input[type="checkbox"] {
+  .con-disclosure > summary {
     min-height: 44px;
   }
   .con-bar-ctl:not(.con-bar-ctl-scope),
@@ -497,8 +496,7 @@
   .con-watch-btn,
   .con-toast-dismiss,
   .con-theme-btn,
-  .con-segmented-btn,
-  input[type="checkbox"] {
+  .con-segmented-btn {
     min-width: 44px;
   }
 }

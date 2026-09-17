@@ -71,8 +71,7 @@ export function redirectToLogin(): void {
   // fail-closed auth gate rather than trusting any client-side router cache, matching the same
   // window.location.href pattern this codebase already uses for auth-adjacent navigation (e.g.
   // settings/danger.tsx's sign-out redirect, settings/brokers.tsx's OAuth start).
-  // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- intentional hard navigation, see above
-  window.location.href = `/login?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+  window.location.href = `/login?next=${encodeURIComponent(callbackUrl)}`;
 }
 
 /** Thrown when the approve endpoint answers 409 LIVE_CONFIRMATION_REQUIRED.

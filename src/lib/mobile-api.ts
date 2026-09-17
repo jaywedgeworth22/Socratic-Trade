@@ -13,7 +13,8 @@ import {
   setActiveConnectedAccount,
   setDataPoolConsent,
   setLegalNoticeConsent,
-  setPolicy
+  setPolicy,
+  userHasAnyLlmCredential
 } from "./db";
 import { isIndexUniverse, isValidAppSymbol } from "./index-universes";
 import { normalizeSymbol } from "./money";
@@ -1344,6 +1345,7 @@ export function mobileReadiness(userId: string) {
   const connectedAccounts = listConnectedAccounts(userId);
   return {
     hasAccount: Boolean(policy.accountNumber),
+    hasLlmKey: userHasAnyLlmCredential(userId),
     hasUniverse: policy.includedIndices.length > 0 || policy.additionalSymbols.length > 0,
     systemState: policy.systemState,
     strategyAuthority: policy.strategyAuthority,

@@ -6,6 +6,8 @@
 // secrets injected after build (e.g. via Infisical at start:secrets) are reflected
 // immediately without a rebuild.
 
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { isAppleWebAuthConfigured } from "../../src/lib/auth/apple-web";
 import { signIn } from "../../src/lib/auth/auth";
 import { sanitizeCallbackUrl } from "../../src/lib/auth/callback-url";
@@ -29,10 +31,15 @@ const LOGIN_VALUE_BULLETS = [
   "Control the backend agent without moving credentials onto the device"
 ] as const;
 
-export default async function LoginPage(props: { searchParams?: Promise<{ callbackUrl?: string | string[] }> }) {
+export default async function LoginPage(props: { searchParams?: Promise<{ next?: string | string[] }> }) {
   const searchParams = await props.searchParams;
-  const rawCallbackUrl = typeof searchParams?.callbackUrl === "string" ? searchParams.callbackUrl : undefined;
-  const callbackUrl = sanitizeCallbackUrl(rawCallbackUrl);
+  const rawNext = typeof searchParams?.next === "string" ? searchParams.next : undefined;
+  const callbackUrl = sanitizeCallbackUrl(rawNext);
+
+  const h = await headers();
+  if (h.get("x-authenticated-user-email")) {
+    redirect(callbackUrl === "/" ? "/console" : callbackUrl);
+  }
 
   return (
     <main className="grid min-h-screen place-items-center bg-bg px-6 text-center">

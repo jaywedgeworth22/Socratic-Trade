@@ -501,10 +501,12 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
     // (APP_B_INGEST_TOKEN) strictly validates it. /api/market/flatfile stays session-gated.
   } else {
     // No verified identity and auth is configured (or armed) → FAIL CLOSED.
+    const loginUrl = new URL("/login", req.url);
+    loginUrl.searchParams.set("next", pathname + req.nextUrl.search);
     return withSecurityHeaders(
       pathname.startsWith("/api/")
         ? new NextResponse("Unauthorized", { status: 401 })
-        : NextResponse.redirect(new URL("/login", req.url))
+        : NextResponse.redirect(loginUrl)
     );
   }
 

@@ -93,14 +93,10 @@ private struct ReadinessChecklistHero: View {
                 }
 
                 if needsAccount {
-                    Button(action: openSettings) {
-                        Label("Account & Settings", systemImage: "gearshape")
-                            .font(.appBody.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: 44)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(AppPalette.accent)
+                    Text("Broker connections must be configured on the website.")
+                        .font(.appBody)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     ConsoleHandoffButton(
                         title: DeskCopy.openConnectionsButton,
                         systemImage: "link",

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { evaluateStop, runSyntheticStopMonitor } from "../src/lib/synthetic-stops";
 import { DEFAULT_POLICY } from "../src/lib/defaults";
 import {
@@ -16,6 +16,7 @@ import {
   upsertConnectedAccount,
   upsertSyntheticStop
 } from "../src/lib/db";
+import * as dbApiKeys from "../src/lib/db-api-keys";
 import type { BrokerGateway, ConnectedAccount, EquityOrder, TradingPolicy } from "../src/lib/types";
 import { reconcilePendingFills } from "../src/lib/strategy-execution";
 
@@ -168,6 +169,13 @@ describe("runSyntheticStopMonitor (orchestration)", () => {
     broker.ordersError = null;
     broker.placeError = null;
     broker.gatewayPolicies = [];
+  });
+
+  afterEach(() => {
+    // runSyntheticStopMonitor now awaits setImmediate (yieldEventLoop).  A timed-out
+    // test that left full fake timers installed would hang every later case in this
+    // file (vitest maxWorkers=1).  Date-only faking is restored here too.
+    vi.useRealTimers();
   });
 
   /** Audit receipts of one kind for one symbol (payloads are JSON with a `symbol` field). */
@@ -832,10 +840,55 @@ describe("runSyntheticStopMonitor (orchestration)", () => {
     expect(row.lastAttemptRefId).toBe(`${r0}-g1`);
   });
 
+  it("retries SQLITE_BUSY on recordSyntheticStopAttempt after claim and still places", async () => {
+    broker.positions = [{ symbol: "AAPL", quantity: 10, averageCost: 100, marketValue: 1000 }];
+    broker.quotes = { AAPL: { price: 90 } };
+    connectTestAccount("SYN-BUSY-RECORD");
+    const busy = Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" });
+    const realRecord = dbApiKeys.recordSyntheticStopAttempt;
+    let calls = 0;
+    const spy = vi.spyOn(dbApiKeys, "recordSyntheticStopAttempt").mockImplementation((id, refId, userId) => {
+      calls += 1;
+      if (calls < 3) throw busy;
+      return realRecord(id, refId, userId);
+    });
+    try {
+      const result = await runSyntheticStopMonitor("local", policyFor("SYN-BUSY-RECORD"), true);
+      expect(result.exited).toBe(1);
+      expect(broker.placed).toHaveLength(1);
+      expect(calls).toBe(3);
+      const row = listSyntheticStops("SYN-BUSY-RECORD", "local", "triggered")[0];
+      expect(row.lastAttemptRefId).toBe(broker.placed[0].refId);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("reverts the claim when post-claim recordSyntheticStopAttempt throws a non-busy error", async () => {
+    broker.positions = [{ symbol: "AAPL", quantity: 10, averageCost: 100, marketValue: 1000 }];
+    broker.quotes = { AAPL: { price: 90 } };
+    connectTestAccount("SYN-RECORD-THROW");
+    const spy = vi.spyOn(dbApiKeys, "recordSyntheticStopAttempt").mockImplementation(() => {
+      throw new Error("disk I/O error");
+    });
+    try {
+      const result = await runSyntheticStopMonitor("local", policyFor("SYN-RECORD-THROW"), true);
+      expect(result.exited).toBe(0);
+      expect(broker.placed).toHaveLength(0);
+      const active = listSyntheticStops("SYN-RECORD-THROW", "local");
+      const triggered = listSyntheticStops("SYN-RECORD-THROW", "local", "triggered");
+      expect(active).toHaveLength(1);
+      expect(triggered).toHaveLength(0);
+      expect(active[0].lastAttemptRefId).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   // ── Extended-hours routing (allowExtendedHoursSyntheticStops) — PR #1228 review regressions ──
 
   it("anchors the extended-hours SELL exit limit to the BID, not the ask-biased composite price", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-06-10T12:00:00Z")); // 08:00 ET = pre-market (EDT)
     try {
       broker.positions = [{ symbol: "AAPL", quantity: 10, averageCost: 100, marketValue: 1000 }];
@@ -859,7 +912,7 @@ describe("runSyntheticStopMonitor (orchestration)", () => {
   });
 
   it("keeps a FRACTIONAL extended-hours exit as a regular-hours market order (queues to the open instead of being hard-blocked)", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-06-10T12:00:00Z")); // 08:00 ET = pre-market (EDT)
     try {
       broker.positions = [{ symbol: "AAPL", quantity: 10.5, averageCost: 100, marketValue: 1050 }];
@@ -1205,7 +1258,7 @@ describe("runSyntheticStopMonitor (orchestration)", () => {
 
   describe("Exit Strategy Phase A: confirmation-based bad-tick acceptance & halted protection", () => {
     it("bad tick confirmation: N=3 consecutive out-of-band prints accept the new level and trigger", async () => {
-      vi.useFakeTimers();
+      vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(new Date("2026-07-15T10:00:00-04:00")); // 10:00 AM EDT = regular hours
       try {
         connectTestAccount("SYN-CONFIRM");
@@ -1248,7 +1301,7 @@ describe("runSyntheticStopMonitor (orchestration)", () => {
     });
 
     it("bad tick non-confirmation: non-agreeing out-of-band prints reset suspect count", async () => {
-      vi.useFakeTimers();
+      vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(new Date("2026-07-15T10:00:00-04:00")); // 10:00 AM EDT = regular hours
       try {
         connectTestAccount("SYN-RESET");

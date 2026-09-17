@@ -15,6 +15,7 @@ import { isEarningsCallsRefreshDue, refreshEarningsCallsTranscriptsIfDue } from 
 import { isRoicTranscriptRefreshDue, refreshRoicTranscriptsIfDue } from "./web-sources/roic-transcripts";
 import { runDailyLearningReviewIfDue } from "./learning-review";
 import { isRunAllowedNow } from "./market-hours";
+import { shouldDeferRagIngestDuringRth } from "./sqlite-event-loop";
 import { runProviderTierCheckIfDue } from "./provider-tier";
 import { refreshLitestreamRemoteInventoryIfDue } from "./litestream-remote-inventory";
 import { runR2UsageCheckIfDue, runR2UsageDailyDigestIfDue } from "./r2-usage";
@@ -892,7 +893,8 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
   // this guard a breached ceiling would still let the weekly filing-body ingest spend.
   const filingIngestDue = isFilingIngestDue();
   const transcriptIngestDue = isFmpTranscriptRefreshDue();
-  if ((filingIngestDue || transcriptIngestDue) && checkMonthlyLlmSpendCeiling().ok) {
+  const deferRagIngest = shouldDeferRagIngestDuringRth();
+  if ((filingIngestDue || transcriptIngestDue) && checkMonthlyLlmSpendCeiling().ok && !deferRagIngest) {
     // DEMAND-FIRST: held-by-value, watchlist, technical, policy universe, then the
     // 1k-issuer manifest.  Insertion order is the ingest order; a Set union used to
     // drop value ranking so the desk's names waited behind the alphabet.
@@ -928,7 +930,7 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
   // with them via the shared durable RAG_REINDEX operation lease (acquired inside the producer,
   // like refreshFilingBodies/refreshFmpTranscripts; a busy lease is a benign deferred pass —
   // the daily watermark is untouched, so a later tick retries). Self-guarded.
-  if (isEarningsCallsRefreshDue() && checkMonthlyLlmSpendCeiling().ok) {
+  if (isEarningsCallsRefreshDue() && checkMonthlyLlmSpendCeiling().ok && !deferRagIngest) {
     void journalLane("earningscalls-refresh", {}, () => refreshEarningsCallsTranscriptsIfDue()).catch((err) =>
       console.error("[scheduler] earningscalls transcript refresh error:", err instanceof Error ? err.message : err)
     );
@@ -939,7 +941,7 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
   // Cached earningscalls_transcripts + data/roic-artifacts never re-list or re-fetch.
   // Holdings → watchlist, last N fiscal quarters, cap ROIC_TRANSCRIPTS_MAX_PER_RUN.
   // Library helpers existed earlier without a scheduler caller — that left zero ROIC saves.
-  if (isRoicTranscriptRefreshDue() && !hasInFlightStrategyWork() && checkMonthlyLlmSpendCeiling().ok) {
+  if (isRoicTranscriptRefreshDue() && !hasInFlightStrategyWork() && checkMonthlyLlmSpendCeiling().ok && !deferRagIngest) {
     void journalLane("roic-transcript-refresh", {}, () => refreshRoicTranscriptsIfDue()).catch((err) =>
       console.error("[scheduler] roic transcript refresh error:", err instanceof Error ? err.message : err)
     );

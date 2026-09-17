@@ -1,5 +1,10 @@
 # Current Status
 
+## 2026-09-17 GROK — SQLITE_BUSY event-loop pin+yield (board e7b49943)
+
+ST production stalls ~every 30 minutes: Traefik 503 on `/api/health` while Docker still says healthy.  Docker restart recovers briefly; Coolify Deploy is not the recovery.  WIP lands as-is on `grok/rth-event-loop-stall` (worktree `~/apps/trading-grok-rth-stall`): serving `busy_timeout` is a 100ms pin; async callers keep the 60s lock budget via `sqliteYieldRetry`; safety lanes yield; RTH RAG ingest defers.  Extra-ship no.  No Coolify Deploy.  Do not restart production from this lane.
+Rollout: `docs/rollouts/2026-09-17-sqlite-busy-event-loop-pin.md`.
+
 ## 2026-09-15 GROK — PR #3283 observability review threads
 
 Merged origin/main (phantom).  Sentry gen_ai usage is parsed from a cloned body while the span is open; span handle is request-scoped via AsyncLocalStorage.  Red Team JSON catch rethrows abort/transport.  PLAN.md records the implementation.  Merge is live — no Coolify Deploy.

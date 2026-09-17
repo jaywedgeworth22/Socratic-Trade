@@ -799,6 +799,7 @@ final class MobileStore: ObservableObject {
         for cookie in HTTPCookieStorage.shared.cookies ?? [] where client.ownsCookie(cookie) {
             HTTPCookieStorage.shared.deleteCookie(cookie)
         }
+        // Remove the UserDefaults blob so a cold launch after sign-out does not re-read it
         UserDefaults.standard.removeObject(forKey: Self.cacheKey)
         UserDefaults.standard.removeObject(forKey: Self.cacheTimestampKey)
         loadGeneration &+= 1

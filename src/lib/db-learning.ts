@@ -1696,7 +1696,17 @@ function replaceDocumentChunkFtsOccurrence(
 export function deleteDocumentChunkFtsBySourceAccession(source: string, accession: string): void {
   const db = getDb();
   const dropBoth = db.transaction(() => {
-    db.prepare("DELETE FROM document_chunks_fts WHERE source = ? AND accession = ?").run(source, accession);
+    const rowids = db
+      .prepare("SELECT fts_rowid FROM document_chunks_fts_index WHERE source = ? AND accession = ?")
+      .all(source, accession) as { fts_rowid: number }[];
+    const checkFts = db.prepare("SELECT source, accession FROM document_chunks_fts WHERE rowid = ?");
+    const delFts = db.prepare("DELETE FROM document_chunks_fts WHERE rowid = ?");
+    for (const { fts_rowid } of rowids) {
+      const live = checkFts.get(fts_rowid) as { source: string; accession: string } | undefined;
+      if (live && live.source === source && live.accession === accession) {
+        delFts.run(fts_rowid);
+      }
+    }
     db.prepare("DELETE FROM document_chunks_fts_index WHERE source = ? AND accession = ?").run(source, accession);
   });
   dropBoth();

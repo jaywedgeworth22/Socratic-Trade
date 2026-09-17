@@ -396,11 +396,12 @@ export function Segmented<T extends string>({
             aria-pressed={active}
             title={opt.title}
             onClick={() => onChange(opt.value)}
-            className={
+            className={cx(
+              "con-segmented-btn",
               active
                 ? "rounded px-2 py-1 text-[length:var(--con-fs-xs)] font-bold text-[color:var(--con-fg)] bg-[color:var(--con-surface)]"
                 : "rounded px-2 py-1 text-[length:var(--con-fs-xs)] text-[color:var(--con-muted)]"
-            }
+            )}
           >
             {opt.label}
           </button>

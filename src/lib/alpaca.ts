@@ -27,6 +27,7 @@ import {
 import { OrderValidationError } from "./types";
 import { fromAlpacaSymbol, normalizeSymbol, roundAlpacaPrice, toAlpacaSymbol } from "./money";
 import { mergeAccountCapabilities } from "./venue-contract";
+import { normalizeVenueOrder } from "./venue-normalization";
 import { toBrokerSide, isRejectedOrCanceledState } from "./broker-side";
 import { audit, getActiveConnectedAccount, getConnectedAccount, resolveApiKey } from "./db";
 import { logApiHealth } from "./db-health";
@@ -169,13 +170,6 @@ export function estimateReviewNotional(
   };
 }
 
-export interface AlpacaTimeInForceResolution {
-  timeInForce: "day" | "gtc";
-  /** True only when the CALLER asked for "gtc" and this resolved to "day" because of it — the
-   *  honest signal for an audit receipt. A caller that already asked for "gfd" isn't "normalized". */
-  normalized: boolean;
-  reason?: "fractional_quantity" | "notional";
-}
 
 /**
  * Alpaca requires time_in_force="day" for any order carrying a fractional share quantity or a
@@ -186,23 +180,6 @@ export interface AlpacaTimeInForceResolution {
  * proposal, so this can't drift from what really gets sent to the broker. Exported (and called from
  * a single place per order path below) so REST, MCP, and the native-trailing path can't disagree.
  */
-export function resolveAlpacaTimeInForce(input: {
-  requestedTimeInForce: TimeInForce;
-  isBracket: boolean;
-  quantity?: number;
-  notional?: number;
-}): AlpacaTimeInForceResolution {
-  const isFractionalQty = input.quantity != null && !Number.isInteger(input.quantity);
-  const isNotional = input.notional != null && input.notional > 0;
-  const requiresDay = input.isBracket || isFractionalQty || isNotional;
-  const timeInForce: "day" | "gtc" = requiresDay || input.requestedTimeInForce === "gfd" ? "day" : "gtc";
-  const normalized = input.requestedTimeInForce === "gtc" && (isFractionalQty || isNotional);
-  return {
-    timeInForce,
-    normalized,
-    reason: normalized ? (isFractionalQty ? "fractional_quantity" : "notional") : undefined
-  };
-}
 
 /** Alpaca's wire word for a stop-market is `stop`.  Keep `stop_limit` and everything else as-is. */
 export function mapAlpacaOrderTypeWrite(type: OrderType | string): string {
@@ -861,7 +838,19 @@ class AlpacaBrokerGateway implements BrokerGateway {
   }
 
   async getEquityTradability(accountNumber: string, symbols: string[]) {
-    return Object.fromEntries(symbols.map((symbol) => [normalizeSymbol(symbol), { tradable: true, fractional: true }]));
+    const results: Record<string, { tradable: boolean; fractional: boolean }> = {};
+    for (const symbol of symbols) {
+      try {
+        const asset = await this.trackHealth(() => this.alpaca.getAsset(toAlpacaSymbol(symbol)));
+        results[normalizeSymbol(symbol)] = {
+          tradable: asset.tradable === true,
+          fractional: asset.fractionable === true
+        };
+      } catch (error) {
+        results[normalizeSymbol(symbol)] = { tradable: false, fractional: false };
+      }
+    }
+    return results;
   }
 
   async reviewEquityOrder(input: EquityOrderInput): Promise<ReviewedOrder> {
@@ -871,7 +860,8 @@ class AlpacaBrokerGateway implements BrokerGateway {
     return { estimatedNotional, alerts, raw: { alpaca: true } };
   }
 
-  async placeEquityOrder(input: EquityOrderInput & { refId: string }): Promise<ExecutedOrder> {
+  async placeEquityOrder(rawInput: EquityOrderInput & { refId: string }): Promise<ExecutedOrder> {
+    const input = normalizeVenueOrder(rawInput, "alpaca", this.userId) as typeof rawInput;
     const isBracket = !!(input.bracketTakeProfit || input.bracketStopLoss);
     const isTrailing = input.trailPercent != null && input.trailPercent > 0;
 
@@ -887,10 +877,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
       if (!input.quantity || !(input.quantity > 0)) {
         throw new OrderValidationError("Alpaca trailing stop requires a positive share quantity (no notional trailing stops).");
       }
-      const trailingTif = resolveAlpacaTimeInForce({ requestedTimeInForce: input.timeInForce, isBracket: false, quantity: input.quantity });
-      if (trailingTif.normalized) {
-        audit("alpaca_tif_normalized_to_day", { symbol: input.symbol, side: input.side, requestedTimeInForce: input.timeInForce, reason: trailingTif.reason, quantity: input.quantity }, this.userId);
-      }
+      
       try {
         const raw = await this.trackHealth(
           () => this.alpaca.createOrder({
@@ -899,7 +886,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
             type: "trailing_stop",
             trail_percent: String(input.trailPercent),
             qty: input.quantity,
-            time_in_force: trailingTif.timeInForce,
+            time_in_force: input.timeInForce,
             client_order_id: input.refId
           }),
           { deadlineMs: ALPACA_BROKER_IO_DEADLINE_MS, retryTransient: false }
@@ -943,22 +930,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
     // is day-only (docs.alpaca.markets). A caller-requested "gtc" (an LLM proposal, or any
     // dollar-routed entry) that would otherwise 422 gets normalized instead of reaching the broker;
     // the original intent is preserved via an audit receipt (Codex review, item 10).
-    const tif = resolveAlpacaTimeInForce({
-      requestedTimeInForce: input.timeInForce,
-      isBracket,
-      quantity: effectiveQty,
-      notional: effectiveNotional
-    });
-    if (tif.normalized) {
-      audit("alpaca_tif_normalized_to_day", {
-        symbol: input.symbol,
-        side: input.side,
-        requestedTimeInForce: input.timeInForce,
-        reason: tif.reason,
-        quantity: effectiveQty,
-        dollarAmount: effectiveNotional
-      }, this.userId);
-    }
+    
 
     const fallbackFn = async () => {
       try {
@@ -966,7 +938,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
           symbol: toAlpacaSymbol(input.symbol),
           side: toBrokerSide(input.side), // short→sell, cover→buy; Alpaca infers open/close from position
           type: mapAlpacaOrderTypeWrite(input.type),
-          time_in_force: tif.timeInForce,
+          time_in_force: input.timeInForce,
           client_order_id: input.refId
         };
 
@@ -1030,7 +1002,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
       symbol: toAlpacaSymbol(input.symbol),
       side: toBrokerSide(input.side), // short→sell, cover→buy; Alpaca infers open/close from position
       type: mapAlpacaOrderTypeWrite(input.type),
-      time_in_force: tif.timeInForce,
+      time_in_force: input.timeInForce,
       client_order_id: input.refId
     };
 

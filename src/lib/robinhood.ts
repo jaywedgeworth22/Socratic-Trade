@@ -504,7 +504,8 @@ class HttpMcpRobinhoodGateway implements BrokerGateway {
     };
   }
 
-  async placeEquityOrder(input: EquityOrderInput & { refId: string }): Promise<ExecutedOrder> {
+  async placeEquityOrder(rawInput: EquityOrderInput & { refId: string }): Promise<ExecutedOrder> {
+    const input = normalizeVenueOrder(rawInput, "robinhood", this.userId) as typeof rawInput;
     const raw = await this.callTool("place_equity_order", { ...toMcpOrder(input), ref_id: input.refId }) as Record<string, unknown>;
     const orderId = raw.id ?? raw.order_id;
     // A response with no order id can't be tracked or reconciled against Robinhood's real order
@@ -965,7 +966,8 @@ class TestBrokerGateway implements BrokerGateway {
     return { estimatedNotional: input.dollarAmount ?? (input.quantity ?? 0) * estPrice, alerts: [], raw: { test: true } };
   }
 
-  async placeEquityOrder(input: EquityOrderInput & { refId: string }): Promise<ExecutedOrder> {
+  async placeEquityOrder(rawInput: EquityOrderInput & { refId: string }): Promise<ExecutedOrder> {
+    const input = normalizeVenueOrder(rawInput, "robinhood", this.userId) as typeof rawInput;
     const quotes = await this.getEquityQuotes(input.accountNumber, [input.symbol]);
     const price = quotes[normalizeSymbol(input.symbol)]?.price ?? 100;
     const estPrice = input.limitPrice ?? input.stopPrice ?? price;
@@ -1049,19 +1051,17 @@ export function toMcpOrder(input: EquityOrderInput): Record<string, unknown> {
     !wholeShare && ((input.dollarAmount != null && input.dollarAmount > 0) || (input.quantity != null && input.quantity > 0));
   const isStop = input.type === "stop_market" || input.type === "stop_limit";
   const isOpening = input.side === "buy";
-  const coerceFractional = isOpening && fractional && !isStop;
-
   return {
     account_number: input.accountNumber,
     symbol: normalizeSymbol(input.symbol),
     side: input.side,
-    type: coerceFractional ? "market" : input.type,
+    type: input.type,
     quantity: input.quantity?.toString(),
     dollar_amount: input.dollarAmount?.toFixed(2),
-    limit_price: coerceFractional ? undefined : input.limitPrice?.toFixed(2),
-    stop_price: coerceFractional ? undefined : input.stopPrice?.toFixed(2),
-    time_in_force: coerceFractional ? "gfd" : input.timeInForce,
-    market_hours: coerceFractional ? "regular_hours" : input.marketHours
+    limit_price: input.limitPrice?.toFixed(2),
+    stop_price: input.stopPrice?.toFixed(2),
+    time_in_force: input.timeInForce,
+    market_hours: input.marketHours
   };
 }
 

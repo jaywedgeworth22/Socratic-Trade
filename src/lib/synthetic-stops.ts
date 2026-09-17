@@ -966,22 +966,30 @@ export async function runSyntheticStopMonitor(
     //    market sell costs money.
     // The id is persisted (recordSyntheticStopAttempt) BEFORE the broker call, so even a placement
     // that throws mid-flight leaves a durable record of the possibly-live order.
+    //
+    // These post-claim writes MUST stay inside the try and go through sqliteYieldRetry.
+    // Serving busy_timeout is only SQLITE_BUSY_PIN_MS (100).  An unwrapped SQLITE_BUSY after
+    // claim() leaves status=triggered with no last_attempt_ref_id, so the fire loop skips the
+    // row and the 15-min re-arm grace leaves the position naked.  Wrap each statement on its
+    // own — insertFillEvent is not idempotent, so it must not share a retry envelope with
+    // upsertSyntheticStop.
     let generation = stop.fireGeneration;
     let refId: string | undefined;
-    if (stop.lastAttemptRefId) {
-      if (confirmedPriorExitDead(stop, false)) {
-        await sqliteYieldRetry(() => advanceSyntheticStopGeneration(stop.id, userId));
-        generation += 1;
-      } else {
-        refId = stop.lastAttemptRefId;
-      }
-    }
-    // Generate within the broker-portable charset so the tag round-trips exactly for the secondary
-    // client-order-id dedup (see brokerPortableRefId). A reused stop.lastAttemptRefId was itself
-    // stored portable, so both branches stay consistent.
-    refId ??= brokerPortableRefId(`sstop-${stop.id}-${Math.round(evaln.triggerPrice * 100)}${generation > 0 ? `-g${generation}` : ""}`);
-    recordSyntheticStopAttempt(stop.id, refId, userId);
     try {
+      if (stop.lastAttemptRefId) {
+        if (confirmedPriorExitDead(stop, false)) {
+          await sqliteYieldRetry(() => advanceSyntheticStopGeneration(stop.id, userId));
+          generation += 1;
+        } else {
+          refId = stop.lastAttemptRefId;
+        }
+      }
+      // Generate within the broker-portable charset so the tag round-trips exactly for the secondary
+      // client-order-id dedup (see brokerPortableRefId). A reused stop.lastAttemptRefId was itself
+      // stored portable, so both branches stay consistent.
+      const attemptRefId = refId ?? brokerPortableRefId(`sstop-${stop.id}-${Math.round(evaln.triggerPrice * 100)}${generation > 0 ? `-g${generation}` : ""}`);
+      refId = attemptRefId;
+      await sqliteYieldRetry(() => recordSyntheticStopAttempt(stop.id, attemptRefId, userId));
       // Mutation-lease fence: fail closed before the risk-CREATING exit placement if the
       // window's lease was lost (another sequence may already be mutating this account).
       fence?.();
@@ -994,13 +1002,13 @@ export async function runSyntheticStopMonitor(
         limitPrice: routing.limitPrice,
         timeInForce: "gfd",
         marketHours: routing.marketHours,
-        refId
+        refId: attemptRefId
       });
       // A non-throwing broker response can still be a synchronous rejection/cancellation (same
       // trap as the strategy placement paths). No order will ever execute — don't book a fill,
       // and re-arm the stop so the position isn't left unprotected behind a stuck 'triggered' row.
       if (isRejectedOrCanceledState(exec.state)) {
-        revertSyntheticStopClaim(stop.id, userId);
+        await sqliteYieldRetry(() => revertSyntheticStopClaim(stop.id, userId));
         auditSyntheticStopError(stop.id, stop.symbol, `Broker declined the protective exit (state: ${exec.state}).`, userId, policy, { orderId: exec.orderId });
         continue;
       }
@@ -1019,20 +1027,22 @@ export async function runSyntheticStopMonitor(
       const exitPrice = filledNow
         ? (source === "live" ? exec.averagePrice ?? price : applyPaperExitCost(price, exitSide, source))
         : price;
-      insertFillEvent({
-        userId,
-        accountNumber,
-        source,
-        executionMode,
-        symbol: normalizeSymbol(stop.symbol),
-        side: exitSide,
-        quantity: qty,
-        price: exitPrice,
-        notional: qty * exitPrice,
-        status: filledNow ? "filled" : "pending_reconciliation",
-        brokerOrderId: exec.orderId,
-        raw: { syntheticStop: true, triggerPrice: evaln.triggerPrice }
-      });
+      await sqliteYieldRetry(() =>
+        insertFillEvent({
+          userId,
+          accountNumber,
+          source,
+          executionMode,
+          symbol: normalizeSymbol(stop.symbol),
+          side: exitSide,
+          quantity: qty,
+          price: exitPrice,
+          notional: qty * exitPrice,
+          status: filledNow ? "filled" : "pending_reconciliation",
+          brokerOrderId: exec.orderId,
+          raw: { syntheticStop: true, triggerPrice: evaln.triggerPrice }
+        })
+      );
       // If a broker-held protective stop is resting for this symbol, cancel it — but ONLY when
       // this exit closes the WHOLE position (qty covers everything the broker stop didn't). A
       // PARTIAL synthetic fire (qty < positionQty) means a broker-held stop is already covering
@@ -1045,7 +1055,9 @@ export async function runSyntheticStopMonitor(
         await cancelBrokerProtectiveStop(userId, accountNumber, stop.symbol, gateway, policy.connectedAccountId).catch(() => {});
       }
       // Already 'triggered' via the claim; this just records the final lastPrice.
-      upsertSyntheticStop({ ...stop, status: "triggered", lastPrice: price, suspectPrice: finalSuspectPrice, suspectCount: finalSuspectCount });
+      await sqliteYieldRetry(() =>
+        upsertSyntheticStop({ ...stop, status: "triggered", lastPrice: price, suspectPrice: finalSuspectPrice, suspectCount: finalSuspectCount })
+      );
       result.exited++;
       audit("synthetic_stop_triggered", { symbol: stop.symbol, side: stop.side, exitSide, price, triggerPrice: evaln.triggerPrice, quantity: qty, orderId: exec.orderId, kind: stopKind }, userId, policy.connectedAccountId);
     } catch (err) {
@@ -1054,7 +1066,7 @@ export async function runSyntheticStopMonitor(
       // KEEPS last_attempt_ref_id (and never touches fire_generation): the broker may have accepted
       // this order before the call threw, and remembering its client_order_id is what lets the
       // retry reuse the same id (422-safe) until that order is positively confirmed dead.
-      revertSyntheticStopClaim(stop.id, userId);
+      await sqliteYieldRetry(() => revertSyntheticStopClaim(stop.id, userId));
       auditSyntheticStopError(stop.id, stop.symbol, err instanceof Error ? err.message : String(err), userId, policy);
     }
   }

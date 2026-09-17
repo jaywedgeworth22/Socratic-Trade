@@ -1,5 +1,10 @@
 # Current Status
 
+## 2026-09-17 CURSOR-BUGBOT — post-claim fire writes after #3383 pin
+
+#3383 is live (`2fc699c328`).  Serving `busy_timeout` is 100ms.  After `claimSyntheticStop()`, `recordSyntheticStopAttempt` / `insertFillEvent` / `revertSyntheticStopClaim` stayed unwrapped and `recordSyntheticStopAttempt` was outside the place try/catch.  SQLITE_BUSY on that write leaves `triggered` with no `last_attempt_ref_id` until the 15-min re-arm grace — naked position after a real trigger.  Wrap each post-claim statement in `sqliteYieldRetry` and move the attempt record inside the try so a throw reverts.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-17-post-claim-sqlite-busy-fire.md`.
+
 ## 2026-09-17 GROK — PR #3383 tip-fix: fake timers vs yieldEventLoop (board e7b49943)
 
 Hosted `verify` on #3383 timed out (`test/synthetic-stops.test.ts` and sibling reprice files at 60s/30s).  Cause: `runSyntheticStopMonitor` now `await yieldEventLoop()` (`setImmediate`), and those tests used full `vi.useFakeTimers()` which never flushes it.  Tests now fake `Date` only; `isSqliteBusy` does not retry a stamped non-BUSY sqlite code.  Pin+yield production behavior unchanged.  Extra-ship no.  No Coolify Deploy.

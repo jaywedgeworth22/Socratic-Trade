@@ -21,6 +21,7 @@
 
 import { getDb } from "./db";
 import { sweepEmbedStage } from "./db-embed-stage";
+import { sweepPortfolioSnapshots } from "./db-fills";
 import { getInternalSetting, setInternalSetting } from "./db-settings";
 
 /** Kinds whose volume is observability noise (deduped now, but history is heavy). */
@@ -60,6 +61,8 @@ export interface AuditPruneResult {
   embedStageExpired: number;
   /** embed_stage rows removed oldest-first by the defensive 2 GiB size cap (one audit row). */
   embedStageCapPruned: number;
+  /** portfolio_snapshots removed by the retention window (90 days). */
+  portfolioSnapshotsPruned: number;
 }
 
 export function pruneAuditEvents(now: Date = new Date(), batchLimit: number = AUDIT_PRUNE_BATCH_LIMIT): AuditPruneResult {
@@ -75,7 +78,8 @@ export function pruneAuditEvents(now: Date = new Date(), batchLimit: number = AU
     providerDispatch: 0,
     providerOutbox: 0,
     embedStageExpired: 0,
-    embedStageCapPruned: 0
+    embedStageCapPruned: 0,
+    portfolioSnapshotsPruned: 0
   };
 
   result.auditObservability = db
@@ -115,6 +119,9 @@ export function pruneAuditEvents(now: Date = new Date(), batchLimit: number = AU
   const stageSweep = sweepEmbedStage(now);
   result.embedStageExpired = stageSweep.expired;
   result.embedStageCapPruned = stageSweep.capPruned;
+  
+  result.portfolioSnapshotsPruned = sweepPortfolioSnapshots(now);
+  
   return result;
 }
 

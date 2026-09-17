@@ -12,32 +12,15 @@ import { normalizeTickerLogoSymbol } from "@/lib/ticker-logos";
 import { cx } from "../lib/format";
 import { Tooltip } from "./primitives";
 import { useTickerLogoDisplay } from "../lib/useTickerLogoDisplay";
+import { useTheme } from "@/app/ui/theme";
 
 export type { TickerLogoDisplay };
 
 /** Resolved light/dark for the console subtree containing `ref`. Reacts to both
  *  the explicit data-theme attribute (chrome toggle) and system changes. */
-export function useConsoleResolvedTheme(ref: RefObject<HTMLElement | null>): "dark" | "light" {
-  const [theme, setTheme] = useState<"dark" | "light">("dark"); // SSR default: dark
-
-  useEffect(() => {
-    const root = ref.current?.closest<HTMLElement>(".console-root") ?? null;
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const update = () => {
-      const explicit = root?.getAttribute("data-theme");
-      setTheme(explicit === "light" || explicit === "dark" ? explicit : mq.matches ? "dark" : "light");
-    };
-    update();
-    const observer = root ? new MutationObserver(update) : null;
-    if (root) observer!.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
-    mq.addEventListener("change", update);
-    return () => {
-      observer?.disconnect();
-      mq.removeEventListener("change", update);
-    };
-  }, [ref]);
-
-  return theme;
+export function useConsoleResolvedTheme(): "dark" | "light" {
+  const { resolvedTheme } = useTheme();
+  return resolvedTheme;
 }
 
 export type TickerLogoSize = "sm" | "md" | "lg";
@@ -96,7 +79,7 @@ export function TickerLogo({
   const normalized = useMemo(() => normalizeTickerLogoSymbol(symbol), [symbol]);
   const [failed, setFailed] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
-  const theme = useConsoleResolvedTheme(ref);
+  const theme = useConsoleResolvedTheme();
 
   useEffect(() => {
     setFailed(false);

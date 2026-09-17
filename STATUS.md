@@ -1,5 +1,10 @@
 # Current Status
 
+## 2026-09-17 GROK — PR #3383 tip-fix: fake timers vs yieldEventLoop (board e7b49943)
+
+Hosted `verify` on #3383 timed out (`test/synthetic-stops.test.ts` and sibling reprice files at 60s/30s).  Cause: `runSyntheticStopMonitor` now `await yieldEventLoop()` (`setImmediate`), and those tests used full `vi.useFakeTimers()` which never flushes it.  Tests now fake `Date` only; `isSqliteBusy` does not retry a stamped non-BUSY sqlite code.  Pin+yield production behavior unchanged.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-17-sqlite-busy-event-loop-pin.md`.
+
 ## 2026-09-17 GROK — SQLITE_BUSY event-loop pin+yield (board e7b49943)
 
 ST production stalls ~every 30 minutes: Traefik 503 on `/api/health` while Docker still says healthy.  Docker restart recovers briefly; Coolify Deploy is not the recovery.  WIP lands as-is on `grok/rth-event-loop-stall` (worktree `~/apps/trading-grok-rth-stall`): serving `busy_timeout` is a 100ms pin; async callers keep the 60s lock budget via `sqliteYieldRetry`; safety lanes yield; RTH RAG ingest defers.  Extra-ship no.  No Coolify Deploy.  Do not restart production from this lane.

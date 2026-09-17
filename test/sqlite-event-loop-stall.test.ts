@@ -36,22 +36,33 @@ describe("sqliteYieldRetry", () => {
     const { sqliteYieldRetry } = await import("../src/lib/sqlite-event-loop");
     const busy = Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" });
     let concurrent = 0;
-    const tick = setInterval(() => {
+    // Queue before the retry yields so the next event-loop turn must run it.
+    // A 1ms interval can lose the race against a handful of setImmediate retries
+    // on a loaded CI worker (hosted verify: expected 0 to be greater than 0).
+    setImmediate(() => {
       concurrent += 1;
-    }, 1);
-    tick.unref?.();
+    });
 
-    try {
-      let calls = 0;
-      await sqliteYieldRetry(() => {
+    let calls = 0;
+    await sqliteYieldRetry(() => {
+      calls += 1;
+      if (calls < 8) throw busy;
+      return true;
+    });
+    expect(concurrent).toBeGreaterThan(0);
+  });
+
+  it("does not retry a non-busy sqlite code even when the message mentions a lock", async () => {
+    const { sqliteYieldRetry } = await import("../src/lib/sqlite-event-loop");
+    let calls = 0;
+    const err = Object.assign(new Error("database is locked"), { code: "SQLITE_CONSTRAINT" });
+    await expect(
+      sqliteYieldRetry(() => {
         calls += 1;
-        if (calls < 8) throw busy;
-        return true;
-      });
-      expect(concurrent).toBeGreaterThan(0);
-    } finally {
-      clearInterval(tick);
-    }
+        throw err;
+      })
+    ).rejects.toThrow("database is locked");
+    expect(calls).toBe(1);
   });
 
   it("does not retry a non-busy error", async () => {

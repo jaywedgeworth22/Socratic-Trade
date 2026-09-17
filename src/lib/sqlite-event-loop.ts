@@ -28,8 +28,11 @@ export function isSqliteBusy(err: unknown): boolean {
   if (err == null) return false;
   if (typeof err === "object") {
     const code = (err as { code?: unknown }).code;
-    if (typeof code === "string" && (code.startsWith("SQLITE_BUSY") || code.startsWith("SQLITE_LOCKED"))) {
-      return true;
+    // A stamped sqlite code wins.  SQLITE_CONSTRAINT / SQLITE_ERROR / Node errno
+    // strings must not enter the 60s yield-retry loop even if the message mentions
+    // a lock (account-write-fence RAISE, wrapped broker errors, etc.).
+    if (typeof code === "string" && code.length > 0) {
+      return code.startsWith("SQLITE_BUSY") || code.startsWith("SQLITE_LOCKED");
     }
   }
   const message = err instanceof Error ? err.message : String(err);

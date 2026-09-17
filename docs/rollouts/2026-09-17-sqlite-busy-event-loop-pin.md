@@ -29,10 +29,18 @@ Serving-connection `busy_timeout` is now a short pin (`SQLITE_BUSY_PIN_MS = 100`
 - Non-idempotent `fire_generation += 1` is retried per statement so a busy audit cannot advance generation twice.
 - Finish-only: no redesign, no production restart, no Coolify Deploy, no extra-ship.
 
+## Tip-fix (hosted verify timeouts, 2026-09-17)
+
+Hosted `verify-hosted` / `verify` on PR #3383 (`221d4168c`, run `35235213233`) failed with `Test timed out in 60000ms` across `test/synthetic-stops.test.ts` (from the first `vi.useFakeTimers()` case at line 837, then every later `protectWhileHalted` case) plus 30s timeouts in `test/approval-limit-reprice.test.ts` and `test/protective-exit-reprice.test.ts`.  `sqliteYieldRetry` / `runSyntheticStopMonitor` now `await yieldEventLoop()` (`setImmediate`).  Full Vitest fake timers mock `setImmediate` and never flush it, so the await never resolves; a timed-out `try/finally` also leaked fake timers into later cases (`maxWorkers: 1`).  Pin+yield production behavior is unchanged.
+
+- `test/synthetic-stops.test.ts`, `test/approval-limit-reprice.test.ts`, `test/protective-exit-reprice.test.ts` — `vi.useFakeTimers({ toFake: ["Date"] })` plus `afterEach` real-timer restore
+- `src/lib/sqlite-event-loop.ts` — `isSqliteBusy` does not retry when a non-BUSY sqlite `code` is stamped
+- `test/sqlite-event-loop-stall.test.ts` — concurrent-yield assertion uses `setImmediate` (not a 1ms interval); coded non-BUSY errors do not retry
+
 ## Verification State
 
-- Focused: `npx vitest run test/sqlite-event-loop-stall.test.ts` (run after PR open; prior job timed out at 900s without committing).
-- Full AGENTS.md quartet (`lint` / `tsc` / `test` / `build`) is the hosted `verify` gate on the PR.  This lane prioritized commit+push+PR over a local full gate.
+- Focused: `npx vitest run test/sqlite-event-loop-stall.test.ts test/synthetic-stops.test.ts -t "protectWhileHalted: a pending_replace marker SURVIVES" test/approval-limit-reprice.test.ts test/protective-exit-reprice.test.ts`
+- Full AGENTS.md quartet (`lint` / `tsc` / `test` / `build`) is the hosted `verify` gate on the PR.
 
 ## Next Steps & Blockers
 

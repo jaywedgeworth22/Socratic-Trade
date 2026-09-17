@@ -1,5 +1,10 @@
 # Current Status
 
+## 2026-09-17 CURSOR — RTH Deploy Latch Crons margin (FLEET-INFRA-C3)
+
+Sentry `ci-rth-deploy-latch` false-pages every weekday at 21:35Z.  The drain job itself succeeds; GitHub just starts the `20 21 * * 1-5` schedule 2-8h late (typical 23:14-23:54Z).  Same class as #3194 / FLEET-INFRA-C1.  Raise `CHECKIN_MARGIN_OVERRIDES["RTH Deploy Latch"]` to 600.  Cron and drain script unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` the latch (that nudges Coolify).  #3302 already moved the live slug to `ci-socratic-trade-rth-deploy-latch`; do not close C3 on merge.
+Rollout: `docs/rollouts/2026-09-17-rth-deploy-latch-monitor-margin.md`.
+
 ## 2026-09-17 CURSOR-BUGBOT — post-claim fire writes after #3383 pin
 
 #3383 is live (`2fc699c328`).  Serving `busy_timeout` is 100ms.  After `claimSyntheticStop()`, `recordSyntheticStopAttempt` / `insertFillEvent` / `revertSyntheticStopClaim` stayed unwrapped and `recordSyntheticStopAttempt` was outside the place try/catch.  SQLITE_BUSY on that write leaves `triggered` with no `last_attempt_ref_id` until the 15-min re-arm grace — naked position after a real trigger.  Wrap each post-claim statement in `sqliteYieldRetry` and move the attempt record inside the try so a throw reverts.  Extra-ship no.  No Coolify Deploy.

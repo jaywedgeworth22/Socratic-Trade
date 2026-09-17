@@ -7,8 +7,8 @@ import { AdminShell } from "./admin-shell";
 
 export const metadata = { title: "Admin Portal" };
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const reqHeaders = headers();
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const reqHeaders = await headers();
   const email = reqHeaders.get(AUTHENTICATED_EMAIL_HEADER);
   const source = reqHeaders.get(AUTHENTICATED_IDENTITY_SOURCE_HEADER);
   

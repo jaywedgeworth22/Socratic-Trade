@@ -11,9 +11,24 @@ enum AppPalette {
         }
         return UIColor(red: 0x12 / 255, green: 0x61 / 255, blue: 0x6F / 255, alpha: 1) // #12616f
     })
-    static let positive = Color.green
-    static let warning = Color.orange
-    static let negative = Color.red
+    static let positive = Color(uiColor: UIColor { traits in
+        if traits.userInterfaceStyle == .dark {
+            return .systemGreen
+        }
+        return UIColor(red: 0x1A / 255, green: 0x7F / 255, blue: 0x37 / 255, alpha: 1) // #1a7f37
+    })
+    static let warning = Color(uiColor: UIColor { traits in
+        if traits.userInterfaceStyle == .dark {
+            return .systemOrange
+        }
+        return UIColor(red: 0x9A / 255, green: 0x67 / 255, blue: 0x00 / 255, alpha: 1) // #9a6700
+    })
+    static let negative = Color(uiColor: UIColor { traits in
+        if traits.userInterfaceStyle == .dark {
+            return .systemRed
+        }
+        return UIColor(red: 0xB3 / 255, green: 0x26 / 255, blue: 0x1E / 255, alpha: 1) // #b3261e
+    })
 }
 
 enum AppFormat {

@@ -39,8 +39,10 @@ Hosted `verify-hosted` / `verify` on PR #3383 (`221d4168c`, run `35235213233`) f
 
 ## Verification State
 
-- Focused: `npx vitest run test/sqlite-event-loop-stall.test.ts test/synthetic-stops.test.ts -t "protectWhileHalted: a pending_replace marker SURVIVES" test/approval-limit-reprice.test.ts test/protective-exit-reprice.test.ts`
-- Full AGENTS.md quartet (`lint` / `tsc` / `test` / `build`) is the hosted `verify` gate on the PR.
+- `node node_modules/vitest/vitest.mjs run test/sqlite-event-loop-stall.test.ts --testTimeout=20000` — 9/9 passed (2.33s)
+- `node node_modules/vitest/vitest.mjs run test/synthetic-stops.test.ts --testTimeout=20000` — 75/75 passed (1.66s)
+- `node node_modules/vitest/vitest.mjs run test/approval-limit-reprice.test.ts test/protective-exit-reprice.test.ts --testTimeout=15000` — 29/29 passed (2.10s)
+- Full AGENTS.md quartet (`lint` / `tsc` / `test` / `build`) is the hosted `verify` gate on the PR.  Local `npm install` ETIMEDOUT on the shared git dep; focused vitest used the existing tree plus a cloned `congress-trading-shared` dist.
 
 ## Next Steps & Blockers
 

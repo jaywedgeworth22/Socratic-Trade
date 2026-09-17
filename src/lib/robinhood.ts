@@ -969,11 +969,18 @@ class TestBrokerGateway implements BrokerGateway {
     const quotes = await this.getEquityQuotes(input.accountNumber, [input.symbol]);
     const price = quotes[normalizeSymbol(input.symbol)]?.price ?? 100;
     const estPrice = input.limitPrice ?? input.stopPrice ?? price;
-    const quantity = input.quantity ?? (input.dollarAmount ? input.dollarAmount / estPrice : undefined);
+    let quantity = input.quantity ?? (input.dollarAmount ? input.dollarAmount / estPrice : undefined);
+    let state = "filled";
+    if (input.symbol === "REJECT") {
+      throw new Error("Simulated rejection for REJECT symbol");
+    } else if (input.symbol === "PARTIAL") {
+      state = "partially_filled";
+      quantity = quantity ? quantity / 2 : undefined;
+    }
     return {
       orderId: `test-${input.refId}`,
       refId: input.refId,
-      state: "filled",
+      state,
       filledQuantity: quantity,
       averagePrice: estPrice,
       raw: { test: true }

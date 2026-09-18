@@ -3,7 +3,7 @@
 // The secrets-manager runner (scripts/infisical-run.mjs) injects `SECRETS_SOURCE` into the process
 // env when it launches the app, recording that secrets came from a manager rather than a plain
 // `npm run dev`. When `REQUIRE_SECRETS_MANAGER` is set, the app refuses to boot unless that marker
-// is present — so a credential can never silently be served out of an `.env.local` (or any non-
+// is present — so a credential can never silently be served out of a local dotenv file (or any non-
 // Infisical path) in a deployment that's supposed to source everything from Infisical.  Default
 // OFF → zero behavior change for local dev (where `npm run dev:secrets` is the canonical start
 // path), CI, and tests. Owner directive 2026-09-18: prod INFISICAL is the sole source of truth —

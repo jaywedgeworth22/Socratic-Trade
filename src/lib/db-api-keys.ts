@@ -31,7 +31,7 @@ import { invalidateDashboardSnapshotCache } from "./dashboard-snapshot-cache";
 // Load the bootstrap-identity handoff file (Infisical client credentials + ALIASES only) for
 // local development. Production uses Infisical exclusively — see docs/secrets.md. The chmod-600
 // `~/.secrets/global-api-keys` file is the documented owner-side bootstrap identity store, NOT a
-// `.env` file: a working tree with no `.env.local` is the new contract as of 2026-09-18
+// `.env` file: a working tree with no local dotenv file is the new contract as of 2026-09-18
 // (PR `cursor/strict-infisical-no-env-files`). For dev/CI/cloud-agent seats, run
 // `npm run dev:secrets` (Infisical runner) instead of `npm run dev` plain.
 if (process.env.NODE_ENV !== "test" && !process.env.VITEST && process.env.NODE_ENV !== "production" && !process.env.COOLIFY_PROD_PHASE2) {

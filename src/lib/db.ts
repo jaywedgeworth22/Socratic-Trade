@@ -3445,7 +3445,7 @@ export function hasEncryptedCredentials(database: Database.Database): boolean {
  * Fail loudly at boot rather than silently decrypting stored creds to '' (which a
  * per-process random ENCRYPTION_KEY fallback does). Triggers only when the key is absent
  * (ephemeral random fallback) AND the DB already holds ciphertext. `ephemeral` is read
- * from process.env at call time so it reflects any .env.local loaded during import.
+ * from process.env at call time so it reflects any local dotenv-style file loaded during import.
  */
 export function assertEncryptionKeyAvailable(
   database: Database.Database,

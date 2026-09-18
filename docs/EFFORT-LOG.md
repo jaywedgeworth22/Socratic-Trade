@@ -706,6 +706,7 @@ As of 2026-07-08 (assignment-rule update).
 - **[Socratic.Trade][CODEX sublane] RAG structured-vs-narrative routing boundary (branch `codex/rag-data-routing-20260722`, worktree `/Users/jay/.codex/worktrees/rag-data-routing-20260722`, claimed 2026-07-22) — LOCALLY READY.** Typed, fail-closed information-needs contract now keeps current prices, positions, orders, and financial facts deterministic while filings/transcripts/lessons/narrative research alone enter RAG. Focused routing tests 4/4, scoped lint, TypeScript, and diff check green; slow strategy integration verification deferred under host saturation. No provider, corpus, broker, or production writes.
 
 ## In Progress
+- **2026-09-18 - CLAUDE - IN PR - Durable boot/exit ledger + restart-loop alert (3 boots / 45 min) so container replacement stops destroying restart forensics (board `a9676caf`, branch `claude/r3-st-landing-restart-ledger`).**  Repo code only; the Coolify-side restart-count monitor remains a host task.
 - **2026-09-09 - BF-FIXER - PLANNED - ST Docker HEALTHCHECK curl zombies make Traefik 503.** <!-- wb-agent-report:e7b499437fd94472a4acd02211e541d1 -->
 - **2026-09-09 - CLAUDE - IN_PROGRESS - ST backup methodology: policy doc, cold-archive depth 4, whole-attempt bounds, restore PROVEN (PR #3204).** <!-- wb-agent-report:3018544983a44786bee2b2ea5f2b329d -->
 - **2026-09-08 - BF-DEPLOYER - PLANNED - ST 15-min Coolify API redeploy loop (same SHA 044a74f26e) causing 503s.** <!-- wb-agent-report:fbf9bb2ecadc42c8a9f404d0f9043832 -->

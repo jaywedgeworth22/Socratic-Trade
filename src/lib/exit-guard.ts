@@ -37,6 +37,14 @@ export interface ExitGuardOptions {
   force?: boolean;
   /** Log sink; defaults to console.error so receipts land in container logs. */
   log?: (line: string) => void;
+  /**
+   * Called synchronously with the final exit code, the stop signal seen (if any), and the
+   * process.exit call-site stack, right before the real exit.  The console receipt above dies with
+   * the container (Coolify replaces it on every restart); src/lib/boot-ledger.ts passes a receiver
+   * here so the same facts also land on the persistent data volume.  Must not throw; errors are
+   * swallowed so a broken receiver can never block an exit.
+   */
+  receipt?: (detail: { code: number; signal?: string; callSite?: string }) => void;
 }
 
 function callSite(): string {
@@ -53,6 +61,13 @@ export function installProcessExitGuard(
   options: ExitGuardOptions = {},
 ): boolean {
   const log = options.log ?? ((line: string) => console.error(line));
+  const emitReceipt = (detail: { code: number; signal?: string; callSite?: string }) => {
+    try {
+      options.receipt?.(detail);
+    } catch {
+      // a receipt receiver must never block or alter an exit
+    }
+  };
   const active =
     options.force === true ||
     proc.env.EXIT_GUARD === "on" ||
@@ -75,6 +90,7 @@ export function installProcessExitGuard(
       if (proc.listenerCount(sig) <= 1) {
         const code = STOP_SIGNAL_EXIT_CODES[sig];
         log(`[exit-guard] no other ${sig} handler is registered; exiting ${code}`);
+        emitReceipt({ code, signal: sig });
         realExit(code);
       }
     });
@@ -89,11 +105,17 @@ export function installProcessExitGuard(
           `(it reads as a clean/manual stop and can strand the container). ` +
           `Re-tagging to exit ${EXIT_CODE_SPONTANEOUS_CLEAN_RETAG}.\n${callSite()}`,
       );
+      emitReceipt({ code: EXIT_CODE_SPONTANEOUS_CLEAN_RETAG, callSite: callSite() });
       return realExit(EXIT_CODE_SPONTANEOUS_CLEAN_RETAG);
     }
     log(
       `[exit-guard] process.exit(${numeric})${stopSignalSeen ? ` after ${stopSignalSeen}` : ""}\n${callSite()}`,
     );
+    emitReceipt({
+      code: numeric,
+      ...(stopSignalSeen ? { signal: stopSignalSeen } : {}),
+      callSite: callSite(),
+    });
     return realExit(code as number);
   }) as typeof proc.exit;
   proc.exit = guardedExit;

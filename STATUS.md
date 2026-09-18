@@ -1,5 +1,16 @@
 # Current Status
 
+## 2026-09-18 CLAUDE — Restart loops now leave a durable trail and raise an alert (board a9676caf)
+
+Coolify replaces the container on every restart, so a previous container's logs and exit-guard
+receipts vanished and nothing alerted on the loop itself.  New `src/lib/boot-ledger.ts` appends one
+JSON line per boot/exit to `boot-ledger.jsonl` beside the DB on the persistent volume (exit code,
+signal, `process.exit` call site via a new `exit-guard` receipt hook; a boot with no predecessor
+exit line reads as "killed").  3 boots in 45 minutes raises a Sentry `fatal` message plus one admin
+alert per 12h.  Repo code only: the Coolify-side restart-count monitor is still a host task.
+Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-restart-loop-boot-ledger.md`.
+
 ## 2026-09-18 CLAUDE — Post-cancel protective-stop bookkeeping after the #3383 pin (money path)
 
 `#3383` dropped the serving `busy_timeout` 60000ms -> 100ms, so a sync SQLite write that used to

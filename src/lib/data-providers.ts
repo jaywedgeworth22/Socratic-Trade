@@ -1653,8 +1653,11 @@ export class CascadingEnrichmentProvider implements MarketEnrichmentProvider {
           !(Array.isArray(value) && value.length === 0) &&
           !(typeof value === "string" && value.trim().length === 0);
         if (usableValue || supplied) {
-          // Always stamp source + asOf + fetchedAt (never leave asOf blank when we have a value).
-          // Provider fieldDates / fieldObservations win when present; else cascade clock.
+          // Always stamp source + fetchedAt.  asOf is the provider's own claim about when the value was
+          // valid (fieldObservations / fieldDates / observedAt / record asOf) and is NEVER fabricated
+          // from the cascade clock: with no provider timestamp it stays undefined and fetchedAt records
+          // when we retrieved it.  Downstream persistence (db-fundamentals recordsFromEnrichmentMap)
+          // falls back to fetchedAt for the NOT NULL as_of column.
           // Capability / preference notes: source-capability-matrix.ts
           const resolvedValue = usableValue ? value : supplied?.value;
           const asOf =

@@ -24,6 +24,10 @@ Rollout: `docs/rollouts/2026-09-18-datadog-free-remaining.md`.
 
 Hosted tsc failed on `@/app/ui/theme` (alias is `src/*`).  Relative import from console chrome/ticker-logo.  Default stays light.  Extra-ship no.  No Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-18-ag-takeover-theme-ci.md`.
+## 2026-09-18 GROK — MM AG takeover #3380 venue CI (board 6aa1e66e)
+
+Hosted eslint failed prefer-const on unused-mutated quantity/dollarAmount.  Destructure them as const.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-ag-takeover-venue-ci.md`.
 
 ## 2026-09-18 CURSOR — Effort Issues Sync Crons margin (FLEET-INFRA-C0)
 

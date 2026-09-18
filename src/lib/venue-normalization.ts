@@ -3,7 +3,8 @@ import { audit } from "./db";
 import { roundAlpacaPrice, roundCents } from "./money";
 
 export function normalizeVenueOrder(input: EquityOrderInput, broker: string, userId: string): EquityOrderInput {
-  let { type, timeInForce, marketHours, limitPrice, stopPrice, quantity, dollarAmount, bracketTakeProfit, bracketStopLoss, bracketStopLimit } = input;
+  let { type, timeInForce, marketHours, limitPrice, stopPrice, bracketTakeProfit, bracketStopLoss, bracketStopLimit } = input;
+  const { quantity, dollarAmount } = input;
   let normalized = false;
   let reason = "";
 

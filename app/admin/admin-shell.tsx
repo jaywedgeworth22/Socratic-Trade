@@ -168,6 +168,11 @@ export function AdminShell({ children, adminEmail }: { children: React.ReactNode
             <span>
               <HeaderLogo height={18} />
             </span>
+            {activeItem ? (
+              <span className="hidden truncate text-[length:var(--con-fs-sm)] text-[color:var(--con-muted)] sm:inline">
+                {activeItem.label}
+              </span>
+            ) : null}
           </div>
           <div className="flex-1" />
           <Link href="/console" className="con-btn con-btn-outline hidden shrink-0 h-8 mr-2 sm:inline-flex">

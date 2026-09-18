@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Cpu, RefreshCw, AlertTriangle, Database } from "lucide-react";
 import { Card, Chip, Dot, Btn, Stat, Meter, type ChipTone } from "../console/ui/primitives";
+import { SENTENCE_GAP } from "../console/lib/format";
 import { describeProbeStatus } from "./lib/probe-error";
 import { Markdown } from "./transcript/markdown";
 
@@ -445,7 +446,7 @@ export default function OperatorDashboard() {
                   <div className="mb-1 flex items-center justify-between text-[length:var(--con-fs-xs)]">
                     <span
                       className="flex items-center gap-1 text-[color:var(--con-muted)] cursor-help"
-                      title="Each Hetzner CPU sample is divided by the server core count before display. Whether Hetzner already reports a whole-server percentage is unconfirmed, so this value may read low."
+                      title={`Each Hetzner CPU sample is divided by the server core count before display.${SENTENCE_GAP}Whether Hetzner already reports a whole-server percentage is unconfirmed, so this value may read low.`}
                     >
                       <Cpu className="h-3.5 w-3.5" /> CPU load
                     </span>

@@ -6,9 +6,12 @@
 // secrets injected after build (e.g. via Infisical at start:secrets) are reflected
 // immediately without a rebuild.
 
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { isAppleWebAuthConfigured } from "../../src/lib/auth/apple-web";
 import { signIn } from "../../src/lib/auth/auth";
 import { sanitizeCallbackUrl } from "../../src/lib/auth/callback-url";
+import { AUTHENTICATED_EMAIL_HEADER } from "../../src/lib/request-user";
 import { SENTENCE_GAP } from "../console/lib/format";
 import { HeaderLogo } from "../console/ui/header-logo";
 
@@ -33,6 +36,11 @@ export default async function LoginPage(props: { searchParams?: Promise<{ callba
   const searchParams = await props.searchParams;
   const rawCallbackUrl = typeof searchParams?.callbackUrl === "string" ? searchParams.callbackUrl : undefined;
   const callbackUrl = sanitizeCallbackUrl(rawCallbackUrl);
+
+  const email = (await headers()).get(AUTHENTICATED_EMAIL_HEADER);
+  if (email) {
+    redirect(callbackUrl === "/" ? "/console" : callbackUrl);
+  }
 
   return (
     <main className="grid min-h-screen place-items-center bg-bg px-6 text-center">

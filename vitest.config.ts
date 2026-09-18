@@ -29,7 +29,7 @@ export default defineConfig({
     }
   },
   test: {
-    
+    maxWorkers: 1,
     testTimeout: 60_000,
     hookTimeout: 60_000,
     // Skip Vitest's console spy.  `onConsoleLog: () => false` still forwards every

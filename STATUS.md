@@ -4,6 +4,15 @@
 
 MM takeover of `ag/620ef423` was empty.  Land iOS first-run copy + Auth.js error=/login, with the login page now explaining `?error=` codes.  The header-based already-signed-in redirect was dropped (dead code on a public path; Sentry finding on #3396).  Do not rename callbackUrl to next.  Extra-ship no.  No Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-18-ag-entry-paths.md`.
+## 2026-09-18 CLAUDE — Collapsible-card keyboard focus ring made explicit (board bf05f16a)
+
+The collapsible `Card` `<summary>` carried `focus:outline-none`.  On the current build the global
+ring still won (unlayered console.css beats `@layer utilities`), so the defect was latent rather than
+live, but nothing pinned it.  Removed the opt-out, added an explicit inset `:focus-visible` rule and
+two source guards in `test/console-a11y.test.ts`.  The 320px scope-selector collapse is not verified
+and stays open on the row.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-console-card-focus-ring.md`.
+
 ## 2026-09-18 CLAUDE — Post-cancel protective-stop bookkeeping after the #3383 pin (money path)
 
 `#3383` dropped the serving `busy_timeout` 60000ms -> 100ms, so a sync SQLite write that used to

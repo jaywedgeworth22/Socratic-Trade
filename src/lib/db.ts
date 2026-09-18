@@ -3265,6 +3265,16 @@ const MIGRATIONS: Migration[] = [
            ON document_chunks_fts_index (symbol, source, accession)`
       );
     }
+  },
+  {
+    version: 89,
+    name: "chat_turns_connected_account_id",
+    up: (database) => {
+      if (!tableExists(database, "chat_turns")) return;
+      if (!columnExists(database, "chat_turns", "connected_account_id")) {
+        database.exec("ALTER TABLE chat_turns ADD COLUMN connected_account_id TEXT");
+      }
+    }
   }
 ];
 

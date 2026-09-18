@@ -43,6 +43,20 @@ import {
   withDeadline
 } from "./inflight-deadline";
 
+// Alpaca SDK does not configure a timeout, so broker sockets can hang indefinitely (axios default 0).
+// The SDK does `require("axios")` (the CommonJS build), so we must mutate THAT instance: an ESM
+// `import axios from "axios"` resolves the separate ESM build and would mutate a different object.
+//
+// Use a plain `require("axios")`, NOT `createRequire(import.meta.url)`.  This module is reached from
+// instrumentation.ts, which Next also compiles for the edge runtime, and webpack cannot resolve the
+// "module" builtin there (build failed: "Module not found: Can't resolve 'module'", PR #3313 CI
+// 2026-09-18).  Next bundles the SDK, so a webpack-visible `require("axios")` resolves to the very
+// module instance the bundled SDK calls; a runtime require (`createRequire` / `eval("require")`)
+// would mutate Node's separate copy and leave the SDK unbounded while looking correct.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const sdkAxios = require("axios") as { defaults: { timeout?: number } };
+sdkAxios.defaults.timeout = ALPACA_BROKER_IO_DEADLINE_MS;
+
 /**
  * Fill in a usable price for any symbol the broker didn't quote (>0). Alpaca's latest-quote feed
  * returns 0/empty bid-ask outside market hours and on the free IEX tier, which used to leave the chat

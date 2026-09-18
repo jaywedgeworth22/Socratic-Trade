@@ -11,6 +11,7 @@ import {
 } from "../db-rag-ingest";
 import { pineconeWuExhaustedUntil } from "../pinecone-wu-breaker";
 import { pineconeBackfillPaceGate } from "../pinecone-monthly-pace";
+import { hasRagIngestPointsBudget, ragIngestPointsBudgetDeferUntil } from "../rag-metering";
 import { vectorWriteBackend } from "../vector-store/qdrant-write";
 import { politeFetchText } from "../web-sources/http";
 import { timeSync, yieldEventLoop } from "../slow-sync-guard";
@@ -129,6 +130,12 @@ export class SecIngestWorker {
       ? { throttled: false as const }
       : await pineconeBackfillPaceGate("backfill");
     if (paceGate.throttled) return;
+
+    // Qdrant daily point fuse: park the whole tick (no claim) instead of soft-skipping
+    // thousands of storeDocument warns once the rolling 24h budget is spent.
+    if (vectorWriteBackend() === "qdrant" && !hasRagIngestPointsBudget("local", 1, "qdrant")) {
+      return;
+    }
 
     const db = getDb();
     const activeJobs = db.prepare("SELECT id FROM sec_ingest_jobs WHERE status = 'running'").all() as any[];
@@ -393,6 +400,22 @@ export class SecIngestWorker {
           return;
         }
       }
+      // Qdrant daily point fuse: same clean deferral as the Pinecone WU park — do not
+      // soft-skip mid-store thousands of times once the rolling 24h budget is spent.
+      if (!storeAlreadyDone && vectorWriteBackend() === "qdrant") {
+        if (!hasRagIngestPointsBudget("local", 1, "qdrant")) {
+          const until = ragIngestPointsBudgetDeferUntil();
+          deferSecIngestTask({
+            taskId: task.id,
+            owner,
+            leaseToken,
+            deferUntil: until,
+            reasonType: "wu_exhausted_deferred",
+            reason: `Qdrant daily point ingest fuse spent; deferred until ${until}`
+          });
+          return;
+        }
+      }
       let doc: ReturnType<typeof buildSecDocument> | undefined;
       if (!storeAlreadyDone) {
         const rawContent = await readLocalArtifact(task.cik, task.accession, sequence, `raw-${documentName}`);
@@ -440,6 +463,17 @@ export class SecIngestWorker {
               });
               return;
             }
+            if (res.ingestPointsBudgetExhausted) {
+              deferSecIngestTask({
+                taskId: task.id,
+                owner,
+                leaseToken,
+                deferUntil: res.ingestPointsBudgetExhaustedUntil ?? ragIngestPointsBudgetDeferUntil(),
+                reasonType: "wu_exhausted_deferred",
+                reason: `Qdrant daily point ingest fuse spent mid-store; deferred until ${res.ingestPointsBudgetExhaustedUntil ?? "next check"}`
+              });
+              return;
+            }
             if ((res.writeUnitBudgetSkipped ?? 0) > 0 || (res.budgetSkipped ?? 0) > 0) {
               deferSecIngestTask({
                 taskId: task.id,
@@ -447,7 +481,7 @@ export class SecIngestWorker {
                 leaseToken,
                 deferUntil: new Date(Date.now() + 60 * 60_000).toISOString(),
                 reasonType: "wu_exhausted_deferred",
-                reason: "Pinecone daily write fuse or ingest text budget spent; deferred 1h"
+                reason: "Daily write fuse or ingest text budget spent; deferred 1h"
               });
               return;
             }

@@ -1,5 +1,10 @@
 # Current Status
 
+## 2026-09-18 CURSOR — Effort Issues Sync Crons margin (FLEET-INFRA-C0)
+
+Sentry `ci-effort-issues-sync` false-pages every day at 06:27Z.  The board-mirror job itself succeeds on `ubuntu-latest` in ~12-30s; GitHub just starts the `12 6 * * *` schedule 5-6.5h late (typical 11:12-11:44Z, worst retained 2026-09-14 12:37Z).  Same class as #3194 / FLEET-INFRA-C1, #3387 / FLEET-INFRA-C3, and #3389 / FLEET-INFRA-BY.  Raise `CHECKIN_MARGIN_OVERRIDES["Effort Issues Sync"]` to 600.  Cron and sync script unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` the sync.  #3302 already moved the live slug to `ci-socratic-trade-effort-issues-sync`; do not close C0 on merge.
+Rollout: `docs/rollouts/2026-09-18-effort-issues-sync-monitor-margin.md`.
+
 ## 2026-09-18 CURSOR — Cleanup Actions Caches Crons margin (FLEET-INFRA-BY)
 
 Sentry `ci-cleanup-actions-caches` false-pages every day at 03:20Z.  The prune job itself succeeds on `ubuntu-latest` in ~12s; GitHub just starts the `5 3 * * *` schedule 4.5-7h late (typical 07:35-08:48Z, worst retained 2026-08-29 09:57Z).  Same class as #3194 / FLEET-INFRA-C1 and #3387 / FLEET-INFRA-C3.  Raise `CHECKIN_MARGIN_OVERRIDES["Cleanup Actions Caches"]` to 600.  Cron and prune script unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` the cleanup.  #3302 already moved the live slug to `ci-socratic-trade-cleanup-actions-caches`; do not close BY on merge.

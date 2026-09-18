@@ -53,6 +53,7 @@ import { computeMarketInternals } from "./market-internals";
 import { getMarketSignals } from "./market-signals";
 import { compactWeeklyScreensForPrompt, weeklyMarketDigestForScan } from "./weekly-market-digest";
 import { fetchMacroData, fetchMacroDataWithLiveVix, pruneMacro, determineMarketRegime, evaluateVolatilityBrake, type MacroData } from "./macro";
+import { compactMacroTrendsForPrompt, fetchMacroHistory } from "./macro-history";
 import { buildCandidateEvidence } from "./evidence";
 import { applyEvidenceBudget } from "./evidence-budget";
 import { createEvidencePack, createEvidenceRef } from "./evidence-pack";
@@ -5047,17 +5048,32 @@ async function proposeTrades(input: {
     shortStopLossPct: input.policy.riskRules.shortStopLossPct ?? 8
   });
 
-  // Delta-only macro: macro moves slowly, so on repeat runs send just the changed
-  // (plus regime-critical) fields and note the rest as unchanged to save tokens.
-  const macro = await fetchMacroData(input.userId);
+  // Live VIX overlay (10 min TTL) so the LLM/regime stamp agrees with the vol brake and
+  // regime-watch. Bare `fetchMacroData` is still 24h-cached — 2026-09-18 LLM-context audit +
+  // Aug-17 trading-outcomes #1: proposeTrades was the last money-path holdout on the stale path.
+  // Delta-only prune still applies to the slow FRED suite; `vixAsOf` is stamped when the live
+  // overlay succeeded so Green/Red can see freshness explicitly.
+  const macro = await fetchMacroDataWithLiveVix(input.userId);
   const macroCacheKey = `last_macro_sent:${input.userId}`;
   const previousMacro = getInternalSetting<MacroData>(macroCacheKey);
   const { macro: macroForPrompt, omitted: macroOmitted } = pruneMacro(macro, previousMacro);
-  setInternalSetting(macroCacheKey, macro);
+  if (macro) setInternalSetting(macroCacheKey, macro);
   const macroeconomicData =
     macroOmitted.length > 0
-      ? { ...macroForPrompt, unchangedSinceLastRun: macroOmitted }
-      : macroForPrompt;
+      ? {
+          ...macroForPrompt,
+          unchangedSinceLastRun: macroOmitted.filter((k) => k !== "vixAsOf"),
+          ...(macro?.vixAsOf ? { vixAsOf: macro.vixAsOf } : {})
+        }
+      : {
+          ...macroForPrompt,
+          ...(macro?.vixAsOf ? { vixAsOf: macro.vixAsOf } : {})
+        };
+
+  // Compact FRED trailing trends (Δ7d/Δ30d + spark). Dashboard-only until 2026-09-18 — fail-open.
+  const macroTrends = await fetchMacroHistory(Date.now(), input.userId)
+    .then((history) => compactMacroTrendsForPrompt(history))
+    .catch(() => undefined);
 
   const currentMarketRegime = determineMarketRegime(macro);
 
@@ -5407,7 +5423,7 @@ async function proposeTrades(input: {
         retrievedAt: decisionAsOf,
         provenance: { provider: "macro-cascade", locator: null, upstreamHash: null, lineage: ["macro", "derived-metrics"] }
       },
-      content: JSON.stringify({ currentMarketRegime, macroeconomicData, macroDerived, marketInternals, marketSignals, weeklyScreens, regimeSeverity })
+      content: JSON.stringify({ currentMarketRegime, macroeconomicData, macroDerived, macroTrends, marketInternals, marketSignals, weeklyScreens, regimeSeverity })
     }),
     createEvidenceRef({
       kind: "account-performance-state",
@@ -5709,6 +5725,7 @@ async function proposeTrades(input: {
     },
     macroeconomicData,
     ...(Object.keys(macroDerived).length > 0 ? { macroDerived } : {}),
+    ...(macroTrends ? { macroTrends } : {}),
     ...(marketInternals ? { marketInternals } : {}),
     ...(marketSignals && Object.keys(marketSignals).length > 0 ? { marketSignals } : {}),
     ...(weeklyScreens ? { weeklyScreens } : {}),

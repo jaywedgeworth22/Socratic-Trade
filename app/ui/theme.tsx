@@ -2,9 +2,15 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
-type Theme = "light" | "dark";
-const ThemeContext = createContext<{ theme: Theme; toggle: () => void; set: (t: Theme) => void }>({
+type Theme = "system" | "light" | "dark";
+const ThemeContext = createContext<{
+  theme: Theme;
+  resolvedTheme: "light" | "dark";
+  toggle: () => void;
+  set: (t: Theme) => void;
+}>({
   theme: "light",
+  resolvedTheme: "light",
   toggle: () => {},
   set: () => {}
 });
@@ -15,20 +21,44 @@ const ThemeContext = createContext<{ theme: Theme; toggle: () => void; set: (t: 
  * dark from prefers-color-scheme when the user has not chosen a theme.
  * Only explicit localStorage "dark" (or a future explicit system path) goes dark.
  */
-export const themeInitScript = `(function(){try{var t=localStorage.getItem('theme');if(t!=='dark'&&t!=='light'){t='light';}document.documentElement.classList.toggle('dark',t==='dark');document.documentElement.dataset.theme=t;}catch(e){document.documentElement.classList.remove('dark');document.documentElement.dataset.theme='light';}})();`;
+export const themeInitScript = `(function(){try{var t=localStorage.getItem('theme');if(t!=='dark'&&t!=='light'&&t!=='system'){t='light';}var r=t;if(t==='system'){r=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.classList.toggle('dark',r==='dark');document.documentElement.dataset.theme=r;}catch(e){document.documentElement.classList.remove('dark');document.documentElement.dataset.theme='light';}})();`;
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("light");
+  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("light");
 
   useEffect(() => {
-    const current = (document.documentElement.dataset.theme as Theme) || "light";
-    setThemeState(current);
+    let t = "light" as Theme;
+    try {
+      t = (localStorage.getItem("theme") as Theme) || "light";
+    } catch { /* ignore */ }
+    const valid = t === "dark" || t === "light" || t === "system" ? t : "light";
+    setThemeState(valid);
+    
+    const resolve = (themeVal: Theme) => themeVal === "system" ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : themeVal;
+    setResolvedTheme(resolve(valid));
+
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const listener = (e: MediaQueryListEvent) => {
+      try {
+        if (localStorage.getItem("theme") === "system") {
+          const newResolved = e.matches ? 'dark' : 'light';
+          setResolvedTheme(newResolved);
+          document.documentElement.classList.toggle("dark", newResolved === "dark");
+          document.documentElement.dataset.theme = newResolved;
+        }
+      } catch { /* ignore */ }
+    };
+    mq.addEventListener("change", listener);
+    return () => mq.removeEventListener("change", listener);
   }, []);
 
   const set = useCallback((next: Theme) => {
     setThemeState(next);
-    document.documentElement.classList.toggle("dark", next === "dark");
-    document.documentElement.dataset.theme = next;
+    const r = next === "system" ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : next;
+    setResolvedTheme(r);
+    document.documentElement.classList.toggle("dark", r === "dark");
+    document.documentElement.dataset.theme = r;
     try {
       localStorage.setItem("theme", next);
     } catch {
@@ -36,14 +66,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const toggle = useCallback(() => set(theme === "dark" ? "light" : "dark"), [theme, set]);
+  const toggle = useCallback(() => set(theme === "light" ? "dark" : theme === "dark" ? "system" : "light"), [theme, set]);
 
-  return <ThemeContext.Provider value={{ theme, toggle, set }}>{children}</ThemeContext.Provider>;
+  return <ThemeContext.Provider value={{ theme, resolvedTheme, toggle, set }}>{children}</ThemeContext.Provider>;
 }
 
-/** Currently has no callers — kept as the public API for a future public-page
- *  theme control. `ThemeToggle` (the only prior consumer) was deleted 2026-07-16
- *  as dead code. */
+/** Public theme hook.  Console chrome and ticker logos resolve through this
+ *  so light/dark/system stay on one resolver.  Default remains light until
+ *  the user picks Dark or System. */
 export function useTheme() {
   return useContext(ThemeContext);
 }

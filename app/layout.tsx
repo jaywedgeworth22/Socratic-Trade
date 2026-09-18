@@ -2,7 +2,7 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { lato } from "./fonts/lato";
 import { ThemeProvider, themeInitScript } from "./ui/theme";
-import { Toaster } from "sonner";
+import { ThemedToaster } from "./ui/toaster";
 import { GlobalErrorToasts } from "./ui/global-error-toasts";
 import { pwaUnregisterScript } from "@/lib/pwa-unregister";
 import { resolvePublicRumConfig } from "@/lib/datadog-env";
@@ -79,7 +79,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
           <DatadogRumBoot config={resolvePublicRumConfig()} />
           <GlobalErrorToasts />
-          <Toaster theme="system" position="bottom-right" />
+          <ThemedToaster />
         </ThemeProvider>
       </body>
     </html>

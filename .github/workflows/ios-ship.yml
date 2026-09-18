@@ -206,6 +206,13 @@ jobs:
           fi
           bash "$GITHUB_WORKSPACE/scripts/ios-appstore-gm-prepare.sh"
 
+      # Checked-in project.pbxproj must stay at objectVersion 100 for Xcode 26.
+      # XcodeGen 2.46 emits 77; xcodegen-post.py rewrites after generate (Congress
+      # pattern). Ship uses the checked-in file when xcodegen is absent on the runner.
+      - name: Ensure Xcode 26 project format (objectVersion 100)
+        if: steps.gate.outputs.should_ship == '1'
+        run: python3 ios/xcodegen-post.py
+
       - name: Report runtime ios-fleet drift (advisory)
         if: steps.gate.outputs.should_ship == '1'
         run: bash "$GITHUB_WORKSPACE/scripts/ios-fleet/check-drift.sh"

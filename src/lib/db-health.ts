@@ -924,7 +924,7 @@ function operatorAlertEmail(): string | undefined {
  * those channels are not already in prefs — otherwise we double-send.
  */
 async function deliverSystemAlertToAdmins(input: {
-  type: "provider_degraded" | "storage_warning";
+  type: "provider_degraded" | "storage_warning" | "liveness_warning";
   title: string;
   body: string;
   payload: unknown;

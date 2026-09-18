@@ -2,7 +2,19 @@ import { EquityOrderInput } from "./types";
 import { audit } from "./db";
 import { roundAlpacaPrice, roundCents } from "./money";
 
-export function normalizeVenueOrder(input: EquityOrderInput, broker: string, userId: string): EquityOrderInput {
+export interface NormalizeVenueOrderOptions {
+  /** Write the `venue_order_normalized` audit row when an order is rewritten.  Default true.  The
+   *  review path passes false: it normalizes only so it evaluates the SAME order that placement will
+   *  send, and placement writes the one audit receipt. */
+  audit?: boolean;
+}
+
+export function normalizeVenueOrder(
+  input: EquityOrderInput,
+  broker: string,
+  userId: string,
+  options: NormalizeVenueOrderOptions = {}
+): EquityOrderInput {
   let { type, timeInForce, marketHours, limitPrice, stopPrice, bracketTakeProfit, bracketStopLoss, bracketStopLimit } = input;
   const { quantity, dollarAmount } = input;
   let normalized = false;
@@ -14,13 +26,20 @@ export function normalizeVenueOrder(input: EquityOrderInput, broker: string, use
   const fractional = isFractionalQty || isNotional;
 
   if (broker === "alpaca") {
-    // 1. Alpaca requires TIF=day for fractional, notional, bracket, or extended-hours.
-    if (timeInForce === "gtc" || timeInForce === "gfd") {
-      if (fractional || isBracket || marketHours === "extended_hours") {
-        timeInForce = "day" as typeof timeInForce;
-        normalized = true;
-        reason = isBracket ? "bracket" : fractional ? "fractional" : "extended_hours";
-      }
+    // 1. Alpaca's wire word for good-for-day is "day"; "gfd" is our internal (and Robinhood's)
+    //    spelling and Alpaca rejects it with a 422.  Translate it UNCONDITIONALLY -- this is a
+    //    spelling change, not a rewrite of the caller's intent, so it is not audited (same contract
+    //    as the removed resolveAlpacaTimeInForce: a caller who already asked for "gfd" was never
+    //    "normalized").
+    if (timeInForce === "gfd") {
+      timeInForce = "day" as typeof timeInForce;
+    }
+    // 2. Alpaca also requires TIF=day for fractional, notional, bracket, or extended-hours orders,
+    //    so a "gtc" on any of those is a genuine rewrite of the caller's intent: audit it.
+    if (timeInForce === "gtc" && (fractional || isBracket || marketHours === "extended_hours")) {
+      timeInForce = "day" as typeof timeInForce;
+      normalized = true;
+      reason = isBracket ? "bracket" : fractional ? "fractional" : "extended_hours";
     }
     if (limitPrice != null) limitPrice = roundAlpacaPrice(limitPrice);
     if (stopPrice != null) stopPrice = roundAlpacaPrice(stopPrice);
@@ -72,7 +91,7 @@ export function normalizeVenueOrder(input: EquityOrderInput, broker: string, use
     if (type === "market") { limitPrice = undefined; stopPrice = undefined; }
   }
 
-  if (normalized) {
+  if (normalized && options.audit !== false) {
     audit("venue_order_normalized", {
       broker,
       symbol: input.symbol,

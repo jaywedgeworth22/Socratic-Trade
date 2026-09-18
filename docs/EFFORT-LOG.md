@@ -706,7 +706,6 @@ As of 2026-07-08 (assignment-rule update).
 - **[Socratic.Trade][CODEX sublane] RAG structured-vs-narrative routing boundary (branch `codex/rag-data-routing-20260722`, worktree `/Users/jay/.codex/worktrees/rag-data-routing-20260722`, claimed 2026-07-22) — LOCALLY READY.** Typed, fail-closed information-needs contract now keeps current prices, positions, orders, and financial facts deterministic while filings/transcripts/lessons/narrative research alone enter RAG. Focused routing tests 4/4, scoped lint, TypeScript, and diff check green; slow strategy integration verification deferred under host saturation. No provider, corpus, broker, or production writes.
 
 ## In Progress
-- **2026-09-18 - CLAUDE - IN PR - Durable boot/exit ledger + restart-loop alert (3 boots / 45 min) so container replacement stops destroying restart forensics (board `a9676caf`, branch `claude/r3-st-landing-restart-ledger`).**  Repo code only; the Coolify-side restart-count monitor remains a host task.
 - **2026-09-18 - CLAUDE - IN PR - Collapsible console Card `<summary>` no longer strips its keyboard focus ring; explicit inset `:focus-visible` rule + a11y guards (board `bf05f16a`, branch `claude/r3-st-landing-card-focus`).**  Latent, not live: unlayered console.css already won the cascade.  320px scope collapse unverified, stays open.
 - **2026-09-09 - BF-FIXER - PLANNED - ST Docker HEALTHCHECK curl zombies make Traefik 503.** <!-- wb-agent-report:e7b499437fd94472a4acd02211e541d1 -->
 - **2026-09-09 - CLAUDE - IN_PROGRESS - ST backup methodology: policy doc, cold-archive depth 4, whole-attempt bounds, restore PROVEN (PR #3204).** <!-- wb-agent-report:3018544983a44786bee2b2ea5f2b329d -->
@@ -742,6 +741,7 @@ As of 2026-07-08 (assignment-rule update).
 - **[Socratic.Trade][MONET] Durable litestream remote-inventory cache (PR #2665 leftover) — IN PROGRESS.** Issue #2694.
 - **[Socratic.Trade][OWNER] FilingAPI Plus checkout.** Stored FILINGAPI key is still 401. Do not charge ST Stripe. Needed for remaining L2/universe ingest after #2741.
 
+- **2026-09-18 - CLAUDE - IN PR - Durable boot/exit ledger + restart-loop alert (3 boots / 45 min) so container replacement stops destroying restart forensics (board `a9676caf`, branch `claude/r3-st-landing-restart-ledger`).**  Repo code only; the Coolify-side restart-count monitor remains a host task.
 ## Deployed
 - **2026-09-09 - CODEX - IN_PROGRESS - Refresh AI model catalog and simplify account labels.** <!-- wb-agent-report:0d775009f500403db010f5c1f5b18ae8 -->
 - **2026-09-05 - BF-DIRECTOR - DEPLOYED - Strategy runs 100% failing: gather has no internal time budget, 8-min deadline kills every run.**  ST #3167 live as sha 7dd762db (process 2026-09-05T12:43Z).  tradingLiveness.degraded=0, oldest completed ~18.4h, scheduler not stale, Litestream replicating.  Internal gather budget + skipped_broker_unhealthy row.  No extra-ship.  No TestFlight. <!-- wb-agent-report:06df80cfbff74bf8aa1edb09740cd9b4 -->

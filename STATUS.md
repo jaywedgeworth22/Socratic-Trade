@@ -2,7 +2,7 @@
 
 ## 2026-09-18 GROK — AG entry-path remainder (board 6aa1e66e)
 
-MM takeover of `ag/620ef423` was empty.  Land login redirect + iOS first-run copy + Auth.js error=/login.  Do not rename callbackUrl to next.  Extra-ship no.  No Coolify Deploy.
+MM takeover of `ag/620ef423` was empty.  Land iOS first-run copy + Auth.js error=/login, with the login page now explaining `?error=` codes.  The header-based already-signed-in redirect was dropped (dead code on a public path; Sentry finding on #3396).  Do not rename callbackUrl to next.  Extra-ship no.  No Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-18-ag-entry-paths.md`.
 ## 2026-09-18 CLAUDE — Post-cancel protective-stop bookkeeping after the #3383 pin (money path)
 

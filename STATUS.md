@@ -84,6 +84,14 @@ Rollout: `docs/rollouts/2026-09-17-post-claim-sqlite-busy-fire.md`.
 Hosted `verify` on #3383 timed out (`test/synthetic-stops.test.ts` and sibling reprice files at 60s/30s).  Cause: `runSyntheticStopMonitor` now `await yieldEventLoop()` (`setImmediate`), and those tests used full `vi.useFakeTimers()` which never flushes it.  Tests now fake `Date` only; `isSqliteBusy` does not retry a stamped non-BUSY sqlite code.  Pin+yield production behavior unchanged.  Extra-ship no.  No Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-17-sqlite-busy-event-loop-pin.md`.
 
+## 2026-09-18 FIXER — RAG retrieval no longer pages as Pinecone (PD #116 leftover)
+
+`retrieveContextDetailed` catch hardcoded `provider: "pinecone"` after Qdrant cutover, so
+Qdrant `fetch failed` kept fingerprinting as SOCRATIC-TRADE-1T.  Catch uses `readBackend`;
+Qdrant search retries transients; `/api/health` reports the active vector backend and does
+not 503 on leftover Pinecone while Qdrant is serving.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-rag-retrieval-qdrant-mislabel.md`.
+
 ## 2026-09-17 GROK — SQLITE_BUSY event-loop pin+yield (board e7b49943)
 
 ST production stalls ~every 30 minutes: Traefik 503 on `/api/health` while Docker still says healthy.  Docker restart recovers briefly; Coolify Deploy is not the recovery.  WIP lands as-is on `grok/rth-event-loop-stall` (worktree `~/apps/trading-grok-rth-stall`): serving `busy_timeout` is a 100ms pin; async callers keep the 60s lock budget via `sqliteYieldRetry`; safety lanes yield; RTH RAG ingest defers.  Extra-ship no.  No Coolify Deploy.  Do not restart production from this lane.

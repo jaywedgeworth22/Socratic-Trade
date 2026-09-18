@@ -64,7 +64,11 @@ jobs:
             elif [ -x "$dest/xcodegen/bin/xcodegen" ]; then
               xcg="$dest/xcodegen/bin/xcodegen"
             else
-              xcg="$(find "$dest" -type f -name xcodegen -perm -111 | head -1)"
+              # NOT `find ... | head -1`: this step runs `set -euo pipefail`, so head
+              # closing the pipe makes find take SIGPIPE and the step exit 141 rather
+              # than reaching the clear "xcodegen binary not found" error below.
+              xcg_all="$(find "$dest" -type f -name xcodegen -perm -111)"
+              xcg="${xcg_all%%$'\n'*}"
             fi
             if [ -z "$xcg" ] || [ ! -x "$xcg" ]; then
               echo "::error::xcodegen binary not found in release zip ${ver}"

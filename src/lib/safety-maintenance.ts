@@ -6,6 +6,7 @@ import { autoRemediateStaleExitOrders } from "./order-replacement";
 import { runSyntheticStopMonitor } from "./synthetic-stops";
 import { withDeadline } from "./inflight-deadline";
 import { startEventLoopLagSampler, stalledMsSince } from "./event-loop-lag";
+import { yieldEventLoop } from "./slow-sync-guard";
 import type { TradingPolicy, BrokerGateway, ConnectedAccount } from "./types";
 
 export { withDeadline } from "./inflight-deadline";
@@ -154,6 +155,7 @@ export async function runSafetyMaintenance(
   activeAccount: ConnectedAccount,
   gateway: BrokerGateway | undefined
 ): Promise<void> {
+  await yieldEventLoop();
   // 1. Expire stale proposals (No broker calls)
   await expireStalePendingProposals({ userId, policy, accountNumber: policy.accountNumber })
     .catch((err) => console.error("[maintenance] proposal-expiry error:", err));

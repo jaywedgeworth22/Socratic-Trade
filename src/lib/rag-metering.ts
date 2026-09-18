@@ -11,7 +11,7 @@
 //   - Pinecone: serverless — metered by Read/Write Units; rows store units, not dollars.
 
 import crypto from "crypto";
-import { audit, getDb } from "./db";
+import { audit, getDb, getInternalSetting, setInternalSetting } from "./db";
 import { recordPineconeWriteUnits } from "./pinecone-monthly-pace";
 import { pushRagUsage } from "./usage-monitor-push";
 
@@ -337,13 +337,48 @@ export function getRagUsageSummary(opts: { sinceIso?: string } = {}): RagUsageRo
   }));
 }
 
-export const DEFAULT_RAG_MAX_DAILY_INGEST_POINTS = 50_000;
+export const DEFAULT_RAG_MAX_DAILY_INGEST_POINTS = 150_000;
+
+/** Internal watermark: audit the Qdrant daily-point gate skip at most once per UTC day. */
+export const RAG_INGEST_POINTS_GATE_AUDIT_DAY_KEY = "rag:ingestPointsGateLastAuditDay";
 
 export function ragMaxDailyIngestPoints(): number {
   const configured = Number(process.env.RAG_MAX_DAILY_INGEST_POINTS ?? process.env.QDRANT_MAX_DAILY_INGEST_POINTS);
   return Number.isFinite(configured) && configured > 0
     ? Math.floor(configured)
     : DEFAULT_RAG_MAX_DAILY_INGEST_POINTS;
+}
+
+/**
+ * ISO deferral target when the rolling 24h Qdrant point fuse is spent.
+ * Mirrors the Pinecone daily-WU fuse park (1h) used by SecIngest / incremental lanes.
+ */
+export function ragIngestPointsBudgetDeferUntil(nowMs: number = Date.now()): string {
+  return new Date(nowMs + 60 * 60_000).toISOString();
+}
+
+/**
+ * Audit that the Qdrant daily-point gate skipped work, at most once per UTC day.
+ * Producers still park/defer on every call; this only stops audit_events / console spam
+ * (Datadog showed ~148k daily-budget skip warns when the fuse was spent).
+ */
+export function auditRagIngestPointsGateSkip(
+  payload: { operation: string; attempted: number; until: string; used?: number; limit?: number },
+  userId: string = "local"
+): void {
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    if (getInternalSetting<string>(RAG_INGEST_POINTS_GATE_AUDIT_DAY_KEY) === day) return;
+    setInternalSetting(RAG_INGEST_POINTS_GATE_AUDIT_DAY_KEY, day);
+    console.warn(
+      `[rag-metering] Qdrant daily point ingest fuse spent — parking producers until ${payload.until}` +
+        (payload.used != null && payload.limit != null ? ` (used ${payload.used}/${payload.limit})` : "") +
+        ` [${payload.operation} attempted=${payload.attempted}]`
+    );
+    audit("rag_ingest_points_gate_skip", payload, userId);
+  } catch {
+    // audit is best-effort; the gate result itself is the caller's signal
+  }
 }
 
 /**

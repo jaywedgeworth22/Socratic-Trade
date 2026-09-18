@@ -43,6 +43,17 @@ function cronMappings(source: string): Record<string, string> {
   );
 }
 
+function checkinMarginOverrides(source: string): Record<string, number> {
+  const block = source.match(/CHECKIN_MARGIN_OVERRIDES\s*=\s*\{([\s\S]*?)\n\}/);
+  if (!block) throw new Error("Sentry reporter script is missing CHECKIN_MARGIN_OVERRIDES");
+  return Object.fromEntries(
+    [...block[1].matchAll(/^\s+"([^"]+)":\s*(\d+),?$/gm)].map((match) => [
+      match[1],
+      Number(match[2]),
+    ])
+  );
+}
+
 const activeWorkflowFiles = readdirSync(workflowsDir)
   .filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"))
   .filter((name) => name !== "sentry-ci-report.yml")
@@ -75,5 +86,14 @@ describe("Sentry CI workflow coverage", () => {
 
     expect(cronMappings(reporterScript)).toEqual(scheduled);
     expect(cronMappings(reporterScript)).not.toHaveProperty("merge-shepherd");
+  });
+
+  it("widens only GitHub schedule-delay monitors to 600 minutes", () => {
+    expect(checkinMarginOverrides(reporterScript)).toEqual({
+      "Deploy freshness": 600,
+      "RTH Deploy Latch": 600,
+      "Cleanup Actions Caches": 600,
+      "Effort Issues Sync": 600,
+    });
   });
 });

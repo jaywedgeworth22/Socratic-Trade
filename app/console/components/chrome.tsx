@@ -208,7 +208,7 @@ export function ScopeSelector({ snapshot }: { snapshot: DashboardSnapshot; compa
     // an "N.." clip comes from the reduced button padding (px-2.5) + truncate: at 360px
     // the leftover is ~73px, enough for "No con…"/the broker name, and it only grows
     // from there. Paired with the tighter mobile gap/padding on the header row (shell.tsx).
-    <div className="relative min-w-0 flex-1 sm:flex-none sm:min-w-[190px] sm:max-w-[300px]">
+    <div className="relative flex-1 min-w-[120px] sm:flex-none sm:min-w-[190px] sm:max-w-[300px]">
       <button
         ref={triggerRef}
         type="button"
@@ -900,8 +900,7 @@ export function UserMenu({
         aria-label={`Signed in as ${user.email ?? who} — account menu`}
         aria-expanded={open}
         aria-haspopup="menu"
-        style={{ width: 32, height: 32, minWidth: 32, minHeight: 32, maxWidth: 32, maxHeight: 32 }}
-        className="con-bar-ctl flex shrink-0 items-center justify-center overflow-hidden rounded-control border border-[color:var(--con-line-strong)] text-[color:var(--con-muted)] transition-colors hover:border-[color:var(--con-accent)] hover:text-[color:var(--con-accent)]"
+        className="con-bar-ctl flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-control border border-[color:var(--con-line-strong)] text-[color:var(--con-muted)] transition-colors hover:border-[color:var(--con-accent)] hover:text-[color:var(--con-accent)]"
       >
         <Avatar imageUrl={user.imageUrl} size="h-full w-full" iconSize={15} />
       </button>
@@ -939,7 +938,7 @@ export function UserMenu({
                         title={THEME_WORD[t]}
                         aria-label={`Set theme to ${THEME_WORD[t]}`}
                         className={cx(
-                          "flex items-center gap-1.5 rounded-control px-2.5 py-1 text-[length:var(--con-fs-xs)] transition-colors",
+                          "con-theme-btn flex items-center gap-1.5 rounded-control px-2.5 py-1 text-[length:var(--con-fs-xs)] transition-colors",
                           active
                             ? "bg-[color:var(--con-surface)] text-[color:var(--con-fg)] font-medium shadow-sm border border-[color:var(--con-line)]"
                             : "text-[color:var(--con-muted)] hover:text-[color:var(--con-fg)] border border-transparent"

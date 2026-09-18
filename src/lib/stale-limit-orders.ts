@@ -5,6 +5,8 @@ import { isWorkingOrderState } from "./broker-held-orders";
 import { normalizeSymbol } from "./money";
 import { shortOrderLabel } from "./order-labels";
 import { sendNotification } from "./notifications";
+import { sqliteYieldRetry, yieldIfDue } from "./sqlite-event-loop";
+import { yieldEventLoop } from "./slow-sync-guard";
 import type { EquityOrder, TradingPolicy } from "./types";
 
 const LIMIT_ORDER_TYPES = new Set(["limit", "stop_limit"]);
@@ -62,6 +64,8 @@ export async function notifyStaleLimitOrders(input: {
   const userId = input.userId ?? "local";
   const stale = listStaleLimitOrders(input.orders, input.policy, input.now ?? new Date());
   let alerted = 0;
+  const yieldClock = { ms: Date.now() };
+  await yieldEventLoop();
 
   for (const item of stale) {
     // Never alert on an unactivated bracket exit leg — see isHeldExitLeg. (The leg stays in the
@@ -70,7 +74,7 @@ export async function notifyStaleLimitOrders(input: {
     // targets — suppress the misleading "cancel/reprice before replacing with market" alert.
     if (isHeldExitLeg(item.order) || isBracketOrderClass(item.order.orderClass)) continue;
     const key = staleLimitOrderAlertKey(userId, input.policy, item);
-    if (getInternalSetting(key)) continue;
+    if (await sqliteYieldRetry(() => getInternalSetting(key))) continue;
 
     const symbol = normalizeSymbol(item.order.symbol);
     const side = String(item.order.side ?? "order").toUpperCase();
@@ -80,24 +84,26 @@ export async function notifyStaleLimitOrders(input: {
       `${item.ageMinutes} minutes (${formatQuantity(item.remainingQuantity)} remaining). ` +
       "Review the order; cancel/reprice it before replacing it with a market order.";
 
-    audit(
-      "limit_order_stale",
-      {
-        orderId: item.order.id,
-        symbol,
-        side: item.order.side,
-        type: item.order.type,
-        state: item.order.state,
-        createdAt: item.order.createdAt,
-        ageMinutes: item.ageMinutes,
-        thresholdMinutes: item.thresholdMinutes,
-        quantity: item.order.quantity,
-        filledQuantity: item.order.filledQuantity ?? 0,
-        remainingQuantity: item.remainingQuantity,
-        summary
-      },
-      userId,
-      input.policy.connectedAccountId
+    await sqliteYieldRetry(() =>
+      audit(
+        "limit_order_stale",
+        {
+          orderId: item.order.id,
+          symbol,
+          side: item.order.side,
+          type: item.order.type,
+          state: item.order.state,
+          createdAt: item.order.createdAt,
+          ageMinutes: item.ageMinutes,
+          thresholdMinutes: item.thresholdMinutes,
+          quantity: item.order.quantity,
+          filledQuantity: item.order.filledQuantity ?? 0,
+          remainingQuantity: item.remainingQuantity,
+          summary
+        },
+        userId,
+        input.policy.connectedAccountId
+      )
     );
 
     await sendNotification(
@@ -114,8 +120,11 @@ export async function notifyStaleLimitOrders(input: {
       },
       { policy: input.policy, userId }
     );
-    setInternalSetting(key, { alertedAt: new Date().toISOString(), orderId: item.order.id });
+    await sqliteYieldRetry(() =>
+      setInternalSetting(key, { alertedAt: new Date().toISOString(), orderId: item.order.id })
+    );
     alerted += 1;
+    await yieldIfDue(yieldClock);
   }
 
   return { alerted, stale };

@@ -384,7 +384,7 @@ describe("shareWithCongressTrade", () => {
     await shareWithCongressTrade({ refs: [{ ticker: "AAPL" }] });
     await shareWithCongressTrade({ refs: [{ ticker: "MSFT" }] });
     expect(isCongressAuthBreakerTripped()).toBe(false);
-    expect(fetchSpy).toHaveBeenCalledTimes(2); // no short-circuit — 5xx may be transient
+    expect(fetchSpy).toHaveBeenCalledTimes(6); // 2 calls * 3 retry attempts on 5xx
   });
 
   it("does NOT trip the breaker on a transport error", async () => {
@@ -525,14 +525,16 @@ describe("shareScanRefs", () => {
     process.env.CONGRESS_TRADE_TOKEN = "tok";
     process.env.CONGRESS_SHARE_ENABLED = "on";
     const fetchSpy = vi
-      .fn(async (_url: string, _init?: RequestInit) => new Response(null, { status: 200 }))
+      .fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({ ok: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response("boom", { status: 500 }))
+      .mockResolvedValueOnce(new Response("boom", { status: 500 }))
       .mockResolvedValueOnce(new Response("boom", { status: 500 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     vi.stubGlobal("fetch", fetchSpy);
 
     expect((await shareScanRefs(scan))?.ok).toBe(false);
     expect((await shareScanRefs(scan))?.ok).toBe(true); // retried, not throttled
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
   });
 
   it("the per-symbol send throttle survives a simulated process restart", async () => {

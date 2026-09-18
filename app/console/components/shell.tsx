@@ -443,8 +443,9 @@ function ChromeBar({
           bar), not to its small button — anchoring to the 44px button pushed the
           panel off the left edge of phone viewports. gap-1.5/px-3 on phones (vs
           gap-2/px-4 from sm up) claws back a few px so the account scope's mobile
-          min-width (chrome.tsx ScopeSelector) has room without overflowing. */}
-      <div className="relative mx-auto flex max-w-[1400px] items-center gap-1.5 px-3 py-2 sm:gap-2 sm:px-4">
+          min-width (chrome.tsx ScopeSelector) has room without overflowing.
+          overflow-x-auto guards against the 320px screen width collapse. */}
+      <div className="relative mx-auto flex max-w-[1400px] items-center gap-1.5 px-3 py-2 sm:gap-2 sm:px-4 overflow-x-auto">
         <BrandReveal />
         <ScopeSelector snapshot={snapshot} />
         <StateChip snapshot={snapshot} />

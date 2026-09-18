@@ -206,7 +206,9 @@ if [[ -n "${1:-}" && "${1:-}" == "--pr-title" && -n "${2:-}" ]]; then
   PR_TITLE="${2}"
   shift 2
 elif [[ "$COMMIT_COUNT" -eq 1 ]]; then
-  PR_TITLE="$(echo "$COMMIT_SUBJECTS" | head -1)"
+  # Parameter expansion, not `echo | head` -- see the SIGPIPE note in
+  # scripts/alert-deploy-freshness.sh (FLEET-INFRA-BH).
+  PR_TITLE="${COMMIT_SUBJECTS%%$'\n'*}"
 else
   # Use first non-trivial commit subject; strip conventional commit prefix
   FIRST_SUBJECT="$(echo "$COMMIT_SUBJECTS" | tail -1)"

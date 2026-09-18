@@ -72,6 +72,13 @@ fi
 EXPECTED_SHA="$(resolve_commit "$EXPECTED_REF")"
 [ -n "$EXPECTED_SHA" ] || fail_usage "cannot resolve expected ref '${EXPECTED_REF}' to a commit in this repo."
 
+# watch_paths in Coolify skips docs/**, so a docs-only commit never deploys.
+# Compare against the newest image-affecting commit instead.
+IMAGE_AFFECTING_SHA="$(git log -1 --format="%H" "$EXPECTED_SHA" -- . ":(exclude)docs" 2>/dev/null || true)"
+if [ -n "$IMAGE_AFFECTING_SHA" ]; then
+  EXPECTED_SHA="$IMAGE_AFFECTING_SHA"
+fi
+
 # Single-shot reuse of the existing gate. Capture both streams; the gate logs to stderr.
 set +e
 VERIFY_OUT="$(
@@ -185,7 +192,14 @@ LIVE_SHA="$(extract_live_sha)"
 LIVE_FULL="$(resolve_commit "$LIVE_SHA")"
 [ -n "$LIVE_FULL" ] || fail_usage "cannot resolve live sha '${LIVE_SHA}' after a behind verdict."
 
-OLDEST_UNDEPLOYED="$(git log --format=%H --reverse "${LIVE_FULL}..${EXPECTED_SHA}" | head -n 1)"
+# NOT `git log ... | head -n 1`: under `set -euo pipefail` head closes the pipe as
+# soon as it has its line, git takes SIGPIPE, the pipeline reports 141, and the
+# script dies with 141 instead of its real verdict. That is a race on how much git
+# has written when head exits, so it fired intermittently in CI and took the whole
+# `verify-hosted` lane -- and therefore the required `verify` gate -- down with it
+# (FLEET-INFRA-BH). Take the first line with parameter expansion; no pipe, no race.
+UNDEPLOYED_LIST="$(git rev-list --reverse "${LIVE_FULL}..${EXPECTED_SHA}")"
+OLDEST_UNDEPLOYED="${UNDEPLOYED_LIST%%$'\n'*}"
 [ -n "$OLDEST_UNDEPLOYED" ] || fail_usage "live is behind expected but git log ${LIVE_FULL}..${EXPECTED_SHA} is empty."
 
 OLDEST_CT="$(git log -1 --format=%ct "$OLDEST_UNDEPLOYED")"

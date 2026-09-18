@@ -8,7 +8,7 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { repriceStoredLimitProposal } from "../src/lib/approval-reprice";
 import { DEFAULT_POLICY } from "../src/lib/defaults";
 import { getDb, getProposal, insertProposal, setPolicy, upsertConnectedAccount } from "../src/lib/db";
@@ -127,6 +127,10 @@ beforeEach(() => {
   scan.ask = 202;
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 /** Stored overnight: anchored to a $200 generation-time quote, 1% below it (patient entry). */
 const STORED_BUY_LIMIT: TradeProposal = {
   symbol: "AAPL",
@@ -196,7 +200,9 @@ function repriceAudits(kind: "approval_limit_repriced" | "approval_limit_reprice
 }
 
 function atRegularHours<T>(fn: () => Promise<T>): Promise<T> {
-  vi.useFakeTimers();
+  // Date only: executeProposal / sqliteYieldRetry now await setImmediate.
+  // Full fake timers swallow that and the 30s test timeout fires instead.
+  vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-06-10T14:30:00Z")); // 10:30 ET = regular session (EDT)
   return fn().finally(() => vi.useRealTimers());
 }
@@ -373,7 +379,7 @@ describe("executeProposal — approval-time ordinary-limit re-anchor", () => {
   }, 30000);
 
   it("protective-exit-repriced proposal is NOT double-repriced by the ordinary-limit path", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-06-10T12:00:00Z")); // 08:00 ET = pre-market (EDT)
     try {
       const userId = `reanchor-protective-${randomUUID()}`;

@@ -1,5 +1,12 @@
 # Current Status
 
+## 2026-09-18 CURSOR — iOS TestFlight Automatic vs Distribution signing (PR pending)
+
+`ios-ship` rc=65 after #3399: Automatic signing conflicted with manual `Apple Distribution` in
+Release + `ship-testflight.sh`.  Reverted to Congress.Trade pattern (Automatic only; no archive
+identity override).  Branch `fix/ios-tf-automatic-vs-distribution-signing`.  Extra-ship no.
+Rollout: `docs/rollouts/2026-09-18-ios-tf-automatic-vs-distribution-signing.md`.
+
 ## 2026-09-18 GROK — Datadog remaining: ST RUM stay dark + DD_HOSTNAME (board f03c5542)
 
 Infrastructure Free us5.  Trial expired 2026-09-07.  RUM hourly usage is empty.  The existing `Socratic Trade` RUM app stays `is_active=false` on purpose — do not mint a second app and do not start send.  Infisical now has `DD_RUM_ENABLED=false` and `DD_HOSTNAME=fleet-hetzner-nbg1`.  Preload sets the host tag on Coolify only; dd-trace `init({ hostname })` is the Agent address.  Extra-ship no.  Sentry stays the app error path.

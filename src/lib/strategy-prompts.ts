@@ -17,7 +17,7 @@ import type { IraWashSaleHandling, WashSaleHandling } from "./types";
  * constants "strategy@1.0.0" / "agentic-strategy@0.1.0"; unified 2026-07-01 to the repo's
  * `agentic-*@` naming convention.)
  */
-export const STRATEGY_PROMPT_VERSION = "agentic-strategy@2.17.0";
+export const STRATEGY_PROMPT_VERSION = "agentic-strategy@2.18.0";
 
 /**
  * Fixed thesis "playbook" the agent must choose from. A bounded vocabulary keeps

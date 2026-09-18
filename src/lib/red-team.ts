@@ -82,6 +82,18 @@ export interface RedTeamReviewContext {
   currentMarketRegime?: string;
   regimeSeverity?: unknown;
   macroeconomicData?: unknown;
+  /** Curve / real rates / VIX term / ERP — same regime math Green already has (2026-09-18 audit). */
+  macroDerived?: unknown;
+  /** Compact FRED trailing trends (Δ7d/Δ30d + spark) — same block as Green when present. */
+  macroTrends?: unknown;
+  /** Breadth / SKEW / VVIX / COT / factors — needed to challenge risk-on narratives. */
+  marketSignals?: unknown;
+  /** Kalshi event books Green already weighed (cheap; already on Green). */
+  eventMarkets?: unknown;
+  /** Polymarket macro YES/NO lines Green already weighed. */
+  predictionMarketsMacro?: unknown;
+  /** Near-term HIGH-impact calendar catalysts Green already weighed. */
+  upcomingEconomicEvents?: unknown;
   limits?: unknown;
   socraticAuthority?: unknown;
   portfolio?: unknown;
@@ -124,6 +136,12 @@ export const RED_TEAM_REVIEW_CONTEXT_KEYS = [
   "currentMarketRegime",
   "regimeSeverity",
   "macroeconomicData",
+  "macroDerived",
+  "macroTrends",
+  "marketSignals",
+  "eventMarkets",
+  "predictionMarketsMacro",
+  "upcomingEconomicEvents",
   "limits",
   "socraticAuthority",
   "portfolio",

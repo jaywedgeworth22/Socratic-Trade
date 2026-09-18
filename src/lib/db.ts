@@ -9,6 +9,7 @@ import { mkdirSync } from "fs";
 import { dirname, resolve } from "path";
 import crypto from "crypto";
 import { DEFAULT_POLICY, DEFAULT_SCORING_WEIGHTS, DEFAULT_STRATEGY_PROMPT } from "./defaults";
+import { SQLITE_BUSY_PIN_MS } from "./sqlite-event-loop";
 import type { NotificationEventType, TradingPolicy } from "./types";
 
 let db: Database.Database | undefined;
@@ -90,14 +91,12 @@ export function getDb(): Database.Database {
   db.function("account_subject_token", { deterministic: true }, (value: unknown) => accountSubjectToken(String(value ?? "")));
   db.function("account_setting_matches_subject", { deterministic: true }, accountSettingMatchesSubject);
   db.pragma("journal_mode = WAL");
-  // With WAL, a concurrent writer otherwise throws SQLITE_BUSY immediately; wait
-  // up to 60s for the lock instead. NORMAL durability is the WAL-recommended pairing.
-  // Raised from 30s (2026-07-18, PR #1728) after "database is locked" kept surfacing
-  // in prod under heavy concurrent write load (bulk RAG backfill/reindex + scheduler
-  // + burst ingest all writing the same file); WAL already lets readers proceed
-  // during a writer, so a longer wait here only affects genuinely-contended writers,
-  // not the common read path.
-  db.pragma("busy_timeout = 60000");
+  // Short pin, not a 60s sleep. better-sqlite3 waits for SQLITE_BUSY ON THE EVENT LOOP,
+  // so a 60s busy_timeout (raised 5s → 30s → 60s to hide "database is locked") froze
+  // GET /api/live and GET /api/health for the whole wait — Traefik 503 while Docker
+  // still said healthy. WAL readers *can* proceed during a writer only if the loop is
+  // free to run them. Async writers keep the 60s lock budget via sqliteYieldRetry.
+  db.pragma(`busy_timeout = ${SQLITE_BUSY_PIN_MS}`);
   db.pragma("synchronous = NORMAL");
   // Larger page cache + memory-mapped I/O: the dashboard replays fill/proposal history on every
   // request, so a ~20MB page cache (negative = KB) and 256MB mmap keep those hot reads off the

@@ -4,6 +4,7 @@
 // and outcome. The wrapper adds no behavior to the lane: results pass through, errors
 // re-throw to the caller's own handler, and a journaling failure can never break the lane.
 import { recordTaskEnd, recordTaskStart } from "./db-task-journal";
+import { sqliteYieldRetry } from "./sqlite-event-loop";
 import { safeErrorMessage } from "./telemetry-sanitize";
 
 export interface JournalLaneContext {
@@ -39,11 +40,11 @@ export async function journalLane<T>(
   context: JournalLaneContext,
   fn: () => Promise<T | JournalLaneOutcome<T>> | T | JournalLaneOutcome<T>
 ): Promise<T> {
-  const id = recordTaskStart({ taskName, ...context });
+  const id = await sqliteYieldRetry(() => recordTaskStart({ taskName, ...context }));
   try {
     const result = await fn();
     if (isLaneOutcome<T>(result)) {
-      recordTaskEnd(id, { status: result.status ?? "ok", summary: result.summary });
+      await sqliteYieldRetry(() => recordTaskEnd(id, { status: result.status ?? "ok", summary: result.summary }));
       // A skipped envelope with no `value` used to unwrap to `undefined`, which
       // `withLaneDeadline` then logged as a completed protective pass.  Return
       // the skipped envelope so late-deadline wording can tell skip from success.
@@ -52,10 +53,10 @@ export async function journalLane<T>(
       }
       return result.value as T;
     }
-    recordTaskEnd(id, { status: "ok" });
+    await sqliteYieldRetry(() => recordTaskEnd(id, { status: "ok" }));
     return result as T;
   } catch (error) {
-    recordTaskEnd(id, { status: "error", error: safeErrorMessage(error) });
+    await sqliteYieldRetry(() => recordTaskEnd(id, { status: "error", error: safeErrorMessage(error) }));
     throw error;
   }
 }

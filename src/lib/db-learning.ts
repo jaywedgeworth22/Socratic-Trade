@@ -4,6 +4,7 @@ import "server-only";
 import { getDb } from "./db";
 import { mergeHorizonRows } from "./outcome-horizons";
 import { yieldEventLoop } from "./slow-sync-guard";
+import { sqliteYieldRetry } from "./sqlite-event-loop";
 import type { LearnedContextRow, LearnedContextPendingRow, LearnedContextPendingStatus, SocraticOutcomeHorizonRow } from "./types";
 
 // ── Audit-event helpers ────────────────────────────────────────────────────────
@@ -1809,7 +1810,7 @@ export async function insertDocumentChunkFtsBatch(
   while (i < rows.length) {
     const group = rows.slice(i, i + groupSize);
     const startedAt = Date.now();
-    runGroup(group);
+    await sqliteYieldRetry(() => runGroup(group));
     const elapsed = Date.now() - startedAt;
     i += group.length;
     groupSize = nextFtsBatchGroupSize(groupSize, elapsed);

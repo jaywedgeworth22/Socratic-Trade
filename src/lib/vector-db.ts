@@ -36,7 +36,7 @@ import { RetrievalStageTrace, type RetrievalTraceSnapshot } from "./rag/retrieva
 import { dedupeSimilar, type DedupeSimilarReport } from "./rag/dedupe-similar";
 import { getCachedQueryEmbedding, setCachedQueryEmbedding } from "./rag/query-embed-cache";
 import { recordRagOperation, shouldDegradeForBudget } from "./rag/run-budget";
-import { estimateRagDispatchCost, getRagUsageSummary, hasRagIngestPointsBudget, hashQuery, meterEmbed, meterPineconeQuery, meterPineconeUpsert, meterRerank, recordRetrievalQuality, retrievalTelemetryEnabled, type RagEmbedRerankProvider } from "./rag-metering";
+import { auditRagIngestPointsGateSkip, estimateRagDispatchCost, getRagUsageSummary, hasRagIngestPointsBudget, hashQuery, meterEmbed, meterPineconeQuery, meterPineconeUpsert, meterRerank, ragIngestPointsBudgetDeferUntil, ragMaxDailyIngestPoints, recordRetrievalQuality, retrievalTelemetryEnabled, usedRagUpsertPointsLast24h, type RagEmbedRerankProvider } from "./rag-metering";
 import {
   EMBED_REQUEST_TOKEN_BUDGET,
   embedRequestFits,
@@ -248,6 +248,10 @@ export interface StoreContextsResult {
   wuExhausted?: boolean;
   /** ISO instant the monthly WU breaker expires (first day of next month UTC). */
   wuExhaustedUntil?: string;
+  /** Set with skipped when the rolling 24h Qdrant point ingest fuse is spent. */
+  ingestPointsBudgetExhausted?: boolean;
+  /** ISO instant producers should retry after a Qdrant daily-point fuse park (typically +1h). */
+  ingestPointsBudgetExhaustedUntil?: string;
   /**
    * The real embed-api-failed text (e.g. an HTTP 400/429 body) from the LAST rejected batch,
    * even on the non-throwing success path — a batch-isolated embed failure just drops that
@@ -732,6 +736,19 @@ export function hasPineconeWriteBudget(userId: string = "local"): boolean {
   if (usesQdrantWrites()) return true;
   if (!pineconeWriteBudgetEnabled()) return true;
   return usedPineconeWriteUnitsLast24h(userId) < pineconeMaxWriteUnitsPerDay();
+}
+
+/**
+ * Active write-backend daily ingest headroom.  When writes are on Qdrant this is the rolling
+ * 24h point fuse (`RAG_MAX_DAILY_INGEST_POINTS`); when on Pinecone it is the WU daily fuse.
+ * Producers (SEC filings / 8-K / transcripts / SecIngest) must call this instead of only
+ * `hasPineconeWriteBudget`, which is a no-op under Qdrant and previously thrashed soft-skips.
+ */
+export function hasVectorIngestWriteBudget(userId: string = "local", requested: number = 1): boolean {
+  if (usesQdrantWrites()) {
+    return hasRagIngestPointsBudget(userId, requested, "qdrant");
+  }
+  return hasPineconeWriteBudget(userId);
 }
 
 async function notifyPineconeDailyWriteFuse(input: {
@@ -2096,6 +2113,10 @@ async function assertIndexMetric(
   accountDeletionRequestId?: string
 ): Promise<void> {
   assertVectorStoreLease(leaseGuard);
+  // Pinecone retired for writes: skip control-plane describeIndex / metric assert entirely.
+  // Qdrant has its own Cosine guard (`assertQdrantCollectionMetric`). Authority for managed
+  // receipts comes from the durable ledger / qdrantProviderAuthority, not Pinecone host.
+  if (usesQdrantWrites()) return;
   if (indexMetricChecked.has(initCacheKey) && indexAuthorityByInitKey.has(initCacheKey)) return;
   let described = false;
   try {
@@ -3371,14 +3392,24 @@ async function storeContextsImpl(
     }
   }
   if (writeBackend === "qdrant" && !hasRagIngestPointsBudget(userId, validDocuments.length, "qdrant")) {
-    console.warn(
-      `[vector-db] Qdrant daily point ingestion budget exceeded for ${userId}; skipping storeContexts of ${validDocuments.length} docs.`
+    const until = ragIngestPointsBudgetDeferUntil();
+    auditRagIngestPointsGateSkip(
+      {
+        operation: "storeContexts",
+        attempted: validDocuments.length,
+        until,
+        used: usedRagUpsertPointsLast24h(userId, "qdrant"),
+        limit: ragMaxDailyIngestPoints()
+      },
+      userId
     );
     return {
       attempted: validDocuments.length,
       indexed: 0,
       skipped: true,
-      writeUnitBudgetSkipped: validDocuments.length
+      writeUnitBudgetSkipped: validDocuments.length,
+      ingestPointsBudgetExhausted: true,
+      ingestPointsBudgetExhaustedUntil: until
     };
   }
   const privateLedgerAuthority = scope === PRIVATE_SCOPE && !options?.managedCommit
@@ -4399,12 +4430,24 @@ async function storeDocumentImpl(
     }
   }
   if (writeBackend === "qdrant" && !hasRagIngestPointsBudget(userId, chunked.length, "qdrant")) {
-    console.warn(`[vector-db] Qdrant daily point ingestion budget exceeded for ${userId}; skipping ${chunked.length} chunks.`);
+    const until = ragIngestPointsBudgetDeferUntil();
+    auditRagIngestPointsGateSkip(
+      {
+        operation: "storeDocument",
+        attempted: chunked.length,
+        until,
+        used: usedRagUpsertPointsLast24h(userId, "qdrant"),
+        limit: ragMaxDailyIngestPoints()
+      },
+      userId
+    );
     return {
       attempted: chunked.length,
       indexed: 0,
       skipped: true,
       writeUnitBudgetSkipped: chunked.length,
+      ingestPointsBudgetExhausted: true,
+      ingestPointsBudgetExhaustedUntil: until,
       documentComplete: false
     };
   }
@@ -7435,17 +7478,11 @@ export async function retrieveContextDetailed(
     let privateIndex: any;
     let fmpIndex: any;
 
-    // R7 index-metric assertion runs on BOTH read backends whenever a Pinecone client exists.
-    // #3138 skipped it when `pc` was absent; #3158 narrowed it further to `readBackend ===
-    // "pinecone"`, which silently dropped BOTH of its jobs on the Qdrant path: the cosine-metric
-    // warning, and populating `indexAuthorityByInitKey` — the only in-process source of a
-    // Pinecone-derived provider authority.  It is cached per init key (`indexMetricChecked`) and
-    // documented never to throw for provider/metric faults, so running it here costs at most one
-    // `describeIndex` per process and cannot fail a retrieval pass.  Only the AUTHORITY it mints
-    // stays backend-specific: on the Qdrant path the records were committed under the durable
-    // authority read from the commit ledger below, so the Pinecone host authority must NOT
-    // pre-empt it — taking it here would drop every managed match on an authority mismatch.
-    if (pc && initCacheKey) {
+    // R7 Pinecone index-metric assertion only when Pinecone is still the write backend.
+    // With Qdrant-only writes (Pinecone retired), `assertIndexMetric` short-circuits and we
+    // never call describeIndex — Cosine is asserted via `assertQdrantCollectionMetric` below.
+    // Authority for managed receipts comes from the durable ledger / qdrantProviderAuthority.
+    if (pc && initCacheKey && !usesQdrantWrites()) {
       try {
         await assertIndexMetric(pc, initCacheKey, pineconeSource, userId);
       } catch {

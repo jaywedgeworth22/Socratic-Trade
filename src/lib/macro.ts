@@ -584,7 +584,18 @@ export async function fetchMacroDataWithLiveVix(userId?: string): Promise<MacroD
 }
 
 // Regime-critical fields that are always worth the tokens even when unchanged.
-const MACRO_ALWAYS_KEEP = new Set<keyof MacroData>(["vix", "fedFundsRate", "dgs10Treasury", "asOf"]);
+// Regime / risk-off axes that should stay visible even on quiet (unchanged) days — credit OAS,
+// VIX term (3M), and the short end of the curve matter as much as spot VIX / 10Y / Fed funds.
+const MACRO_ALWAYS_KEEP = new Set<keyof MacroData>([
+  "vix",
+  "vix3m",
+  "fedFundsRate",
+  "dgs3moTreasury",
+  "dgs2Treasury",
+  "dgs10Treasury",
+  "hyCreditSpread",
+  "asOf"
+]);
 
 /**
  * Delta-only macro pruning: macro data moves slowly, so on repeat runs only send

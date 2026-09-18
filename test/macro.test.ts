@@ -181,14 +181,21 @@ describe("pruneMacro", () => {
     expect(macro.cpiInflation).toBe("3.40%");
     // Regime-critical fields are always included even when unchanged.
     expect(macro.vix).toBe("15.00");
+    expect(macro.vix3m).toBe("17.00");
     expect(macro.fedFundsRate).toBe("5.25%");
+    expect(macro.dgs3moTreasury).toBe(base.dgs3moTreasury);
+    expect(macro.dgs2Treasury).toBe(base.dgs2Treasury);
     expect(macro.dgs10Treasury).toBe("4.20%");
+    expect(macro.hyCreditSpread).toBe(base.hyCreditSpread);
     // Unchanged, non-critical fields are omitted to save tokens.
     expect(omitted).toContain("unemploymentRate");
     expect(omitted).toContain("m2MoneySupply");
     expect(omitted).toContain("consumerSentiment");
     expect(omitted).not.toContain("cpiInflation");
     expect(omitted).not.toContain("vix");
+    expect(omitted).not.toContain("hyCreditSpread");
+    expect(omitted).not.toContain("vix3m");
+    expect(omitted).not.toContain("dgs2Treasury");
   });
 
   it("never leaks the fredSourced meta flag into the LLM prompt payload (first run and delta)", () => {

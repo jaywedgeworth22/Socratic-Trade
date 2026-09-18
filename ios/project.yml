@@ -80,13 +80,12 @@ targets:
         # runnable).  Pin the module name so imports and the display name are
         # decoupled.
         PRODUCT_MODULE_NAME: SocraticTrade
-      configs:
-        Release:
-          # XcodeGen defaults Release to "iPhone Developer", which makes
-          # xcodebuild archive look for an iOS App Development profile on CI
-          # even though ios-appstore-gm-prepare.sh imports Apple Distribution.
-          # Leave Debug on Automatic's development identity; ship uses Release.
-          CODE_SIGN_IDENTITY: "Apple Distribution"
+        # Release archive: Automatic + ASC API key + -allowProvisioningUpdates
+        # (ship-testflight.sh). Do not set CODE_SIGN_IDENTITY to Apple Distribution
+        # here — that conflicts with CODE_SIGN_STYLE Automatic on Xcode 26 CI
+        # ("automatically signed for development, but Apple Distribution specified").
+        # Congress.Trade / fleet ship use Automatic only; ios-appstore-gm-prepare.sh
+        # imports the distribution cert for Automatic to select at archive time.
     info:
       path: SocraticTrade/Info.plist
       properties:

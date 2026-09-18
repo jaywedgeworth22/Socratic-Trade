@@ -236,6 +236,11 @@ events during the measured stall burst; 09-07 had *more* lock events than 09-08 
 less pinning; and a busy-wait sleeps rather than burning the 107% CPU observed).  No timeout
 widened — that shipped separately in PR #3201.  Rollout:
 `docs/rollouts/2026-09-09-fts-mirror-nonconvergence.md`.
+## 2026-09-18 GROK — AG entry-path remainder (board 6aa1e66e)
+
+MM takeover of `ag/620ef423` was empty.  Land iOS first-run copy + Auth.js error=/login, with the login page now explaining `?error=` codes.  The header-based already-signed-in redirect was dropped (dead code on a public path; Sentry finding on #3396).  Do not rename callbackUrl to next.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-ag-entry-paths.md`.
+
 ## 2026-09-09 GROK — PR #3204 fixer tip (multipart retry, drill cleanup, fail-closed counts)
 
 Codex P1+P2 on `claude/backup-methodology`.  CompleteMultipartUpload 200+`<Error>` bodies now

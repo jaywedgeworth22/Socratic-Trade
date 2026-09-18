@@ -9,6 +9,7 @@
 import { isAppleWebAuthConfigured } from "../../src/lib/auth/apple-web";
 import { signIn } from "../../src/lib/auth/auth";
 import { sanitizeCallbackUrl } from "../../src/lib/auth/callback-url";
+import { loginErrorSentences } from "../../src/lib/auth/login-error";
 import { SENTENCE_GAP } from "../console/lib/format";
 import { HeaderLogo } from "../console/ui/header-logo";
 
@@ -29,10 +30,21 @@ const LOGIN_VALUE_BULLETS = [
   "Control the backend agent without moving credentials onto the device"
 ] as const;
 
-export default async function LoginPage(props: { searchParams?: Promise<{ callbackUrl?: string | string[] }> }) {
+export default async function LoginPage(props: {
+  searchParams?: Promise<{ callbackUrl?: string | string[]; error?: string | string[] }>;
+}) {
   const searchParams = await props.searchParams;
   const rawCallbackUrl = typeof searchParams?.callbackUrl === "string" ? searchParams.callbackUrl : undefined;
   const callbackUrl = sanitizeCallbackUrl(rawCallbackUrl);
+  // Auth.js sends failed sign-ins here as /login?error=<code> (pages.error in src/lib/auth/auth.ts).
+  // Without this the page silently re-rendered the buttons and the user got no feedback.
+  const errorSentences = loginErrorSentences(searchParams?.error);
+
+  // NOTE: there is deliberately no "already signed in -> redirect" branch here.  /login is a PUBLIC
+  // path in middleware.ts, which strips x-authenticated-user-email before the page runs, so a
+  // header-based redirect can never fire (Sentry review finding on PR #3396).  Re-implementing it via
+  // auth() would risk a /login <-> protected-route redirect loop for a session cookie the middleware
+  // rejects (revoked / tombstoned accounts bounce back to /login), so it is left out on purpose.
 
   return (
     <main className="grid min-h-screen place-items-center bg-bg px-6 text-center">
@@ -52,6 +64,15 @@ export default async function LoginPage(props: { searchParams?: Promise<{ callba
             </li>
           ))}
         </ul>
+
+        {errorSentences && (
+          <p
+            role="alert"
+            className="mx-auto max-w-sm rounded-md border border-line bg-surface px-4 py-3 text-sm text-neg"
+          >
+            {errorSentences.join(SENTENCE_GAP)}
+          </p>
+        )}
 
         {anyProviderConfigured ? (
           /* One family: Google's Light/Dark chrome, brand only in the mark.

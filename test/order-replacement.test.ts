@@ -64,6 +64,34 @@ describe("market replacement for stale limit orders", () => {
     });
   });
 
+  it("still honours a MANUAL replace after the owner cancelled a protective stop on that symbol", async () => {
+    // Regression for #3319 review: `owner_cancelled_stop` is a permanent tombstone with no
+    // clearing path, so it must fence only AUTOMATED remediation.  A manual replace the owner
+    // explicitly asked for still goes through, exactly like the `not_app_placed` bypass.
+    const { replaceStaleLimitOrderWithMarket } = await import("../src/lib/order-replacement");
+    const { recordOwnerCancelledProtectiveStop } = await import("../src/lib/order-provenance");
+    recordOwnerCancelledProtectiveStop("local", "APCA-PAPER", "AAPL");
+
+    const original = order({ id: "limit-1", quantity: 10, filledQuantity: 2, state: "accepted" });
+    const canceled = order({ id: "limit-1", quantity: 10, filledQuantity: 2, state: "canceled" });
+    const gateway = gatewayMock({
+      orders: [[original], [canceled]],
+      execution: { orderId: "market-1", refId: "ref-1", state: "accepted", raw: { id: "market-1" } }
+    });
+
+    const result = await replaceStaleLimitOrderWithMarket({
+      userId: "local",
+      policy: paperPolicy(),
+      activeAccount: account("paper"),
+      gateway,
+      orderId: "limit-1",
+      cancelSettleMs: 0
+    });
+
+    expect(result).toMatchObject({ status: "replaced", replacementOrderId: "market-1" });
+    expect(gateway.placeEquityOrder).toHaveBeenCalled();
+  });
+
   it("books a terminal partial replacement as a real fill instead of reporting a total failure", async () => {
     const { replaceStaleLimitOrderWithMarket } = await import("../src/lib/order-replacement");
     const { listFillEvents } = await import("../src/lib/db");

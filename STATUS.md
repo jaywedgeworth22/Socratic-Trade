@@ -1,5 +1,21 @@
 # Current Status
 
+## 2026-09-18 CURSOR — iOS TestFlight Automatic vs Distribution signing (PR pending)
+
+`ios-ship` rc=65 after #3399: Automatic signing conflicted with manual `Apple Distribution` in
+Release + `ship-testflight.sh`.  Reverted to Congress.Trade pattern (Automatic only; no archive
+identity override).  Branch `fix/ios-tf-automatic-vs-distribution-signing`.  Extra-ship no.
+Rollout: `docs/rollouts/2026-09-18-ios-tf-automatic-vs-distribution-signing.md`.
+
+## 2026-09-18 GROK — Datadog remaining: ST RUM stay dark + DD_HOSTNAME (board f03c5542)
+
+Infrastructure Free us5.  Trial expired 2026-09-07.  RUM hourly usage is empty.  The existing `Socratic Trade` RUM app stays `is_active=false` on purpose — do not mint a second app and do not start send.  Infisical now has `DD_RUM_ENABLED=false` and `DD_HOSTNAME=fleet-hetzner-nbg1`.  Preload sets the host tag on Coolify only; dd-trace `init({ hostname })` is the Agent address.  Extra-ship no.  Sentry stays the app error path.
+Rollout: `docs/rollouts/2026-09-18-datadog-free-remaining.md`.
+## 2026-09-18 GROK — MM AG takeover #3379 theme CI (board 6aa1e66e)
+
+Hosted tsc failed on `@/app/ui/theme` (alias is `src/*`).  Relative import from console chrome/ticker-logo.  Default stays light.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-ag-takeover-theme-ci.md`.
+
 ## 2026-09-18 CURSOR — Effort Issues Sync Crons margin (FLEET-INFRA-C0)
 
 Sentry `ci-effort-issues-sync` false-pages every day at 06:27Z.  The board-mirror job itself succeeds on `ubuntu-latest` in ~12-30s; GitHub just starts the `12 6 * * *` schedule 5-6.5h late (typical 11:12-11:44Z, worst retained 2026-09-14 12:37Z).  Same class as #3194 / FLEET-INFRA-C1, #3387 / FLEET-INFRA-C3, and #3389 / FLEET-INFRA-BY.  Raise `CHECKIN_MARGIN_OVERRIDES["Effort Issues Sync"]` to 600.  Cron and sync script unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` the sync.  #3302 already moved the live slug to `ci-socratic-trade-effort-issues-sync`; do not close C0 on merge.

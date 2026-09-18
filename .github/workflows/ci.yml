@@ -323,11 +323,16 @@ jobs:
           path: .next/cache
           key: ${{ runner.os }}-nextjs-${{ hashFiles('package.json') }}-${{ hashFiles('src/**', 'app/**') }}
 
+  verify-ios:
+    needs: [classify]
+    if: ${{ !cancelled() && needs.classify.result == 'success' && needs.classify.outputs.docs-only != 'true' && needs.classify.outputs.redundant != 'true' }}
+    uses: ./.github/workflows/ios-build.yml
+
   # THE required check. Pure gate: interprets the lanes above and reports under the exact
   # context name the ruleset requires. Fail-closed in every ambiguous state; annotates which
   # environment produced the accepted result (the audit receipt).
   verify:
-    needs: [classify, verify-hosted]
+    needs: [classify, verify-hosted, verify-ios]
     # `!cancelled()` (not `always()`) so superseded-run cancellation still cancels the gate,
     # while classify/lane failures cannot silently skip a required check (skipped required
     # checks can fail open — Codex review, PR #370).
@@ -343,12 +348,14 @@ jobs:
           DOCS_ONLY: ${{ needs.classify.outputs.docs-only }}
           REDUNDANT: ${{ needs.classify.outputs.redundant }}
           HOSTED_RESULT: ${{ needs.verify-hosted.result }}
+          IOS_RESULT: ${{ needs.verify-ios.result }}
         run: |
           set -euo pipefail
           note() { echo "$1"; echo "$1" >> "$GITHUB_STEP_SUMMARY"; }
           note "### verify gate"
           note "- classify: ${CLASSIFY_RESULT} (docs-only: ${DOCS_ONLY:-n/a}, redundant: ${REDUNDANT:-n/a})"
           note "- verify-hosted (GitHub-hosted ubuntu-latest): ${HOSTED_RESULT}"
+          note "- verify-ios (GitHub-hosted macos-latest): ${IOS_RESULT}"
 
           if [ "$CLASSIFY_RESULT" != "success" ]; then
             note "- RESULT: FAIL — classify did not succeed; the gate never fails open."
@@ -366,12 +373,12 @@ jobs:
             note "- RESULT: PASS — hourly backstop: main HEAD already has a green CI run; suite skipped."
             exit 0
           fi
-          if [ "$HOSTED_RESULT" = "success" ]; then
-            note "- RESULT: PASS — produced by GitHub-hosted ubuntu-latest."
+          if [ "$HOSTED_RESULT" = "success" ] && [ "$IOS_RESULT" = "success" ]; then
+            note "- RESULT: PASS — produced by GitHub-hosted ubuntu-latest and macos-latest."
             exit 0
           fi
           # Anything else — failure, skipped, or a state we did not enumerate — fails the
           # gate. A `skipped` verify-hosted on a non-docs-only diff used to be able to pass
           # via the (unreachable) self lane; there is no second lane now, so it is a FAIL.
-          note "- RESULT: FAIL — the verification lane did not succeed (hosted: ${HOSTED_RESULT})."
+          note "- RESULT: FAIL — the verification lane did not succeed (hosted: ${HOSTED_RESULT}, ios: ${IOS_RESULT})."
           exit 1

@@ -1,7 +1,7 @@
 # Project Format: Xcode 26.3-compatible (objectVersion / preferredProjectObjectVersion = 100).
-# XcodeGen 2.46 still emits objectVersion 77 for xcodeVersion 26.3; after `xcodegen generate`
-# re-apply objectVersion=100 and preferredProjectObjectVersion=100 in project.pbxproj
-# (matches Congress.Trade + Usage-Monitor). Do not leave 77 (UI shows Xcode 16).
+# XcodeGen 2.46 still emits objectVersion 77 for xcodeVersion 26.3; `xcodegen-post.py`
+# rewrites 77 -> 100 after generate (matches Congress.Trade). Do not leave 77 on main:
+# Xcode 26 on hosted macos-latest cannot archive objectVersion 77 (TestFlight rc=65).
 
 name: Socratic Trade
 
@@ -12,6 +12,7 @@ options:
     macOS: "15.0"
   groupSortPosition: top
   xcodeVersion: "26.3"
+  postGenCommand: "python3 xcodegen-post.py"
 
 settings:
   base:
@@ -79,6 +80,12 @@ targets:
         # runnable).  Pin the module name so imports and the display name are
         # decoupled.
         PRODUCT_MODULE_NAME: SocraticTrade
+        # Release archive: Automatic + ASC API key + -allowProvisioningUpdates
+        # (ship-testflight.sh). Do not set CODE_SIGN_IDENTITY to Apple Distribution
+        # here — that conflicts with CODE_SIGN_STYLE Automatic on Xcode 26 CI
+        # ("automatically signed for development, but Apple Distribution specified").
+        # Congress.Trade / fleet ship use Automatic only; ios-appstore-gm-prepare.sh
+        # imports the distribution cert for Automatic to select at archive time.
     info:
       path: SocraticTrade/Info.plist
       properties:

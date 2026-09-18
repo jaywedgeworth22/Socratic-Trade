@@ -63,7 +63,11 @@ import {
   type BrokerStopPlacementIntent
 } from "./db";
 import { auditDeduped } from "./audit-dedupe";
-import { hasOwnerCancelledProtectiveStop } from "./order-provenance";
+import {
+  clearOwnerCancelledProtectiveStop,
+  hasOwnerCancelledProtectiveStop,
+  listOwnerCancelledProtectiveStopSymbols
+} from "./order-provenance";
 import { isRejectedOrCanceledState, liveExitOrderCoverage } from "./broker-side";
 
 // Steady-state skip reasons fire once per tick per position (~14k identical
@@ -406,6 +410,37 @@ export async function reconcileBrokerProtectiveStops(args: {
   for (const p of positions) {
     if (p.quantity > 0.000001) livePositions.set(normalizeSymbol(p.symbol), p);
     else if (shortsEnabled && p.quantity < -0.000001) livePositions.set(normalizeSymbol(p.symbol), p);
+  }
+  // Retire owner-cancel tombstones whose position is gone.  The tombstone
+  // (order-provenance.ts) means "the owner un-protected THIS position, do not re-place its
+  // stop"; it is written permanently with no expiry, and before this sweep nothing ever
+  // removed it.  So one manual stop cancel on a symbol used to suppress section 4's placement
+  // for that symbol FOREVER — including for a brand-new position opened long after the one the
+  // owner actually un-protected, which the owner never declined protection on and which would
+  // then sit naked with only an audit line to say why.
+  //
+  // "Absent from `positions`" is positive evidence of flat, not a failed read: the only caller
+  // (synthetic-stops.ts:250-255) returns early when `getEquityPositions` throws, so reaching
+  // here means this snapshot came back successfully.  Flatness is read off the raw `positions`
+  // array rather than `livePositions` because `livePositions` omits shorts when the account has
+  // `brokerStopsForShortsEnabled` off — an open short would otherwise look flat and lose its
+  // tombstone.
+  const heldSymbols = new Set(
+    positions.filter((p) => Math.abs(p.quantity) > 0.000001).map((p) => normalizeSymbol(p.symbol))
+  );
+  for (const tombstonedSymbol of listOwnerCancelledProtectiveStopSymbols(userId, accountNumber)) {
+    if (heldSymbols.has(tombstonedSymbol)) continue;
+    clearOwnerCancelledProtectiveStop(userId, accountNumber, tombstonedSymbol);
+    audit(
+      "owner_cancelled_protective_stop_cleared",
+      {
+        accountNumber,
+        symbol: tombstonedSymbol,
+        reason: "position closed — the do-not-replace tombstone does not carry over to a new position"
+      },
+      userId,
+      policy.connectedAccountId
+    );
   }
   let stopContracts: Record<string, ReturnType<typeof getStopPlans>[string]> = {};
   try {

@@ -1,7 +1,7 @@
 # Project Format: Xcode 26.3-compatible (objectVersion / preferredProjectObjectVersion = 100).
-# XcodeGen 2.46 still emits objectVersion 77 for xcodeVersion 26.3; after `xcodegen generate`
-# re-apply objectVersion=100 and preferredProjectObjectVersion=100 in project.pbxproj
-# (matches Congress.Trade + Usage-Monitor). Do not leave 77 (UI shows Xcode 16).
+# XcodeGen 2.46 still emits objectVersion 77 for xcodeVersion 26.3; `xcodegen-post.py`
+# rewrites 77 -> 100 after generate (matches Congress.Trade). Do not leave 77 on main:
+# Xcode 26 on hosted macos-latest cannot archive objectVersion 77 (TestFlight rc=65).
 
 name: Socratic Trade
 
@@ -12,6 +12,7 @@ options:
     macOS: "15.0"
   groupSortPosition: top
   xcodeVersion: "26.3"
+  postGenCommand: "python3 xcodegen-post.py"
 
 settings:
   base:
@@ -79,6 +80,13 @@ targets:
         # runnable).  Pin the module name so imports and the display name are
         # decoupled.
         PRODUCT_MODULE_NAME: SocraticTrade
+      configs:
+        Release:
+          # XcodeGen defaults Release to "iPhone Developer", which makes
+          # xcodebuild archive look for an iOS App Development profile on CI
+          # even though ios-appstore-gm-prepare.sh imports Apple Distribution.
+          # Leave Debug on Automatic's development identity; ship uses Release.
+          CODE_SIGN_IDENTITY: "Apple Distribution"
     info:
       path: SocraticTrade/Info.plist
       properties:

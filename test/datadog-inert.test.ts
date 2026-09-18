@@ -99,6 +99,15 @@ describe("datadog integration is inert without env vars", () => {
     expect(result.stderr).toBe("");
   });
 
+  it("preload attaches Coolify traces to fleet-hetzner-nbg1 via DD_HOSTNAME, not init hostname", () => {
+    const source = readFileSync("scripts/datadog-preload.mjs", "utf8");
+    expect(source).toContain("fleet-hetzner-nbg1");
+    expect(source).toContain("attachFleetHostname");
+    expect(source).toContain("DD_HOSTNAME");
+    expect(source).toContain("Host tag only");
+    expect(source).toContain("os.hostname");
+  });
+
   it("coolify-prod-start arms Datadog via --import and never --require", () => {
     const source = readFileSync("scripts/coolify-prod-start.sh", "utf8");
     expect(source).toContain("maybe_arm_datadog");

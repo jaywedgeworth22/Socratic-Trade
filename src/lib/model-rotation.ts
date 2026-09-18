@@ -62,7 +62,10 @@ export { isModelRotationSentinel, LLM_MODEL_ROTATION_SENTINEL };
  *     answers with an empty proposal list every round (model judgment, not a request-shape
  *     bug — see docs/rollouts/2026-07-10-mistral-rebench.md) but its reasoning tier does
  *     propose when explicitly requested at higher cost/latency.
- *   - grok-build-0.1 — coding specialist, soft-timeouts as a Green strategist.
+ *   - grok-build-0.1 — coding specialist, soft-timeouts as a Green strategist. REMOVED FROM
+ *     THE CATALOG ENTIRELY 2026-09-18 (model-catalog cleanup), not just the rotation pool —
+ *     see docs/rollouts/2026-09-18-model-catalog-cleanup.md. This bullet is now historical:
+ *     there is nothing left to exclude, and ROTATION_EXCLUDED_DISPLAY_SLUGS is empty.
  * Order interleaves providers so consecutive runs hit different providers even before the
  * credential filter, and so green/red (offset by the wrap-advance) pair across providers.
  */

@@ -65,24 +65,11 @@ export const MODEL_REASONING_RECOMMENDATIONS: Record<string, ModelReasoningRecom
     roleEfforts: { red: "high", review: "high", chat: "medium" },
     advice: "Sol: Medium for Green/Coach; High for Red Team or one-off strategy/learning review."
   },
-  "gpt-5.6-terra": {
-    effort: "medium",
-    roleEfforts: { red: "high", review: "high", chat: "medium" },
-    advice: "Terra: Medium is recommended for Green Team and Coach balance."
-  },
   "gpt-5.6-luna": {
     effort: "medium",
     roleEfforts: { red: "medium", review: "medium", chat: "low" },
     advice: "Luna: Low for chat/high-volume synthesis; Medium for Green."
   },
-  "gpt-5.4-nano": { effort: "low", advice: "Nano at Low: best for extraction and cheap chat." },
-  "gpt-mini-latest": {
-    effort: "medium",
-    roleEfforts: { chat: "low", red: "high", review: "high" },
-    advice: "Mini: Low for Coach/chat, Medium for a low-cost Green Team."
-  },
-  "gpt-4o": { effort: "medium" },
-  "gpt-4o-mini": { effort: "low" },
   // Anthropic
   "claude-haiku-latest": { effort: "medium" },
   "claude-sonnet-latest": { effort: "medium" },
@@ -90,7 +77,6 @@ export const MODEL_REASONING_RECOMMENDATIONS: Record<string, ModelReasoningRecom
   "claude-fable-latest": { effort: "medium" },
   // xAI
   "grok-latest": { effort: "medium" },
-  "grok-build-0.1": { effort: "medium" },
   // Gemini
   "gemini-flash-lite-latest": { effort: "medium" },
   "gemini-flash-latest": { effort: "medium" },
@@ -98,13 +84,10 @@ export const MODEL_REASONING_RECOMMENDATIONS: Record<string, ModelReasoningRecom
   // DeepSeek
   "deepseek-flash-latest": { effort: "none", advice: DEEPSEEK_OPT_IN_ADVICE },
   "deepseek-pro-latest": { effort: "none", advice: DEEPSEEK_OPT_IN_ADVICE },
-  "deepseek-r1": { effort: "high" },
   // Mistral
   "mistral-small-latest": { effort: "none" },
   "mistral-medium-latest": { effort: "none", advice: MISTRAL_MEDIUM_ADVICE },
-  "mistral-large-latest": { effort: "medium" },
-  // Meta
-  "llama-3.3-70b-instruct": { effort: "medium" }
+  "mistral-large-latest": { effort: "medium" }
 };
 
 function lookup(model: string | undefined): ModelReasoningRecommendation | undefined {

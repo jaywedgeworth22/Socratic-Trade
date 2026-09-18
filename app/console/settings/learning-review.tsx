@@ -9,7 +9,7 @@
  *  PUT /api/policy path as every other settings card:
  *    learningReviewEnabled — the on/off switch (default off);
  *    learningReviewMode    — decide (apply verdicts, default) vs annotate (notify only);
- *    learningReviewModel   — the model that runs the review (default claude-fable-5,
+ *    learningReviewModel   — the model that runs the review (default claude-fable-latest,
  *                            an explicit value — never a blank that secretly means Fable). */
 
 import { useState } from "react";

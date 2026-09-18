@@ -306,13 +306,13 @@ describe("review trigger (learningReviewMinNewLessons / learningReviewMaxWaitDay
 // ── Defaults + no hidden model fallback (owner 2026-07-09) ───────────────────────
 
 describe("defaults and model requirement", () => {
-  it("defaults to decide mode and the claude-fable-5 model when nothing was explicitly set", () => {
+  it("defaults to decide mode and the claude-fable-latest model when nothing was explicitly set", () => {
     const userId = `lr-default-${randomUUID().slice(0, 8)}`;
     const policy = getPolicy(userId);
     // "decide" is the default; only an explicit "annotate" opts out.
     expect(policy.learningReviewMode ?? "decide").not.toBe("annotate");
     // The model default is a real, explicit value — never blank-means-Fable.
-    expect(policy.learningReviewModel).toBe("claude-fable-5");
+    expect(policy.learningReviewModel).toBe("claude-fable-latest");
   });
 
   it("skips with reason 'no-model' rather than silently substituting a model when blank", async () => {
@@ -344,7 +344,13 @@ describe("defaults and model requirement", () => {
     expect(summary.model).toBe("gpt-6-astra-pro");
     const auditRow = listAuditByKind("learning_review_summary", 1, userId)[0];
     expect((auditRow.payload as { model?: string; modelLabel?: string }).model).toBe("gpt-6-astra-pro");
-    expect((auditRow.payload as { modelLabel?: string }).modelLabel).toContain("Astra Pro");
+    // 2026-09-18 catalog cleanup (docs/rollouts/2026-09-18-model-catalog-cleanup.md) retags the
+    // GPT-6 Astra Pro row as `gpt-6-astra-pro — GPT-6 Astra in pro reasoning mode` (pro is a
+    // request parameter, not a distinct SKU). The audit label therefore resolves to that
+    // canonical entry, not the legacy "GPT-6 Astra Pro" display name.
+    expect((auditRow.payload as { modelLabel?: string }).modelLabel).toBe(
+      "gpt-6-astra-pro — GPT-6 Astra in pro reasoning mode (more thinking per call)",
+    );
   });
 });
 

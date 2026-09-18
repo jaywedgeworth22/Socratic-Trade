@@ -1,6 +1,6 @@
 "use client";
 
-import { useTheme } from "@/app/ui/theme";
+import { useTheme } from "../../ui/theme";
 
 export type ConsoleTheme = "system" | "light" | "dark";
 

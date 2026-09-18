@@ -71,9 +71,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   return <ThemeContext.Provider value={{ theme, resolvedTheme, toggle, set }}>{children}</ThemeContext.Provider>;
 }
 
-/** Currently has no callers — kept as the public API for a future public-page
- *  theme control. \`ThemeToggle\` (the only prior consumer) was deleted 2026-07-16
- *  as dead code. */
+/** Public theme hook.  Console chrome and ticker logos resolve through this
+ *  so light/dark/system stay on one resolver.  Default remains light until
+ *  the user picks Dark or System. */
 export function useTheme() {
   return useContext(ThemeContext);
 }

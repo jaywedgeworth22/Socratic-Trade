@@ -12,7 +12,7 @@ import { normalizeTickerLogoSymbol } from "@/lib/ticker-logos";
 import { cx } from "../lib/format";
 import { Tooltip } from "./primitives";
 import { useTickerLogoDisplay } from "../lib/useTickerLogoDisplay";
-import { useTheme } from "@/app/ui/theme";
+import { useTheme } from "../../ui/theme";
 
 export type { TickerLogoDisplay };
 

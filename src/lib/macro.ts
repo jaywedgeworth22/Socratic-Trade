@@ -602,26 +602,32 @@ const MACRO_ALWAYS_KEEP = new Set<keyof MacroData>([
  * the fields that changed since the last run (plus a few regime-critical ones),
  * and list the rest as "unchanged" instead of re-spending tokens on them.
  */
+/** Macro plus optional live-VIX freshness stamp (not a MacroData field). */
+export type MacroWithLiveVix = MacroData & { vixAsOf?: string };
+
 export function pruneMacro(
-  current: MacroData,
-  previous?: MacroData | null
+  current: MacroWithLiveVix,
+  previous?: MacroWithLiveVix | null
 ): { macro: Record<string, string>; omitted: string[] } {
   // Only the string data fields go to the LLM. Meta/sourcing flags (fredSourced) are
   // dashboard-only, and empty-string fields (an unsourced/failed series — the value the console
   // renders as an em dash) are dropped entirely: the strategist must never see a blank or
   // placeholder reading presented as data.
-  const entries = (Object.entries(current) as Array<[keyof MacroData, MacroData[keyof MacroData]]>).filter(
+  //
+  // vixAsOf is stamp-only freshness from fetchMacroDataWithLiveVix; proposeTrades always
+  // re-applies it onto macroeconomicData. Strip it before entries so it never lands in
+  // macro/omitted (Instinct / Sentry MEDIUM on #3392). A `key === "vixAsOf"` check against
+  // keyof MacroData is a TS2367 — Object.entries still surfaces the stamp at runtime.
+  const { vixAsOf: _vixAsOf, ...currentFields } = current;
+  const entries = (Object.entries(currentFields) as Array<[keyof MacroData, MacroData[keyof MacroData]]>).filter(
     (entry): entry is [keyof MacroData, string] => typeof entry[1] === "string" && entry[1] !== ""
   );
   if (!previous) return { macro: Object.fromEntries(entries), omitted: [] };
+  const { vixAsOf: _prevVixAsOf, ...previousFields } = previous;
   const macro: Record<string, string> = {};
   const omitted: string[] = [];
-    for (const [key, value] of entries) {
-    // vixAsOf is stamp-only freshness from fetchMacroDataWithLiveVix; proposeTrades always
-    // re-applies it onto macroeconomicData. Never put it in omitted/unchanged — that would
-    // contradict the re-stamp (Instinct / Sentry MEDIUM on #3392).
-    if (key === "vixAsOf") continue;
-    if (MACRO_ALWAYS_KEEP.has(key) || previous[key] !== value) {
+  for (const [key, value] of entries) {
+    if (MACRO_ALWAYS_KEEP.has(key) || previousFields[key] !== value) {
       macro[key] = value;
     } else {
       omitted.push(key);

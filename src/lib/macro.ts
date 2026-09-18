@@ -606,7 +606,7 @@ export type MacroWithLiveVix = MacroData & { vixAsOf?: string };
  * and list the rest as "unchanged" instead of re-spending tokens on them.
  */
 export function pruneMacro(
-  current: MacroWithLiveVix,
+  current: MacroWithLiveVix | null | undefined,
   previous?: MacroWithLiveVix | null
 ): { macro: Record<string, string>; omitted: string[] } {
   // Only the string data fields go to the LLM. Meta/sourcing flags (fredSourced) are
@@ -618,6 +618,10 @@ export function pruneMacro(
   // re-applies it onto macroeconomicData. Strip it before entries so it never lands in
   // macro/omitted (Instinct / Sentry MEDIUM on #3392). A `key === "vixAsOf"` check against
   // keyof MacroData is a TS2367 — Object.entries still surfaces the stamp at runtime.
+  //
+  // Null-safe: ownership-loss / mock paths can hand us undefined (e.g. a test that stubs
+  // fetchMacroDataWithLiveVix to undefined). Never throw from the destructure — return empty.
+  if (current == null) return { macro: {}, omitted: [] };
   const { vixAsOf: _vixAsOf, ...currentFields } = current;
   const entries = (Object.entries(currentFields) as Array<[keyof MacroData, MacroData[keyof MacroData]]>).filter(
     (entry): entry is [keyof MacroData, string] => typeof entry[1] === "string" && entry[1] !== ""

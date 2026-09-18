@@ -199,6 +199,11 @@ describe("pruneMacro", () => {
   });
 
   
+  it("returns empty payload when current macro is null/undefined (ownership-loss / mock paths)", () => {
+    expect(pruneMacro(undefined)).toEqual({ macro: {}, omitted: [] });
+    expect(pruneMacro(null)).toEqual({ macro: {}, omitted: [] });
+  });
+
   it("keeps vixAsOf out of omitted when unchanged across the live-VIX cache window", () => {
     const stamp = "2026-09-18T10:00:00.000Z";
     const base = {

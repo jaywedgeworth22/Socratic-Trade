@@ -5057,17 +5057,17 @@ async function proposeTrades(input: {
   const macroCacheKey = `last_macro_sent:${input.userId}`;
   const previousMacro = getInternalSetting<MacroData>(macroCacheKey);
   const { macro: macroForPrompt, omitted: macroOmitted } = pruneMacro(macro, previousMacro);
-  setInternalSetting(macroCacheKey, macro);
+  if (macro) setInternalSetting(macroCacheKey, macro);
   const macroeconomicData =
     macroOmitted.length > 0
       ? {
           ...macroForPrompt,
           unchangedSinceLastRun: macroOmitted.filter((k) => k !== "vixAsOf"),
-          ...(macro.vixAsOf ? { vixAsOf: macro.vixAsOf } : {})
+          ...(macro?.vixAsOf ? { vixAsOf: macro.vixAsOf } : {})
         }
       : {
           ...macroForPrompt,
-          ...(macro.vixAsOf ? { vixAsOf: macro.vixAsOf } : {})
+          ...(macro?.vixAsOf ? { vixAsOf: macro.vixAsOf } : {})
         };
 
   // Compact FRED trailing trends (Δ7d/Δ30d + spark). Dashboard-only until 2026-09-18 — fail-open.

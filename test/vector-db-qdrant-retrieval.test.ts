@@ -260,30 +260,28 @@ describe("retrieveContextDetailed with Qdrant read backend", () => {
   // left the self-hosted box. Same leftover family as the storeContexts mislabel above.
   it("labels a sustained Qdrant retrieve failure with provider 'qdrant', not the old hardcoded 'pinecone'", async () => {
     delete process.env.PINECONE_API_KEY;
-    vi.useFakeTimers();
-    try {
-      const mockFetch = vi.fn(async (url: string | URL | Request) => {
-        const urlStr = String(url);
-        if (urlStr.includes("embeddings")) {
-          return new Response(
-            JSON.stringify({ data: [{ embedding: new Array(1024).fill(0.01) }] }),
-            { status: 200, headers: { "Content-Type": "application/json" } }
-          );
-        }
-        throw new TypeError("fetch failed");
-      });
-      vi.stubGlobal("fetch", mockFetch);
+    // Real timers, like the storeContexts sibling above.  This test used vi.useFakeTimers() plus one
+    // `await vi.runAllTimersAsync()`, which hangs: retrieveContextDetailed awaits real async work (the
+    // embed fetch, settings reads) BEFORE qdrantQueryTier schedules its 300ms/600ms retry backoff, so
+    // when runAllTimersAsync runs there are no timers yet, it returns at once, and the backoff timer
+    // scheduled afterwards is never advanced (timed out at 60s in CI run 35372259807 and locally).
+    // The real backoff is only 300 + 600 ms.
+    const mockFetch = vi.fn(async (url: string | URL | Request) => {
+      const urlStr = String(url);
+      if (urlStr.includes("embeddings")) {
+        return new Response(
+          JSON.stringify({ data: [{ embedding: new Array(1024).fill(0.01) }] }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      throw new TypeError("fetch failed");
+    });
+    vi.stubGlobal("fetch", mockFetch);
 
-      const pending = retrieveContextDetailed("Apple revenue", "AAPL", 5, "local");
-      const chunksPromise = pending.then((chunks) => chunks);
-      await vi.runAllTimersAsync();
-      const chunks = await chunksPromise;
-      expect(chunks).toEqual([]);
-      const call = sentryMetricsMock.logError.mock.calls.find((c) => c[0] === "rag.error");
-      expect(call).toBeDefined();
-      expect(call?.[1]).toMatchObject({ provider: "qdrant" });
-    } finally {
-      vi.useRealTimers();
-    }
+    const chunks = await retrieveContextDetailed("Apple revenue", "AAPL", 5, "local");
+    expect(chunks).toEqual([]);
+    const call = sentryMetricsMock.logError.mock.calls.find((c) => c[0] === "rag.error");
+    expect(call).toBeDefined();
+    expect(call?.[1]).toMatchObject({ provider: "qdrant" });
   });
 });

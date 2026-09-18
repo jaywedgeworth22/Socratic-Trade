@@ -273,7 +273,16 @@ describe("trading-liveness", () => {
     // on the ops snapshot). Other tests in this shared-DB file may also have left active
     // accounts behind, so this only checks shape/leakage, not exact counts.
     expect(Object.keys(body.checks.tradingLiveness).sort()).toEqual(
-      ["activeAccounts", "autopilotAccounts", "degraded", "marketOpen", "oldestCompletedRunAgeSeconds", "runningAskFirstAccounts"].sort()
+      [
+        "activeAccounts",
+        "autopilotAccounts",
+        "degraded",
+        "degradedReasons",
+        "marketOpen",
+        "maxConsecutiveFailedRuns",
+        "oldestCompletedRunAgeSeconds",
+        "runningAskFirstAccounts"
+      ].sort()
     );
     expect(typeof body.checks.tradingLiveness.activeAccounts).toBe("number");
     expect(typeof body.checks.tradingLiveness.degraded).toBe("number");
@@ -284,6 +293,15 @@ describe("trading-liveness", () => {
     ).toBe(true);
     expect(body.checks.tradingLiveness.activeAccounts).toBeGreaterThanOrEqual(1);
     expect(body.checks.tradingLiveness.degraded).toBeGreaterThanOrEqual(1);
+    // The cause fields let a JSON-path monitor separate "failing every run" from out-of-session
+    // silence.  They must stay identity-free: a max across accounts and a fixed reason vocabulary.
+    expect(typeof body.checks.tradingLiveness.maxConsecutiveFailedRuns).toBe("number");
+    expect(body.checks.tradingLiveness.maxConsecutiveFailedRuns).toBeGreaterThanOrEqual(1);
+    expect(Array.isArray(body.checks.tradingLiveness.degradedReasons)).toBe(true);
+    expect(body.checks.tradingLiveness.degradedReasons).toContain("consecutive_failures");
+    for (const reason of body.checks.tradingLiveness.degradedReasons) {
+      expect(["stale_last_completed_run", "consecutive_failures"]).toContain(reason);
+    }
     expect(body.checks.tradingLiveness).not.toHaveProperty("accounts");
     const serialized = JSON.stringify(body.checks.tradingLiveness);
     expect(serialized).not.toContain(accountId);

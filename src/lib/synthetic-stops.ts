@@ -510,10 +510,12 @@ export async function runSyntheticStopMonitor(
   for (const stop of await sqliteYieldRetry(() => listSyntheticStops(accountNumber, userId))) {
     const plan = stopPlanBySymbol[normalizeSymbol(stop.symbol)];
     if (plan === "none") {
-      await sqliteYieldRetry(() => {
-        deleteSyntheticStop(stop.id, userId);
-        audit("synthetic_stop_purged_by_plan", { symbol: stop.symbol, plan: "none", note: "per-position stop plan is 'none' — protection removed" }, userId, policy.connectedAccountId);
-      });
+      // delete is idempotent; audit is not.  Separate envelopes so a BUSY on audit
+      // cannot duplicate the delete's audit row.
+      await sqliteYieldRetry(() => deleteSyntheticStop(stop.id, userId));
+      await sqliteYieldRetry(() =>
+        audit("synthetic_stop_purged_by_plan", { symbol: stop.symbol, plan: "none", note: "per-position stop plan is 'none' — protection removed" }, userId, policy.connectedAccountId)
+      );
       await yieldIfDue(yieldClock);
       continue;
     }
@@ -525,10 +527,10 @@ export async function runSyntheticStopMonitor(
       // quantity-aware double-exit guard already no-ops a redundant fire, so continuously
       // re-checking coverage at purge time would add complexity without a safety benefit.
       if (plan !== "fixed" && plan !== "atr") {
-        await sqliteYieldRetry(() => {
-          deleteSyntheticStop(stop.id, userId);
-          audit("synthetic_stop_purged_by_plan", { symbol: stop.symbol, plan: plan ?? "default", kind: "fixed", note: `per-position stop plan is '${plan ?? "default"}' — fixed/ATR tick-level protection removed` }, userId, policy.connectedAccountId);
-        });
+        await sqliteYieldRetry(() => deleteSyntheticStop(stop.id, userId));
+        await sqliteYieldRetry(() =>
+          audit("synthetic_stop_purged_by_plan", { symbol: stop.symbol, plan: plan ?? "default", kind: "fixed", note: `per-position stop plan is '${plan ?? "default"}' — fixed/ATR tick-level protection removed` }, userId, policy.connectedAccountId)
+        );
       }
       await yieldIfDue(yieldClock);
       continue;
@@ -536,10 +538,10 @@ export async function runSyntheticStopMonitor(
     const isPlanExcluded = plan === "fixed" || plan === "atr";
     const isResetWithNoAccountTrail = (plan === undefined || plan === "default") && accountTrailPctForReset <= 0;
     if (isPlanExcluded || isResetWithNoAccountTrail) {
-      await sqliteYieldRetry(() => {
-        deleteSyntheticStop(stop.id, userId);
-        audit("synthetic_stop_purged_by_plan", { symbol: stop.symbol, plan: plan ?? "default", note: isPlanExcluded ? `per-position stop plan is '${plan}' — trailing protection removed` : "per-position stop plan reset to account default with no account-wide trailing % configured — trailing protection removed" }, userId, policy.connectedAccountId);
-      });
+      await sqliteYieldRetry(() => deleteSyntheticStop(stop.id, userId));
+      await sqliteYieldRetry(() =>
+        audit("synthetic_stop_purged_by_plan", { symbol: stop.symbol, plan: plan ?? "default", note: isPlanExcluded ? `per-position stop plan is '${plan}' — trailing protection removed` : "per-position stop plan reset to account default with no account-wide trailing % configured — trailing protection removed" }, userId, policy.connectedAccountId)
+      );
     }
     await yieldIfDue(yieldClock);
   }

@@ -7,7 +7,7 @@ import type { EquityOrder } from "./types";
 const OWNER_CANCELLED_PROTECTIVE_STOP_PREFIX = "owner_cancelled_protective_stop:";
 const APP_MANAGED_STOP_CLIENT_PREFIXES = ["protstop-", "sstop-"] as const;
 
-export type AutoReplaceProvenanceSkipReason = "bracket_leg" | "not_app_placed";
+export type AutoReplaceProvenanceSkipReason = "bracket_leg" | "not_app_placed" | "owner_cancelled_stop";
 
 export type AppPlacedLookup = {
   userId: string;
@@ -97,6 +97,7 @@ export function autoReplaceProvenanceSkipReason(
 ): AutoReplaceProvenanceSkipReason | null {
   if (isBracketOrderClass(order.orderClass)) return "bracket_leg";
   if (!isAppPlacedBrokerOrder(order, lookup)) return "not_app_placed";
+  if (lookup && hasOwnerCancelledProtectiveStop(lookup.userId, lookup.accountNumber, order.symbol)) return "owner_cancelled_stop";
   return null;
 }
 

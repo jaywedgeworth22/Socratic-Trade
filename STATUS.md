@@ -5,6 +5,36 @@
 Sentry `ci-socratic-trade-ci` false-paged at 08:02Z (first miss on the #3302 slug).  Scheduled `ci.yml` itself succeeds; GitHub starts the nightly `47 7 * * *` canary 5-6.5h late (typical ~12:46-14:24Z, worst retained 2026-09-14 14:24Z) and today's 07:47Z tick had no `schedule` run because main-push CI held `ci-CI-refs/heads/main`.  Same class as #3194 / FLEET-INFRA-C1, #3387 / C3, #3389 / BY, and #3390 / C0.  Raise `CHECKIN_MARGIN_OVERRIDES["CI"]` to 600.  Cron and verify suite unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` CI.  Do not close DB on merge.
 Rollout: `docs/rollouts/2026-09-18-ci-monitor-margin.md`.
 
+## 2026-09-18 CLAUDE — Post-cancel protective-stop bookkeeping after the #3383 pin (money path)
+
+`#3383` dropped the serving `busy_timeout` 60000ms -> 100ms, so a sync SQLite write that used to
+WAIT now THROWS.  `#3386` repaired that class in `synthetic-stops.ts`; `broker-protective-stops.ts`
+was never converted.  In `cancelBrokerProtectiveStop` the post-cancel delete sat inside the broker
+`try`, so a `SQLITE_BUSY` audited a SUCCESSFUL cancel as `broker_protective_stop_cancel_error` and
+re-persisted `pending_cancel` for an order already gone at the broker.  Broker call and bookkeeping
+are now split; bookkeeping goes through `sqliteYieldRetry`.  Failing-first proven.  **Money path —
+do NOT auto-merge, needs a human read.**  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-protective-stop-post-cancel-sqlite-busy.md`.
+## 2026-09-18 CLAUDE — Public trading-liveness reports the cause (board 64413d84)
+
+`/api/health` said `degraded: 1` without saying why, so a JSON-path monitor could not separate a
+failing autopilot account from out-of-session silence.  Added identity-free
+`maxConsecutiveFailedRuns` and `degradedReasons` to `PublicTradingLiveness`.  The session-calendar
+half of the row was already on `main` and was verified, not re-implemented.  Degradation thresholds
+are unchanged, so no alert starts or stops firing.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-liveness-degradation-cause-fields.md`.
+
+## 2026-09-18 CURSOR — iOS TestFlight Automatic vs Distribution signing (PR pending)
+
+`ios-ship` rc=65 after #3399: Automatic signing conflicted with manual `Apple Distribution` in
+Release + `ship-testflight.sh`.  Reverted to Congress.Trade pattern (Automatic only; no archive
+identity override).  Branch `fix/ios-tf-automatic-vs-distribution-signing`.  Extra-ship no.
+Rollout: `docs/rollouts/2026-09-18-ios-tf-automatic-vs-distribution-signing.md`.
+
+## 2026-09-18 GROK — Datadog remaining: ST RUM stay dark + DD_HOSTNAME (board f03c5542)
+
+Infrastructure Free us5.  Trial expired 2026-09-07.  RUM hourly usage is empty.  The existing `Socratic Trade` RUM app stays `is_active=false` on purpose — do not mint a second app and do not start send.  Infisical now has `DD_RUM_ENABLED=false` and `DD_HOSTNAME=fleet-hetzner-nbg1`.  Preload sets the host tag on Coolify only; dd-trace `init({ hostname })` is the Agent address.  Extra-ship no.  Sentry stays the app error path.
+Rollout: `docs/rollouts/2026-09-18-datadog-free-remaining.md`.
 ## 2026-09-18 GROK — MM AG takeover #3379 theme CI (board 6aa1e66e)
 
 Hosted tsc failed on `@/app/ui/theme` (alias is `src/*`).  Relative import from console chrome/ticker-logo.  Default stays light.  Extra-ship no.  No Coolify Deploy.
@@ -14,6 +44,10 @@ Rollout: `docs/rollouts/2026-09-18-ag-takeover-theme-ci.md`.
 
 Sentry `ci-effort-issues-sync` false-pages every day at 06:27Z.  The board-mirror job itself succeeds on `ubuntu-latest` in ~12-30s; GitHub just starts the `12 6 * * *` schedule 5-6.5h late (typical 11:12-11:44Z, worst retained 2026-09-14 12:37Z).  Same class as #3194 / FLEET-INFRA-C1, #3387 / FLEET-INFRA-C3, and #3389 / FLEET-INFRA-BY.  Raise `CHECKIN_MARGIN_OVERRIDES["Effort Issues Sync"]` to 600.  Cron and sync script unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` the sync.  #3302 already moved the live slug to `ci-socratic-trade-effort-issues-sync`; do not close C0 on merge.
 Rollout: `docs/rollouts/2026-09-18-effort-issues-sync-monitor-margin.md`.
+## 2026-09-18 GROK — MM AG takeover #3378 admin CI (board 6aa1e66e)
+
+Hosted verify failed on operator wiring + copy-rules, not lucide-react.  Point the backtest-ic marker at `admin-shell.tsx`, gap the CPU caveat title, show the active admin nav label.  Continue `mm/ag-takeover-eb883289`.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-ag-takeover-admin-ci.md`.
 
 ## 2026-09-18 CURSOR — Cleanup Actions Caches Crons margin (FLEET-INFRA-BY)
 

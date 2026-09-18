@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Cpu, RefreshCw, AlertTriangle, Database } from "lucide-react";
 import { Card, Chip, Dot, Btn, Stat, Meter, type ChipTone } from "../console/ui/primitives";
+import { SENTENCE_GAP } from "../console/lib/format";
 import { describeProbeStatus } from "./lib/probe-error";
 import { Markdown } from "./transcript/markdown";
 
@@ -38,6 +39,7 @@ interface RagSummary {
 interface ServerSummary {
   hostInfo?: { cpuCount?: number; ramTotalGb?: number; memoryTotalBytes?: number };
   resources?: Array<{ status?: string; state?: string; name?: string }>;
+  resourcesObservation?: { state: string };
   metrics?: {
     cpu?: Array<{ value: number }>;
   };
@@ -101,7 +103,7 @@ export default function OperatorDashboard() {
         fetch("/api/admin/llm-usage?sinceDays=30"),
         fetch("/api/admin/rag-coverage?sinceDays=30"),
         fetch("/api/admin/server-metrics"),
-        fetch("/api/chat-history?limit=10"),
+        fetch("/api/admin/transcript?limit=10"),
         fetch("/api/admin/r2-usage")
       ]);
 
@@ -221,7 +223,7 @@ export default function OperatorDashboard() {
   const probeErrorLabel = (entry: number | "network" | undefined): string | null =>
     entry === undefined ? null : entry === "network" ? "Request failed" : describeProbeStatus(entry).shortMessage;
 
-  const currentCpu = server?.metrics?.cpu?.slice(-1)[0]?.value ?? 0;
+  const currentCpu = server?.metrics?.cpu?.length ? server.metrics.cpu[server.metrics.cpu.length - 1]?.value : undefined;
 
   return (
     <div className="space-y-6">
@@ -442,12 +444,15 @@ export default function OperatorDashboard() {
                 {/* CPU Load */}
                 <div>
                   <div className="mb-1 flex items-center justify-between text-[length:var(--con-fs-xs)]">
-                    <span className="flex items-center gap-1 text-[color:var(--con-muted)]">
+                    <span
+                      className="flex items-center gap-1 text-[color:var(--con-muted)] cursor-help"
+                      title={`Each Hetzner CPU sample is divided by the server core count before display.${SENTENCE_GAP}Whether Hetzner already reports a whole-server percentage is unconfirmed, so this value may read low.`}
+                    >
                       <Cpu className="h-3.5 w-3.5" /> CPU load
                     </span>
-                    <span className="con-num font-semibold">{server?.metrics?.cpu ? `${currentCpu.toFixed(1)}%` : "Unavailable"}</span>
+                    <span className="con-num font-semibold">{currentCpu !== undefined ? `${currentCpu.toFixed(1)}%` : "Unavailable"}</span>
                   </div>
-                  {server?.metrics?.cpu ? <Meter value={currentCpu} max={100} label="CPU load" /> : <div className="h-2 w-full rounded-full bg-[color:var(--con-line)] opacity-50" />}
+                  {currentCpu !== undefined ? <Meter value={currentCpu} max={100} label="CPU load" /> : <div className="h-2 w-full rounded-full bg-[color:var(--con-line)] opacity-50" />}
                 </div>
 
                 {/* RAM */}
@@ -465,7 +470,7 @@ export default function OperatorDashboard() {
               <div className="flex items-center justify-between border-t border-[color:var(--con-line)] pt-3 text-[length:var(--con-fs-xs)]">
                 <span className="text-[color:var(--con-muted)]">Docker containers</span>
                 <span className="con-mono font-semibold">
-                  {server?.resources?.filter((c) => { const s = c.status ?? ""; return (s.includes("running") || s.includes("healthy")) && !s.includes("unhealthy"); }).length ?? 0} Running
+                  {server?.resourcesObservation?.state === "known" ? `${server?.resources?.filter((c) => { const s = c.status ?? ""; return (s.includes("running") || s.includes("healthy")) && !s.includes("unhealthy"); }).length ?? 0} Running` : "Unavailable"}
                 </span>
               </div>
             </div>

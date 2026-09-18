@@ -118,6 +118,91 @@ export async function fetchMacroHistory(now: number = Date.now(), userId?: strin
   return data;
 }
 
+
+const SPARK_CHARS = "▁▂▃▄▅▆▇█";
+
+/** Friendly prompt labels for the curated FRED history series. */
+const SERIES_PROMPT_LABEL: Record<keyof typeof SERIES, string> = {
+  tenY: "10Y",
+  twoY: "2Y",
+  vix: "VIX",
+  hyCreditSpread: "HY",
+  usd: "USD",
+  wti: "WTI"
+};
+
+export interface MacroTrendPoint {
+  /** Latest observation in the series. */
+  last: number;
+  /** Absolute change vs ~7 daily observations earlier (when available). */
+  d7?: number;
+  /** Absolute change vs ~30 daily observations earlier (when available). */
+  d30?: number;
+  /** Short unicode sparkline over the trailing ~20 points (levels, not returns). */
+  spark: string;
+}
+
+export interface MacroTrendsForPrompt {
+  note: string;
+  series: Partial<Record<string, MacroTrendPoint>>;
+}
+
+function sparkline(values: number[], width = 20): string {
+  const slice = values.slice(-width);
+  if (slice.length < 2) return "";
+  let min = slice[0];
+  let max = slice[0];
+  for (const v of slice) {
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  const range = max - min || 1;
+  return slice
+    .map((v) => {
+      const idx = Math.min(SPARK_CHARS.length - 1, Math.max(0, Math.floor(((v - min) / range) * (SPARK_CHARS.length - 1))));
+      return SPARK_CHARS[idx];
+    })
+    .join("");
+}
+
+function absoluteDelta(values: number[], lookback: number): number | undefined {
+  if (values.length <= lookback) return undefined;
+  const last = values[values.length - 1];
+  const prev = values[values.length - 1 - lookback];
+  return Number((last - prev).toFixed(2));
+}
+
+/**
+ * Compact trailing macro trends for Green/Red prompts. Dashboard already had the raw series via
+ * `fetchMacroHistory`; until 2026-09-18 neither LLM saw slopes — only latest scalars from
+ * `pruneMacro`. Returns `undefined` when history is empty so the prompt block is omitted entirely
+ * (never an empty scaffold). Fail-open at the call site.
+ */
+export function compactMacroTrendsForPrompt(history: MacroHistory): MacroTrendsForPrompt | undefined {
+  const series: MacroTrendsForPrompt["series"] = {};
+  for (const key of Object.keys(SERIES) as Array<keyof typeof SERIES>) {
+    const values = history[key];
+    if (!values || values.length < 5) continue;
+    const last = values[values.length - 1];
+    if (!Number.isFinite(last)) continue;
+    const point: MacroTrendPoint = {
+      last: Number(last.toFixed(2)),
+      spark: sparkline(values, 20)
+    };
+    const d7 = absoluteDelta(values, 7);
+    const d30 = absoluteDelta(values, 30);
+    if (d7 !== undefined) point.d7 = d7;
+    if (d30 !== undefined) point.d30 = d30;
+    if (!point.spark) continue;
+    series[SERIES_PROMPT_LABEL[key]] = point;
+  }
+  if (Object.keys(series).length === 0) return undefined;
+  return {
+    note: "Trailing FRED daily levels with ~7d/~30d absolute deltas and a 20-point sparkline (10Y, 2Y, VIX, HY OAS, USD, WTI). Levels without slopes are incomplete — weigh trend breaks next to macroeconomicData scalars. Not a trade signal by itself.",
+    series
+  };
+}
+
 /** Clear both caches (test helper). */
 export function clearMacroHistoryCacheForTests(): void {
   sharedMacroHistoryCache.entry = null;

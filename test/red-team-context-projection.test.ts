@@ -18,7 +18,13 @@ function greenUserContent() {
     currentDate: "2026-08-20",
     currentMarketRegime: "Tech-Bull",
     regimeSeverity: { severity: 0.31, inputsUsed: 6 },
-    macroeconomicData: { cpiYoY: 2.4, fedFunds: 3.75 },
+    macroeconomicData: { cpiYoY: 2.4, fedFunds: 3.75, vixAsOf: "2026-09-18T12:00:00.000Z" },
+    macroDerived: { curve2s10s: -0.12, vixTermStructure: 1.05 },
+    macroTrends: { note: "trends", series: { VIX: { last: 18.2, d7: 1.5, spark: "▁▂▃▄" } } },
+    marketSignals: { skew: 130, vvix: 90, marketBreadthPct: 48 },
+    eventMarkets: { series: ["FED"], markets: ["Fed cut ~62%"] },
+    predictionMarketsMacro: { markets: ["Recession 2026 Yes 18%"] },
+    upcomingEconomicEvents: { events: [{ event: "CPI (YoY)", date: "2026-09-20" }] },
     limits: { maxOrderNotional: 5000, remainingDailyNotional: 12000 },
     socraticAuthority: { overrideMode: "off" },
     portfolio: { totalMarketValue: 100_000 },
@@ -90,4 +96,21 @@ describe("projectRedTeamReviewContext", () => {
     // The saving multiplies: it is paid once per risk-adding opening, per run.
     expect(after).toBeLessThan(before / 10);
   });
+
+  it("projects macroDerived, marketSignals, macroTrends, and event/calendar keys Green already has", () => {
+    const green = greenUserContent();
+    const projected = projectRedTeamReviewContext(green) as Record<string, unknown>;
+    for (const key of [
+      "macroDerived",
+      "macroTrends",
+      "marketSignals",
+      "eventMarkets",
+      "predictionMarketsMacro",
+      "upcomingEconomicEvents"
+    ]) {
+      expect(projected, `regime key "${key}" must reach Red (2026-09-18 audit)`).toHaveProperty(key);
+      expect(projected[key]).toEqual((green as Record<string, unknown>)[key]);
+    }
+  });
+
 });

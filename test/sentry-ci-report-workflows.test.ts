@@ -94,6 +94,7 @@ describe("Sentry CI workflow coverage", () => {
       "RTH Deploy Latch": 600,
       "Cleanup Actions Caches": 600,
       "Effort Issues Sync": 600,
+      "CI": 600,
     });
   });
 });

@@ -253,4 +253,37 @@ describe("retrieveContextDetailed with Qdrant read backend", () => {
     expect(call).toBeDefined();
     expect(call?.[1]).toMatchObject({ provider: "qdrant" });
   });
+
+  // Production evidence (Sentry SOCRATIC-TRADE-1T, lastSeen 2026-09-18): retrieveContext
+  // "RAG retrieval failed" / reason "fetch failed" was tagged rag.provider=pinecone after
+  // the Qdrant read cutover because the catch hardcoded the provider. Dense queries never
+  // left the self-hosted box. Same leftover family as the storeContexts mislabel above.
+  it("labels a sustained Qdrant retrieve failure with provider 'qdrant', not the old hardcoded 'pinecone'", async () => {
+    delete process.env.PINECONE_API_KEY;
+    vi.useFakeTimers();
+    try {
+      const mockFetch = vi.fn(async (url: string | URL | Request) => {
+        const urlStr = String(url);
+        if (urlStr.includes("embeddings")) {
+          return new Response(
+            JSON.stringify({ data: [{ embedding: new Array(1024).fill(0.01) }] }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          );
+        }
+        throw new TypeError("fetch failed");
+      });
+      vi.stubGlobal("fetch", mockFetch);
+
+      const pending = retrieveContextDetailed("Apple revenue", "AAPL", 5, "local");
+      const chunksPromise = pending.then((chunks) => chunks);
+      await vi.runAllTimersAsync();
+      const chunks = await chunksPromise;
+      expect(chunks).toEqual([]);
+      const call = sentryMetricsMock.logError.mock.calls.find((c) => c[0] === "rag.error");
+      expect(call).toBeDefined();
+      expect(call?.[1]).toMatchObject({ provider: "qdrant" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

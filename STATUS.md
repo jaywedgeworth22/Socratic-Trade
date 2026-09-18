@@ -1,5 +1,13 @@
 # Current Status
 
+## 2026-09-18 FIXER — RAG retrieval no longer pages as Pinecone (PD #116 leftover)
+
+`retrieveContextDetailed` catch hardcoded `provider: "pinecone"` after Qdrant cutover, so
+Qdrant `fetch failed` kept fingerprinting as SOCRATIC-TRADE-1T.  Catch uses `readBackend`;
+Qdrant search retries transients; `/api/health` reports the active vector backend and does
+not 503 on leftover Pinecone while Qdrant is serving.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-rag-retrieval-qdrant-mislabel.md`.
+
 ## 2026-09-18 CLAUDE — Public trading-liveness reports the cause (board 64413d84)
 
 `/api/health` said `degraded: 1` without saying why, so a JSON-path monitor could not separate a

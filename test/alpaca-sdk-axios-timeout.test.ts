@@ -20,8 +20,11 @@ describe("Alpaca SDK axios timeout", () => {
   it("does not import the node 'module' builtin (unresolvable in the edge instrumentation bundle)", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
-    const source = readFileSync(join(process.cwd(), "src/lib/alpaca.ts"), "utf8");
-    expect(source).not.toMatch(/from\s+["'](?:node:)?module["']/);
-    expect(source).not.toMatch(/createRequire\s*\(/);
+    // Strip comments first: alpaca.ts explains this very pitfall in a comment that names createRequire.
+    const code = readFileSync(join(process.cwd(), "src/lib/alpaca.ts"), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/gm, "");
+    expect(code).not.toMatch(/from\s+["'](?:node:)?module["']/);
+    expect(code).not.toMatch(/createRequire\s*\(/);
   });
 });

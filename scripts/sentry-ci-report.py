@@ -105,17 +105,20 @@ DEFAULT_CHECKIN_MARGIN = 15
 # GitHub `schedule` delivery is best-effort.  These daily/weekday/hourly
 # monitors always eventually run, but the start is hours late, so a 15-minute
 # margin false-pages a healthy job.  600 min matches #3194 (FLEET-INFRA-C1),
-# #3387 (FLEET-INFRA-C3), and #3389 (FLEET-INFRA-BY).  Effort Issues Sync
-# typically starts 5-6.5h after 06:12Z (worst retained 2026-09-14 12:37Z,
-# ~6h 25m).  Do not copy this onto 30-min macos ship crons (FLEET-INFRA-CC /
-# DA / CX): those drop ticks entirely, so a wider margin still misses.
-# Pre-#3302 slugs (`ci-effort-issues-sync`, `ci-cleanup-actions-caches`,
-# `ci-rth-deploy-latch`) stay orphaned; HEAD upserts `ci-socratic-trade-*`.
+# #3387 (FLEET-INFRA-C3), #3389 (FLEET-INFRA-BY), and #3390 (FLEET-INFRA-C0).
+# CI's nightly canary (`47 7 * * *`) typically starts ~5-6.5h late (worst
+# retained 2026-09-14 14:24Z, ~6h 37m).  Main-push concurrency on the same
+# `ci-CI-refs/heads/main` group can also queue or drop that tick.  Do not
+# copy this onto 30-min macos ship crons (FLEET-INFRA-CC / DA / CX): those
+# drop ticks entirely, so a wider margin still misses.  Pre-#3302 slugs
+# (`ci-effort-issues-sync`, `ci-cleanup-actions-caches`, `ci-rth-deploy-latch`)
+# stay orphaned; HEAD upserts `ci-socratic-trade-*`.
 CHECKIN_MARGIN_OVERRIDES = {
     "Deploy freshness": 600,
     "RTH Deploy Latch": 600,
     "Cleanup Actions Caches": 600,
     "Effort Issues Sync": 600,
+    "CI": 600,
 }
 _CHECKIN_MARGINS_FOLDED = {name.casefold(): margin for name, margin in CHECKIN_MARGIN_OVERRIDES.items()}
 

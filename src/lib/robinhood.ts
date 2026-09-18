@@ -20,6 +20,7 @@ import { clearMcpOAuthTokens, getMcpAccessToken } from "./mcp-oauth";
 import { logApiHealth } from "./db-health";
 import { normalizeSymbol } from "./money";
 import { mergeAccountCapabilities } from "./venue-contract";
+import { normalizeVenueOrder } from "./venue-normalization";
 import { isShortIntent } from "./broker-side";
 import { getOpenLots, getPerformanceSummary } from "./performance";
 import { fetchYahooFinanceQuote, fetchYahooFinanceQuotesBatch } from "./yahoo-finance";
@@ -480,7 +481,12 @@ class HttpMcpRobinhoodGateway implements BrokerGateway {
   }
 
   async reviewEquityOrder(input: EquityOrderInput): Promise<ReviewedOrder> {
-    const raw = await this.callTool("review_equity_order", toMcpOrder(input)) as Record<string, unknown>;
+    // Review the SAME order placeEquityOrder will send.  The fractional/extended-hours limit ->
+    // regular-hours market coercion lives in normalizeVenueOrder (not toMcpOrder), so without this
+    // a fractional limit buy is reviewed as a limit (cost estimate and order checks) but placed as
+    // a market order.  audit:false -- placement writes the single normalization receipt.
+    const reviewInput = normalizeVenueOrder(input, "robinhood", this.userId, { audit: false });
+    const raw = await this.callTool("review_equity_order", toMcpOrder(reviewInput)) as Record<string, unknown>;
     // Robinhood's own pre-flight review already tells us when an order is a guaranteed reject (e.g.
     // the sub-$1 minimum) via `order_checks`, not the top-level `alerts` array read below — surface
     // it as a structured signal so callers can skip a doomed order instead of placing (and

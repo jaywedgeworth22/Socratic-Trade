@@ -7,9 +7,11 @@
 // This is `predev` in package.json. npm only invokes it before `npm run dev`, not before
 // `npm run dev:secrets` (which sets SECRETS_SOURCE=infisical before reaching here).
 
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+// ESM imports, not require(): this is a .mjs file, where `require` is undefined (ReferenceError on
+// every plain `npm run dev`) and @typescript-eslint/no-require-imports fails the lint gate.
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 function exists(p) {
   try { return fs.statSync(p).isFile(); } catch { return false; }

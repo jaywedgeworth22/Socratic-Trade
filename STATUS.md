@@ -1,5 +1,16 @@
 # Current Status
 
+## 2026-09-18 CLAUDE — Post-cancel protective-stop bookkeeping after the #3383 pin (money path)
+
+`#3383` dropped the serving `busy_timeout` 60000ms -> 100ms, so a sync SQLite write that used to
+WAIT now THROWS.  `#3386` repaired that class in `synthetic-stops.ts`; `broker-protective-stops.ts`
+was never converted.  In `cancelBrokerProtectiveStop` the post-cancel delete sat inside the broker
+`try`, so a `SQLITE_BUSY` audited a SUCCESSFUL cancel as `broker_protective_stop_cancel_error` and
+re-persisted `pending_cancel` for an order already gone at the broker.  Broker call and bookkeeping
+are now split; bookkeeping goes through `sqliteYieldRetry`.  Failing-first proven.  **Money path —
+do NOT auto-merge, needs a human read.**  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-protective-stop-post-cancel-sqlite-busy.md`.
+
 ## 2026-09-18 CURSOR — iOS TestFlight Automatic vs Distribution signing (PR pending)
 
 `ios-ship` rc=65 after #3399: Automatic signing conflicted with manual `Apple Distribution` in

@@ -63,6 +63,7 @@ import {
   type BrokerStopPlacementIntent
 } from "./db";
 import { auditDeduped } from "./audit-dedupe";
+import { sqliteYieldRetry } from "./sqlite-event-loop";
 import { hasOwnerCancelledProtectiveStop } from "./order-provenance";
 import { isRejectedOrCanceledState, liveExitOrderCoverage } from "./broker-side";
 
@@ -201,6 +202,35 @@ export async function cancelBrokerProtectiveStop(
       audit("broker_protective_stop_cancel_error", { symbol: sym, error: errMsg(err), context: "orders_fetch_for_marker_reconcile" }, userId, connectedAccountId);
     }
   }
+  // Bookkeeping after a broker cancel must NOT share a try with the broker call, and must keep the
+  // pre-#3383 lock budget.  #3383 dropped the serving `busy_timeout` from 60000ms to
+  // SQLITE_BUSY_PIN_MS (100ms) so a contended write can no longer sleep the event loop; the cost is
+  // that a write which used to wait now THROWS.  Left inside the broker catch, a SQLITE_BUSY on the
+  // post-cancel delete audited a SUCCESSFUL cancel as `broker_protective_stop_cancel_error` and
+  // re-persisted `pending_cancel` for an order that no longer exists at the broker — a stuck row the
+  // next tick can only resolve by 404ing its cancel.  Same class as #3386 (unwrapped post-claim
+  // synthetic-stop fire writes).  `sqliteYieldRetry` restores the full 60s budget via yields, so the
+  // loop stays free for /api/health; if it STILL fails we audit a distinct event and leave the row
+  // untouched for the reconcile loop, which already handles "tracked order gone at the broker".
+  const settleCancelBookkeeping = async (row: BrokerProtectiveStop, cancelled: boolean, brokerOrderId?: string): Promise<void> => {
+    try {
+      if (cancelled) {
+        await sqliteYieldRetry(() => deleteBrokerProtectiveStop(row.id, userId));
+      } else {
+        await sqliteYieldRetry(() =>
+          upsertBrokerProtectiveStop({ ...row, ...(brokerOrderId ? { brokerOrderId } : {}), status: "pending_cancel" })
+        );
+      }
+    } catch (err) {
+      audit(
+        "broker_protective_stop_bookkeeping_error",
+        { symbol: normalizeSymbol(row.symbol), brokerOrderId: brokerOrderId ?? row.brokerOrderId, cancelled, error: errMsg(err) },
+        userId,
+        connectedAccountId
+      );
+    }
+  };
+
   for (const row of rows) {
     if (row.status === "pending_replace") {
       const ref = row.brokerOrderId;
@@ -208,38 +238,43 @@ export async function cancelBrokerProtectiveStop(
       if (!isRealRef) {
         // Synthetic placeholder — no live broker order behind it; drop it (cancelling the fake id would
         // 404 and re-persist a stuck pending_cancel).
-        deleteBrokerProtectiveStop(row.id, userId);
+        await sqliteYieldRetry(() => deleteBrokerProtectiveStop(row.id, userId));
         continue;
       }
       const matched = ordersListed ? liveOrders.find((o) => o.clientOrderId === ref) : undefined;
       if (matched && matched.id && !isDoneRestingState(matched.state)) {
         // The accepted order IS live — cancel it by its real id so it can't double-sell after this exit.
+        // Only the BROKER call belongs inside this try (see the bookkeeping note above `rows`).
+        let cancelled = false;
         try {
           await gateway.cancelEquityOrder(accountNumber, matched.id);
-          deleteBrokerProtectiveStop(row.id, userId);
+          cancelled = true;
         } catch (err) {
           audit("broker_protective_stop_cancel_error", { symbol: sym, brokerOrderId: matched.id, error: errMsg(err) }, userId, connectedAccountId);
-          upsertBrokerProtectiveStop({ ...row, brokerOrderId: matched.id, status: "pending_cancel" });
         }
+        await settleCancelBookkeeping(row, cancelled, matched.id);
         continue;
       }
       if (matched && isDoneRestingState(matched.state)) {
         // Already terminal — nothing to cancel; drop the marker.
-        deleteBrokerProtectiveStop(row.id, userId);
+        await sqliteYieldRetry(() => deleteBrokerProtectiveStop(row.id, userId));
         continue;
       }
       // Not visible (or the list fetch failed): KEEP the marker so the reconcile loop can catch and
       // cancel the accepted order once it appears, rather than losing the only handle to it.
       continue;
     }
+    // Only the BROKER call belongs inside this try — a bookkeeping SQLITE_BUSY must not be recorded
+    // as a cancel failure, nor re-persist pending_cancel for an order we DID cancel.
+    let cancelled = false;
     try {
       await gateway.cancelEquityOrder(accountNumber, row.brokerOrderId);
-      deleteBrokerProtectiveStop(row.id, userId);
+      cancelled = true;
     } catch (err) {
       audit("broker_protective_stop_cancel_error", { symbol: sym, brokerOrderId: row.brokerOrderId, error: errMsg(err) }, userId, connectedAccountId);
       // Mark as pending_cancel in DB instead of deleting immediately, to retry later
-      upsertBrokerProtectiveStop({ ...row, status: "pending_cancel" });
     }
+    await settleCancelBookkeeping(row, cancelled);
   }
 }
 

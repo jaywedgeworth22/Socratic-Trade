@@ -58,6 +58,21 @@ export function deleteInternalSetting(key: string): void {
   getDrizzle().delete(settings).where(eq(settings.key, key)).run();
 }
 
+/**
+ * Exact-prefix scan over internal setting keys.  Deliberately `substr(...) = ?` rather than
+ * `LIKE 'prefix%'`: our internal keys contain `_`, which SQLite's LIKE treats as a
+ * single-character wildcard, so a LIKE prefix would over-match neighbouring key families.
+ */
+export function listInternalSettingKeysByPrefix(prefix: string): string[] {
+  if (!prefix) return [];
+  const rows = getDrizzle()
+    .select({ key: settings.key })
+    .from(settings)
+    .where(sql`substr(${settings.key}, 1, ${prefix.length}) = ${prefix}`)
+    .all();
+  return rows.map((row) => row.key);
+}
+
 // ── Per-user settings ──────────────────────────────────────────────────────────
 
 export function getUserSetting<T>(userId: string, key: string, fallback: T): T {

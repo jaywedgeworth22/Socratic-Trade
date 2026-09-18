@@ -44,7 +44,7 @@ export function sanitizeTranscriptText(text: string): { text: string; redacted: 
 
 export function appendTurn(
   userId: string,
-  input: { role: ChatTurnRole; text: string; citations?: string[]; intent?: string | null; model?: string | null; clientTurnId?: string | null },
+  input: { role: ChatTurnRole; text: string; citations?: string[]; intent?: string | null; model?: string | null; clientTurnId?: string | null; connectedAccountId?: string | null },
   writeEpoch?: UserWriteEpoch
 ): ChatTurn {
   if (input.role !== "user" && input.role !== "assistant") throw new Error("role must be 'user' or 'assistant'");
@@ -59,6 +59,7 @@ export function appendTurn(
     redacted: sanitized.redacted,
     model: input.model ?? null,
     clientTurnId: input.clientTurnId ?? null,
+    connectedAccountId: input.connectedAccountId ?? null,
     createdAt: new Date().toISOString()
   };
   const epoch = writeEpoch ?? captureUserWriteEpoch(userId);
@@ -69,9 +70,9 @@ export function appendTurn(
   });
 }
 
-export function listTurns(userId: string, limit: number = MAX_TURNS): ChatTurn[] {
+export function listTurns(userId: string, limit: number = MAX_TURNS, connectedAccountId?: string | null): ChatTurn[] {
   const n = Math.max(1, Math.min(Number(limit) || MAX_TURNS, MAX_TURNS));
-  return listChatTurns(userId, n);
+  return listChatTurns(userId, n, connectedAccountId);
 }
 
 /**

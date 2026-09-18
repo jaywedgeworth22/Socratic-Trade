@@ -1,5 +1,10 @@
 # Current Status
 
+## 2026-09-18 CURSOR — Cleanup Actions Caches Crons margin (FLEET-INFRA-BY)
+
+Sentry `ci-cleanup-actions-caches` false-pages every day at 03:20Z.  The prune job itself succeeds on `ubuntu-latest` in ~12s; GitHub just starts the `5 3 * * *` schedule 4.5-7h late (typical 07:35-08:48Z, worst retained 2026-08-29 09:57Z).  Same class as #3194 / FLEET-INFRA-C1 and #3387 / FLEET-INFRA-C3.  Raise `CHECKIN_MARGIN_OVERRIDES["Cleanup Actions Caches"]` to 600.  Cron and prune script unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` the cleanup.  #3302 already moved the live slug to `ci-socratic-trade-cleanup-actions-caches`; do not close BY on merge.
+Rollout: `docs/rollouts/2026-09-18-cleanup-actions-caches-monitor-margin.md`.
+
 ## 2026-09-17 CURSOR — RTH Deploy Latch Crons margin (FLEET-INFRA-C3)
 
 Sentry `ci-rth-deploy-latch` false-pages every weekday at 21:35Z.  The drain job itself succeeds; GitHub just starts the `20 21 * * 1-5` schedule 2-8h late (typical 23:14-23:54Z).  Same class as #3194 / FLEET-INFRA-C1.  Raise `CHECKIN_MARGIN_OVERRIDES["RTH Deploy Latch"]` to 600.  Cron and drain script unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` the latch (that nudges Coolify).  #3302 already moved the live slug to `ci-socratic-trade-rth-deploy-latch`; do not close C3 on merge.

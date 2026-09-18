@@ -597,14 +597,14 @@ const MACRO_ALWAYS_KEEP = new Set<keyof MacroData>([
   "asOf"
 ]);
 
+/** Macro plus optional live-VIX freshness stamp (not a MacroData field). */
+export type MacroWithLiveVix = MacroData & { vixAsOf?: string };
+
 /**
  * Delta-only macro pruning: macro data moves slowly, so on repeat runs only send
  * the fields that changed since the last run (plus a few regime-critical ones),
  * and list the rest as "unchanged" instead of re-spending tokens on them.
  */
-/** Macro plus optional live-VIX freshness stamp (not a MacroData field). */
-export type MacroWithLiveVix = MacroData & { vixAsOf?: string };
-
 export function pruneMacro(
   current: MacroWithLiveVix,
   previous?: MacroWithLiveVix | null

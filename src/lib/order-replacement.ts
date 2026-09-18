@@ -358,7 +358,17 @@ async function stepReplacementState(row: OrderReplacementRow, input: MarketRepla
         userId,
         accountNumber: input.policy.accountNumber
       });
-      if (provenanceSkip && !(input.allowOwnerPlaced && provenanceSkip === "not_app_placed")) {
+      // A manual replace (owner explicitly clicked) may proceed past the provenance
+      // reasons that only exist to fence AUTOMATED remediation: an owner-placed order
+      // ("not_app_placed") and a symbol the owner previously manually cancelled a
+      // protective stop on ("owner_cancelled_stop").  The owner-cancel tombstone is
+      // written permanently and never cleared (order-provenance.ts has no delete path),
+      // so without this bypass one manual stop cancel would block every later manual
+      // replacement for that symbol forever.  "bracket_leg" is never bypassable.
+      const manualBypass =
+        input.allowOwnerPlaced === true
+        && (provenanceSkip === "not_app_placed" || provenanceSkip === "owner_cancelled_stop");
+      if (provenanceSkip && !manualBypass) {
         const errStr = provenanceSkip === "bracket_leg"
           ? `${symbol} ${originalOrder.side} order is a bracket leg — cannot be auto-replaced with a market order.`
           : provenanceSkip === "owner_cancelled_stop"

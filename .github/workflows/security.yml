@@ -19,14 +19,19 @@ concurrency:
   group: security-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Pinned to the same engine version CT migrated to after observing
+  # gitleaks-action's POST-scan phase hang for ~6.5min under runner
+  # contention (job summary / PR annotation writes).
+  GITLEAKS_VERSION: "8.24.3"
+  GITLEAKS_SHA256_X64: "9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c"
+  GITLEAKS_SHA256_ARM64: "5f2edbe1f49f7b920f9e06e90759947d3c5dfc16f752fb93aaafc17e9d14cf07"
+
 jobs:
   gitleaks:
-    # 2026-07-18: GitHub-hosted `ubuntu-latest` is not assigning runners for this repo
-    # (runner_id=0/no step logs), so the required secret scan runs on Coolify socratic-ci (trading-live Mac is often offline).
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
     steps:
       - name: Refuse untrusted PR source
         if: github.event_name == 'pull_request'
@@ -53,11 +58,114 @@ jobs:
           # Gitleaks must see full history: a secret added and removed in an
           # earlier PR commit must remain scannable, as must scheduled history.
           fetch-depth: 0
-      - name: Clean stale temp gitleaks files
-        run: rm -rf /tmp/gitleaks.tmp /tmp/gitleaks* /tmp/gitleaks-*
-      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e
+
+      - name: Install pinned gitleaks
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp_root="${TMPDIR:-/tmp}"; tmp_root="${tmp_root%/}"
+          rm -f "$tmp_root/gitleaks.tmp"
+          rm -rf "$tmp_root/gitleaks-${GITLEAKS_VERSION}"
+
+          case "$(uname -m)" in
+            x86_64|amd64)  arch="x64";   want="$GITLEAKS_SHA256_X64" ;;
+            aarch64|arm64) arch="arm64"; want="$GITLEAKS_SHA256_ARM64" ;;
+            *) echo "::error::unsupported runner arch $(uname -m)"; exit 1 ;;
+          esac
+
+          tarball="$tmp_root/gitleaks.tar.gz"
+          curl -fsSL --retry 3 --retry-delay 2 --max-time 120 \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_${arch}.tar.gz" \
+            -o "$tarball"
+
+          got="$(sha256sum "$tarball" | cut -d' ' -f1)"
+          if [ "$got" != "$want" ]; then
+            echo "::error::gitleaks checksum mismatch (expected $want, got $got)"
+            exit 1
+          fi
+
+          mkdir -p "$tmp_root/gitleaks-${GITLEAKS_VERSION}"
+          tar -xzf "$tarball" -C "$tmp_root/gitleaks-${GITLEAKS_VERSION}" gitleaks
+          echo "$tmp_root/gitleaks-${GITLEAKS_VERSION}" >> "$GITHUB_PATH"
+
+      - name: Scan for secrets
+        timeout-minutes: 8
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # gitleaks-action's optional SARIF artifact upload assumes the workspace is under HOME.
-          # Coolify's runner workspace is /_work, so the upload fails after a clean scan.
-          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          MERGE_GROUP_HEAD: ${{ github.event.merge_group.head_sha }}
+          PUSH_BEFORE: ${{ github.before }}
+          PUSH_AFTER: ${{ github.after }}
+        run: |
+          set -euo pipefail
+          gitleaks version
+
+          # Preserve the action's scan SCOPE exactly.
+          case "$EVENT" in
+            pull_request)
+              range="${PR_BASE}..${PR_HEAD}"
+              ;;
+            merge_group)
+              # merge_queue commits aren't reachable on the PR branch head
+              # at scan time — use the merge_group's head SHA against the
+              # PR base.
+              range="${PR_BASE}..${MERGE_GROUP_HEAD}"
+              [ "${MERGE_GROUP_HEAD:-}" != "" ] || range=""
+              ;;
+            push)
+              if [ -z "${PUSH_BEFORE:-}" ] || [ "$PUSH_BEFORE" = "0000000000000000000000000000000000000000" ]; then
+                range=""
+              else
+                range="${PUSH_BEFORE}..${PUSH_AFTER}"
+              fi
+              ;;
+            *)
+              # schedule / manual: full history. This weekly sweep is what
+              # catches anything a range scan structurally cannot see.
+              range=""
+              ;;
+          esac
+
+          # Findings go to a JSON report. `gitleaks git` only prints the
+          # "leaks found: N" summary line, so a failing run used to say
+          # *how many* leaks it found and nothing else.  --redact still
+          # applies, and we print only structural fields (rule / path /
+          # line / commit / fingerprint) and then delete the report, so
+          # no secret value can reach a job log or an artifact even if
+          # redaction ever regressed.
+          report="${RUNNER_TEMP:-/tmp}/gitleaks-report.json"
+          rm -f "$report"
+
+          if [ -n "$range" ]; then
+            echo "scanning commit range: $range"
+            gitleaks git --no-banner --redact --exit-code 0 \
+              --report-format json --report-path "$report" --log-opts "$range" .
+          else
+            echo "scanning full history"
+            gitleaks git --no-banner --redact --exit-code 0 \
+              --report-format json --report-path "$report" .
+          fi
+
+          count=0
+          if [ -s "$report" ]; then
+            count="$(jq 'length' "$report")"
+          fi
+
+          if [ "$count" -gt 0 ]; then
+            echo "::error::gitleaks found ${count} finding(s).  Structural details below; secret values are never printed."
+            # Explicitly whitelist the fields we emit.  Never emit .Secret or
+            # .Match.
+            jq -r '.[] | "  rule=\(.RuleID) file=\(.File) line=\(.StartLine) commit=\(.Commit[0:12]) date=\(.Date[0:10])\n    fingerprint=\(.Fingerprint)"' "$report"
+            echo
+            echo "A finding that is a confirmed false positive goes in .gitleaksignore as its"
+            echo "fingerprint line, with a comment saying why.  A finding that is a real secret"
+            echo "means ROTATE FIRST, then decide about history — never the other way round."
+            rm -f "$report"
+            exit 1
+          fi
+
+          rm -f "$report"
+          echo "No leaks detected."

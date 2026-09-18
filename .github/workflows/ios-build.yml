@@ -79,14 +79,7 @@ jobs:
           echo "Using xcodegen: $xcg"
           "$xcg" --version || "$xcg" version || true
           ( cd ios && "$xcg" generate )
-          python3 -c '
-          from pathlib import Path
-          p = Path("ios/Socratic Trade.xcodeproj/project.pbxproj")
-          text = p.read_text()
-          text = text.replace("objectVersion = 77;", "objectVersion = 100;")
-          text = text.replace("preferredProjectObjectVersion = 77;", "preferredProjectObjectVersion = 100;")
-          p.write_text(text)
-          '
+          python3 ios/xcodegen-post.py
           grep -F "LayoutMathTests.swift in Sources" "ios/Socratic Trade.xcodeproj/project.pbxproj"
           grep -F "AppUpdatePromptTests.swift in Sources" "ios/Socratic Trade.xcodeproj/project.pbxproj"
           grep -F "PrivacyInfo.xcprivacy in Resources" "ios/Socratic Trade.xcodeproj/project.pbxproj"

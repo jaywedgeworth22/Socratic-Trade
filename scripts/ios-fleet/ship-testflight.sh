@@ -882,6 +882,11 @@ if [[ -n "$XCODEGEN_DIR" && "$XCODEGEN_DIR" != "null" && "$SKIP_XCODEGEN" -eq 0 
   if command -v xcodegen >/dev/null 2>&1; then
     log "xcodegen generate in ${REPO_ROOT}/${XCODEGEN_DIR}"
     (cd "${REPO_ROOT}/${XCODEGEN_DIR}" && xcodegen generate) 2>&1 | tee "${LOG_DIR}/xcodegen.log"
+    _post_py="${REPO_ROOT}/${XCODEGEN_DIR}/xcodegen-post.py"
+    if [[ -f "$_post_py" ]]; then
+      log "xcodegen-post.py (objectVersion 77 -> 100 for Xcode 26)"
+      python3 "$_post_py"
+    fi
   else
     log "xcodegen not installed; using checked-in .xcodeproj"
   fi
@@ -1011,6 +1016,7 @@ xcodebuild archive \
   ${ASC_AUTH_FLAGS[@]:+"${ASC_AUTH_FLAGS[@]}"} \
   DEVELOPMENT_TEAM="$TEAM_ID" \
   CODE_SIGN_STYLE=Automatic \
+  CODE_SIGN_IDENTITY="Apple Distribution" \
   MARKETING_VERSION="$MARKETING" \
   CURRENT_PROJECT_VERSION="$BUILD_NUM" \
   ${SENTRY_DSN_FLAGS[@]:+"${SENTRY_DSN_FLAGS[@]}"} \

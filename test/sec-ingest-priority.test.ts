@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("../src/lib/db-api-keys", () => ({
   listUsers: vi.fn(() => ["u1"]),
-  listWatchlistSymbols: vi.fn(() => [{ symbol: "MSFT" }])
+  listWatchlistSymbols: vi.fn(() => [{ symbol: "MSFT", addedAt: "2026-01-01T00:00:00.000Z" }])
 }));
 vi.mock("../src/lib/db-fills", () => ({
   listRecentlyHeldSymbolValuesAllUsers: vi.fn(() => new Map([["AAPL", 12_000], ["MSFT", 100]])),
@@ -31,7 +31,7 @@ describe("sec-ingest-priority", () => {
     const fills = await import("../src/lib/db-fills");
     const tech = await import("../src/lib/web-sources/technical");
     vi.mocked(keys.listUsers).mockReturnValue(["u1"]);
-    vi.mocked(keys.listWatchlistSymbols).mockReturnValue([{ symbol: "MSFT" }]);
+    vi.mocked(keys.listWatchlistSymbols).mockReturnValue([{ symbol: "MSFT", addedAt: "2026-01-01T00:00:00.000Z" }]);
     vi.mocked(fills.listRecentlyHeldSymbolValuesAllUsers).mockReturnValue(
       new Map([
         ["AAPL", 12_000],

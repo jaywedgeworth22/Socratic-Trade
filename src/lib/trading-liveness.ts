@@ -83,6 +83,14 @@ export interface PublicTradingLiveness {
    *  `tradingLivenessDegraded` boolean; JSON-path monitors use this number `> 0`. */
   degraded: number;
   oldestCompletedRunAgeSeconds: number | null;
+  /** Worst consecutive-failure streak across active-autonomy accounts.  Without this a JSON-path
+   *  monitor sees only `degraded > 0` and cannot tell an account failing every run from ordinary
+   *  out-of-session silence — the two want very different responses.  Identity-free: a max across
+   *  accounts, never per-account. */
+  maxConsecutiveFailedRuns: number;
+  /** Distinct reasons currently degrading at least one account, so ops can route on the CAUSE
+   *  rather than inferring it from `oldestCompletedRunAgeSeconds` and the clock. */
+  degradedReasons: Array<"stale_last_completed_run" | "consecutive_failures">;
   marketOpen: boolean;
 }
 
@@ -97,6 +105,8 @@ export function toPublicTradingLiveness(
       runningAskFirstAccounts: 0,
       degraded: 0,
       oldestCompletedRunAgeSeconds: null,
+      maxConsecutiveFailedRuns: 0,
+      degradedReasons: [],
       marketOpen: isMarketOpen(new Date(now))
     };
   }
@@ -105,12 +115,23 @@ export function toPublicTradingLiveness(
     if (a.lastCompletedRunAgeSeconds === null) return oldest;
     return oldest === null ? a.lastCompletedRunAgeSeconds : Math.max(oldest, a.lastCompletedRunAgeSeconds);
   }, null);
+  const maxConsecutiveFailedRuns = summary.accounts.reduce(
+    (worst, a) => Math.max(worst, a.consecutiveFailedRuns),
+    0
+  );
+  // Union the reasons from the DEGRADED accounts only — a healthy account contributes none, so an
+  // empty array always means "nothing is degraded right now".
+  const degradedReasons = [
+    ...new Set(summary.accounts.filter((a) => a.degraded).flatMap((a) => a.degradedReasons))
+  ];
   return {
     activeAccounts: summary.accounts.length,
     autopilotAccounts: summary.accounts.filter((a) => a.strategyAuthority === "decide").length,
     runningAskFirstAccounts: summary.accounts.filter((a) => a.strategyAuthority !== "decide").length,
     degraded: degradedCount,
     oldestCompletedRunAgeSeconds,
+    maxConsecutiveFailedRuns,
+    degradedReasons,
     marketOpen: summary.marketOpen
   };
 }

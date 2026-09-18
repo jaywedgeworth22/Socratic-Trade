@@ -3,9 +3,12 @@ import { resolve } from "node:path";
 import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 import {
+  WCAG_AA_NON_TEXT_CONTRAST,
   WCAG_AA_SMALL_TEXT,
   compositeOver,
-  contrastRatio
+  contrastRatio,
+  rgbaContrast,
+  tokenRgba
 } from "../app/console/lib/contrast";
 import { isInteractiveTooltipTrigger } from "../app/console/lib/tooltip-trigger";
 import { isTopmostFocusTrap, pushFocusTrap, releaseFocusTrap } from "../app/console/ui/focus-trap";
@@ -109,5 +112,73 @@ describe("collapsible card keyboard focus (board bf05f16a)", () => {
     expect(rule, "console.css has a .con-disclosure > summary:focus-visible rule").not.toBeNull();
     expect(rule![1]).toMatch(/outline:\s*2px\s+solid\s+var\(--con-accent\)/);
     expect(rule![1]).not.toMatch(/outline:\s*none/);
+  });
+});
+
+describe("console input border contrast (board 2056ceab — #2561)", () => {
+  // WCAG 1.4.11 (Non-text Contrast): UI component borders must be >= 3:1 against
+  // the adjacent surface.  Inputs in the console are --con-input (border) on
+  // --con-surface-2 (background).  Both are defined inside `.console-root {`
+  // for the light theme, and re-defined in `.console-root[data-theme="dark"]`
+  // for the dark theme.
+
+  const LIGHT_SURFACE_2 = "#f4f6fa"; // matches what console-a11y.test.ts uses
+  const DARK_SURFACE_2 = "#1c1c1c"; // opaque reading of dark surface-2
+
+  function firstRgbaInBlock(css: string, startMarker: string, endMarker: string, token: string): string {
+    const block = firstBlock(css, startMarker, endMarker);
+    const v = tokenRgba(block, token);
+    if (!v) throw new Error(`missing ${token} in block`);
+    return v;
+  }
+
+  it("clears WCAG 1.4.11 non-text contrast (>= 3:1) on the light input border", () => {
+    const border = firstRgbaInBlock(CONSOLE_CSS, ".console-root {", "/* ── DARK (explicit choice)", "--con-line-strong");
+    const ratio = rgbaContrast(border, LIGHT_SURFACE_2);
+    expect(ratio, `light input border ${border} on ${LIGHT_SURFACE_2}`).toBeGreaterThanOrEqual(WCAG_AA_NON_TEXT_CONTRAST);
+  });
+
+  it("clears WCAG 1.4.11 non-text contrast (>= 3:1) on the dark input border", () => {
+    const border = firstRgbaInBlock(
+      CONSOLE_CSS,
+      '.console-root[data-theme="dark"] {',
+      "/* ── DARK (system preference",
+      "--con-line-strong"
+    );
+    const ratio = rgbaContrast(border, DARK_SURFACE_2);
+    expect(ratio, `dark input border ${border} on ${DARK_SURFACE_2}`).toBeGreaterThanOrEqual(WCAG_AA_NON_TEXT_CONTRAST);
+  });
+});
+
+describe("console LIVE tag (board 2056ceab — #2561)", () => {
+  // The LIVE confirmation tag inside a primary button is 9.5px, which is below
+  // WCAG "large text" (>= 14px bold / >= 18px regular).  Inside a filled
+  // button it inverts to --con-accent-contrast (background) and --con-accent
+  // (text), so the ratio must clear AA small text (>= 4.5:1) in both themes.
+
+  const LIGHT_ACCENT = "#12616f"; // matches --brand-accent in app/globals.css
+  const DARK_ACCENT = "#58c7d3"; // matches --brand-accent-dark
+  const LIGHT_ACCENT_CONTRAST = "#ffffff";
+  const DARK_ACCENT_CONTRAST = "#0a0a0a";
+
+  // The console --con-accent is a var(--brand-accent) reference; resolve it
+  // from globals.css so the LIVE-tag ratio check matches what the browser sees.
+  const GLOBALS_CSS = readFileSync(resolve(process.cwd(), "app/globals.css"), "utf8");
+  function brandAccent(theme: "light" | "dark"): string {
+    const name = theme === "light" ? "--brand-accent" : "--brand-accent-dark";
+    const re = new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})`, "i");
+    const m = GLOBALS_CSS.match(re);
+    if (!m) throw new Error(`missing ${name} in app/globals.css`);
+    return m[1].toLowerCase();
+  }
+
+  it("clears WCAG AA small text on the LIGHT primary-button LIVE tag", () => {
+    expect(brandAccent("light")).toBe(LIGHT_ACCENT);
+    expect(contrastRatio(LIGHT_ACCENT, LIGHT_ACCENT_CONTRAST)).toBeGreaterThanOrEqual(WCAG_AA_SMALL_TEXT);
+  });
+
+  it("clears WCAG AA small text on the DARK primary-button LIVE tag", () => {
+    expect(brandAccent("dark")).toBe(DARK_ACCENT);
+    expect(contrastRatio(DARK_ACCENT, DARK_ACCENT_CONTRAST)).toBeGreaterThanOrEqual(WCAG_AA_SMALL_TEXT);
   });
 });

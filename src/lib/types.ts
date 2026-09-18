@@ -3109,6 +3109,8 @@ export interface ChatTurn {
   model?: string | null;
   /** Client-generated idempotency key (user turns only): reused on Retry so a retried send doesn't duplicate the turn. */
   clientTurnId?: string | null;
+  /** The account context active when this turn occurred (NULL for legacy unattributed turns). */
+  connectedAccountId?: string | null;
   createdAt: string;
 }
 

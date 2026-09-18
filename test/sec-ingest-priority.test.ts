@@ -23,8 +23,23 @@ import {
 } from "../src/lib/rag/sec-ingest-priority";
 
 describe("sec-ingest-priority", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  beforeEach(async () => {
+    // resetAllMocks clears implementations — restore the default held/watchlist/scan stubs
+    // so a later test cannot inherit an emptied held map from a prior case.
+    vi.resetAllMocks();
+    const keys = await import("../src/lib/db-api-keys");
+    const fills = await import("../src/lib/db-fills");
+    const tech = await import("../src/lib/web-sources/technical");
+    vi.mocked(keys.listUsers).mockReturnValue(["u1"]);
+    vi.mocked(keys.listWatchlistSymbols).mockReturnValue([{ symbol: "MSFT" }]);
+    vi.mocked(fills.listRecentlyHeldSymbolValuesAllUsers).mockReturnValue(
+      new Map([
+        ["AAPL", 12_000],
+        ["MSFT", 100]
+      ])
+    );
+    vi.mocked(fills.listRecentlyHeldSymbolsAllUsers).mockReturnValue(["AAPL", "MSFT"]);
+    vi.mocked(tech.getTechnicalWatchlist).mockReturnValue(["NVDA", "MSFT"]);
   });
 
   it("exposes the money-path ladder", () => {

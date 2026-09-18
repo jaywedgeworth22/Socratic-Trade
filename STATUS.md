@@ -7,6 +7,14 @@ Qdrant `fetch failed` kept fingerprinting as SOCRATIC-TRADE-1T.  Catch uses `rea
 Qdrant search retries transients; `/api/health` reports the active vector backend and does
 not 503 on leftover Pinecone while Qdrant is serving.  Extra-ship no.  No Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-18-rag-retrieval-qdrant-mislabel.md`.
+## 2026-09-18 CLAUDE — Collapsible-card keyboard focus ring made explicit (board bf05f16a)
+
+The collapsible `Card` `<summary>` carried `focus:outline-none`.  On the current build the global
+ring still won (unlayered console.css beats `@layer utilities`), so the defect was latent rather than
+live, but nothing pinned it.  Removed the opt-out, added an explicit inset `:focus-visible` rule and
+two source guards in `test/console-a11y.test.ts`.  The 320px scope-selector collapse is not verified
+and stays open on the row.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-console-card-focus-ring.md`.
 
 ## 2026-09-18 CLAUDE — Post-cancel protective-stop bookkeeping after the #3383 pin (money path)
 

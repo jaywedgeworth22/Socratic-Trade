@@ -1,5 +1,14 @@
 # Current Status
 
+## 2026-09-18 CLAUDE — Public trading-liveness reports the cause (board 64413d84)
+
+`/api/health` said `degraded: 1` without saying why, so a JSON-path monitor could not separate a
+failing autopilot account from out-of-session silence.  Added identity-free
+`maxConsecutiveFailedRuns` and `degradedReasons` to `PublicTradingLiveness`.  The session-calendar
+half of the row was already on `main` and was verified, not re-implemented.  Degradation thresholds
+are unchanged, so no alert starts or stops firing.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-liveness-degradation-cause-fields.md`.
+
 ## 2026-09-18 CURSOR — iOS TestFlight Automatic vs Distribution signing (PR pending)
 
 `ios-ship` rc=65 after #3399: Automatic signing conflicted with manual `Apple Distribution` in

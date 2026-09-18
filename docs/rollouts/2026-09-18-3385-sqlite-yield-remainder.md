@@ -35,7 +35,7 @@ The three plan-purge blocks in `synthetic-stops.ts` (plan `"none"`, fixed-kind n
 
 ## Next Steps & Blockers
 
-- Hosted `verify` must go green before merge.
+- PR #3408.  Squash auto-merge armed.  Hosted `verify` must go green before merge.
 - Do not merge from this lane during weekday RTH unless the owner sets `HOTFIX=1` / `RTH_DEPLOY_OVERRIDE=1`.  Evening/weekend auto-deploy still applies after merge.
 - Do not Coolify Deploy from this lane.
 

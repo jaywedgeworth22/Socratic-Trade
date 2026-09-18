@@ -2,7 +2,7 @@
 
 ## 2026-09-18 GROK — #3385 sqliteYieldRetry remainder (scheduler writes + synthetic-stop delete/audit)
 
-#3383 is live (`2fc699c328`) and dropped serving `busy_timeout` to 100ms.  Three scheduler writes still ran synchronously: `scheduler:lastTick`, managed-vector lastAttempt/lastSuccess, and boot `setPolicy`.  A SQLITE_BUSY on lastTick after the short pin was counted as a health failure and could abdicate a live leader.  Boot halt shared one envelope between idempotent `setPolicy` and non-idempotent `audit`.  Three synthetic-stop plan-purge paths still mixed `deleteSyntheticStop` and `audit` in one `sqliteYieldRetry` callback, so a BUSY on audit could duplicate `synthetic_stop_purged_by_plan`.  Each write now has its own yield-retry envelope.  Extra-ship no.  Stay out of `broker-protective-stops.ts`.  No Coolify Deploy.
+#3383 is live (`2fc699c328`) and dropped serving `busy_timeout` to 100ms.  Three scheduler writes still ran synchronously: `scheduler:lastTick`, managed-vector lastAttempt/lastSuccess, and boot `setPolicy`.  A SQLITE_BUSY on lastTick after the short pin was counted as a health failure and could abdicate a live leader.  Boot halt shared one envelope between idempotent `setPolicy` and non-idempotent `audit`.  Three synthetic-stop plan-purge paths still mixed `deleteSyntheticStop` and `audit` in one `sqliteYieldRetry` callback, so a BUSY on audit could duplicate `synthetic_stop_purged_by_plan`.  Each write now has its own yield-retry envelope.  PR #3408, squash auto-merge armed.  Extra-ship no.  Stay out of `broker-protective-stops.ts`.  No Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-18-3385-sqlite-yield-remainder.md`.
 
 ## 2026-09-18 CLAUDE — Post-cancel protective-stop bookkeeping after the #3383 pin (money path)

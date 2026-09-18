@@ -1,4 +1,4 @@
-import { describe, expect, it, afterAll } from "vitest";
+import { afterEach, describe, expect, it, afterAll } from "vitest";
 import { createHash } from "crypto";
 import Database from "better-sqlite3";
 import { existsSync, mkdirSync, unlinkSync } from "fs";
@@ -201,5 +201,45 @@ describe("document_chunks content-hash dedup", () => {
     expect(aapl!.chunkCount).toBe(1);
     expect(msft).toBeDefined();
     expect(msft!.chunkCount).toBe(1);
+  });
+});
+
+
+describe("Qdrant daily ingest point fuse defaults", () => {
+  const prev = {
+    RAG_MAX_DAILY_INGEST_POINTS: process.env.RAG_MAX_DAILY_INGEST_POINTS,
+    QDRANT_MAX_DAILY_INGEST_POINTS: process.env.QDRANT_MAX_DAILY_INGEST_POINTS,
+    RAG_INGEST_POINTS_BUDGET_ENABLED: process.env.RAG_INGEST_POINTS_BUDGET_ENABLED
+  };
+
+  afterEach(() => {
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  it("defaults to 150_000 points/day (matches Infisical prod)", async () => {
+    delete process.env.RAG_MAX_DAILY_INGEST_POINTS;
+    delete process.env.QDRANT_MAX_DAILY_INGEST_POINTS;
+    const {
+      DEFAULT_RAG_MAX_DAILY_INGEST_POINTS,
+      ragMaxDailyIngestPoints
+    } = await import("../src/lib/rag-metering");
+    expect(DEFAULT_RAG_MAX_DAILY_INGEST_POINTS).toBe(150_000);
+    expect(ragMaxDailyIngestPoints()).toBe(150_000);
+  });
+
+  it("honors RAG_MAX_DAILY_INGEST_POINTS env override", async () => {
+    process.env.RAG_MAX_DAILY_INGEST_POINTS = "250000";
+    const { ragMaxDailyIngestPoints } = await import("../src/lib/rag-metering");
+    expect(ragMaxDailyIngestPoints()).toBe(250_000);
+  });
+
+  it("ragIngestPointsBudgetDeferUntil is ~1h ahead", async () => {
+    const { ragIngestPointsBudgetDeferUntil } = await import("../src/lib/rag-metering");
+    const now = Date.UTC(2026, 8, 18, 10, 0, 0);
+    const until = Date.parse(ragIngestPointsBudgetDeferUntil(now));
+    expect(until - now).toBe(60 * 60_000);
   });
 });

@@ -1,6 +1,6 @@
 /**
  * STAGE-1 Qdrant read backend (src/lib/vector-store/qdrant-read.ts):
- *   - backend knob resolution: default pinecone; DB override > env boolean > env string; the
+ *   - backend knob resolution: default qdrant when QDRANT_URL is set; DB override > env boolean > env string; the
  *     qdrant choice additionally requires QDRANT_URL
  *   - Pinecone-namespace -> ns tenant mapping (default namespace == "" on this index, verified live)
  *   - qdrantQueryTier request shape + response mapping (pc_id becomes the match id; pc_id/ns are
@@ -273,8 +273,47 @@ describe("qdrantQueryTier", () => {
   });
 
   it("throws on a non-OK response (the caller owns per-tier fail-open)", async () => {
-    stubFetch({ ok: false, status: 503, text: "service unavailable" });
-    await expect(qdrantQueryTier("socratic-abc", { vector: [0.1], topK: 5 })).rejects.toThrow(/HTTP 503/);
+    vi.useFakeTimers();
+    try {
+      const { fetchMock } = stubFetch({ ok: false, status: 503, text: "service unavailable" });
+      const pending = qdrantQueryTier("socratic-abc", { vector: [0.1], topK: 5 });
+      const assertion = expect(pending).rejects.toThrow(/HTTP 503/);
+      await vi.runAllTimersAsync();
+      await assertion;
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retries a transient fetch failed then returns hits", async () => {
+    vi.useFakeTimers();
+    try {
+      process.env.QDRANT_URL = "http://qdrant.example:6333/";
+      process.env.QDRANT_API_KEY = "test-key";
+      let attempts = 0;
+      const fetchMock = vi.fn(async () => {
+        attempts += 1;
+        if (attempts < 2) throw new TypeError("fetch failed");
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            result: [{ id: "x", score: 0.5, payload: { pc_id: "occ:v3:retry-1", symbol: "AAPL" } }]
+          }),
+          text: async () => ""
+        } as unknown as Response;
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const pending = qdrantQueryTier("", { vector: [0.1], topK: 5 });
+      const resultPromise = pending.then((result) => result);
+      await vi.runAllTimersAsync();
+      const result = await resultPromise;
+      expect(attempts).toBe(2);
+      expect(result.matches[0].id).toBe("occ:v3:retry-1");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("throws on an unimplemented filter operator instead of querying with a widened filter", async () => {

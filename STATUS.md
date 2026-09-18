@@ -44,6 +44,17 @@ Rollout: `docs/rollouts/2026-09-18-datadog-free-remaining.md`.
 Hosted tsc failed on `@/app/ui/theme` (alias is `src/*`).  Relative import from console chrome/ticker-logo.  Default stays light.  Extra-ship no.  No Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-18-ag-takeover-theme-ci.md`.
 
+## 2026-09-18 CLAUDE — Restart loops now leave a durable trail and raise an alert (board a9676caf)
+
+Coolify replaces the container on every restart, so a previous container's logs and exit-guard
+receipts vanished and nothing alerted on the loop itself.  New `src/lib/boot-ledger.ts` appends one
+JSON line per boot/exit to `boot-ledger.jsonl` beside the DB on the persistent volume (exit code,
+signal, `process.exit` call site via a new `exit-guard` receipt hook; a boot with no predecessor
+exit line reads as "killed").  3 boots in 45 minutes raises a Sentry `fatal` message plus one admin
+alert per 12h.  Repo code only: the Coolify-side restart-count monitor is still a host task.
+Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-restart-loop-boot-ledger.md`.
+
 ## 2026-09-18 CURSOR — Effort Issues Sync Crons margin (FLEET-INFRA-C0)
 
 Sentry `ci-effort-issues-sync` false-pages every day at 06:27Z.  The board-mirror job itself succeeds on `ubuntu-latest` in ~12-30s; GitHub just starts the `12 6 * * *` schedule 5-6.5h late (typical 11:12-11:44Z, worst retained 2026-09-14 12:37Z).  Same class as #3194 / FLEET-INFRA-C1, #3387 / FLEET-INFRA-C3, and #3389 / FLEET-INFRA-BY.  Raise `CHECKIN_MARGIN_OVERRIDES["Effort Issues Sync"]` to 600.  Cron and sync script unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` the sync.  #3302 already moved the live slug to `ci-socratic-trade-effort-issues-sync`; do not close C0 on merge.
@@ -72,6 +83,14 @@ Rollout: `docs/rollouts/2026-09-17-post-claim-sqlite-busy-fire.md`.
 
 Hosted `verify` on #3383 timed out (`test/synthetic-stops.test.ts` and sibling reprice files at 60s/30s).  Cause: `runSyntheticStopMonitor` now `await yieldEventLoop()` (`setImmediate`), and those tests used full `vi.useFakeTimers()` which never flushes it.  Tests now fake `Date` only; `isSqliteBusy` does not retry a stamped non-BUSY sqlite code.  Pin+yield production behavior unchanged.  Extra-ship no.  No Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-17-sqlite-busy-event-loop-pin.md`.
+
+## 2026-09-18 FIXER — RAG retrieval no longer pages as Pinecone (PD #116 leftover)
+
+`retrieveContextDetailed` catch hardcoded `provider: "pinecone"` after Qdrant cutover, so
+Qdrant `fetch failed` kept fingerprinting as SOCRATIC-TRADE-1T.  Catch uses `readBackend`;
+Qdrant search retries transients; `/api/health` reports the active vector backend and does
+not 503 on leftover Pinecone while Qdrant is serving.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-rag-retrieval-qdrant-mislabel.md`.
 
 ## 2026-09-17 GROK — SQLITE_BUSY event-loop pin+yield (board e7b49943)
 

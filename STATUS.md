@@ -1,9 +1,5 @@
 # Current Status
 
-## 2026-09-18 CURSOR — CI Crons margin (FLEET-INFRA-DB)
-
-Sentry `ci-socratic-trade-ci` false-paged at 08:02Z (first miss on the #3302 slug).  Scheduled `ci.yml` itself succeeds; GitHub starts the nightly `47 7 * * *` canary 5-6.5h late (typical ~12:46-14:24Z, worst retained 2026-09-14 14:24Z) and today's 07:47Z tick had no `schedule` run because main-push CI held `ci-CI-refs/heads/main`.  Same class as #3194 / FLEET-INFRA-C1, #3387 / C3, #3389 / BY, and #3390 / C0.  Raise `CHECKIN_MARGIN_OVERRIDES["CI"]` to 600.  Cron and verify suite unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` CI.  Do not close DB on merge.
-Rollout: `docs/rollouts/2026-09-18-ci-monitor-margin.md`.
 ## 2026-09-18 CLAUDE — Collapsible-card keyboard focus ring made explicit (board bf05f16a)
 
 The collapsible `Card` `<summary>` carried `focus:outline-none`.  On the current build the global
@@ -139,6 +135,11 @@ Rollout: `docs/rollouts/2026-09-13-issue-3223-qdrant-fuses-fts-optimization.md`.
 
 Executed an exhaustive, multi-subagent audit across the entire codebase covering Trading Execution & Persistence, Security & API Routes, AI Strategy & Vector Retrieval, and Web Console & iOS Client.  Identified 3 Critical trading bugs (Tradier bracket entry dropping in `equityRowsFromTradierOrder`, missing `ordersListIncludesTerminal` on Tradier, and HTTP 200 rejection envelope misclassification), 2 Critical console bugs (duplicate strategy runs from mounted desktop/mobile `RunOnceButton` listeners and an un-backed-off deadline retry spin loop), 2 Critical AI engine bugs (`withDatadogLlmObs` duplicate execution on failure, and Red Team unhandled JSON parse failure aborting fallback models), plus over 15 High/Medium vulnerabilities, storage bloat drivers, and event-loop stall sources.  Logged and triaged all findings into 8 dedicated GitHub issues (#3220–#3227) with detailed reproduction mechanics and remediation steps.  Effort logs updated on both branch-neutral live board (`/Users/jay/apps/TRADING-EFFORT-LOG.md`) and repo mirror (`docs/EFFORT-LOG.md`).
 Rollout: `docs/rollouts/2026-09-12-codebase-full-audit.md`.
+
+## 2026-09-18 CURSOR — CI Crons margin (FLEET-INFRA-DB)
+
+Sentry `ci-socratic-trade-ci` false-paged at 08:02Z (first miss on the #3302 slug).  Scheduled `ci.yml` itself succeeds; GitHub starts the nightly `47 7 * * *` canary 5-6.5h late (typical ~12:46-14:24Z, worst retained 2026-09-14 14:24Z) and today's 07:47Z tick had no `schedule` run because main-push CI held `ci-CI-refs/heads/main`.  Same class as #3194 / FLEET-INFRA-C1, #3387 / C3, #3389 / BY, and #3390 / C0.  Raise `CHECKIN_MARGIN_OVERRIDES["CI"]` to 600.  Cron and verify suite unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` CI.  Do not close DB on merge.
+Rollout: `docs/rollouts/2026-09-18-ci-monitor-margin.md`.
 
 ## 2026-09-10 GROK — PR #3208 fixer tip (tini PID1 / HEALTHCHECK curl self-timeout)
 

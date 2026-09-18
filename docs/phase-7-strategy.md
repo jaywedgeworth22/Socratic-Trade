@@ -450,6 +450,8 @@ Feeding dozens of raw rationales, P&L lines, and redundant daily news into the t
   post-mortem so the proposal path stays network-free.
 - **Delta-only macro pruning** — `pruneMacro()` sends only changed (plus
   regime-critical) macro fields on repeat runs, listing the rest as unchanged.
+  Live-VIX overlay stamp `vixAsOf` is a typed optional `MacroData` field and is
+  skipped entirely (never omitted-as-unchanged); `proposeTrades` re-stamps it.
 - **Risk-control wiring audit + money-path test (2026-07-01, audit work-split F/G):**
   - **Drawdown kill-switch (G5)** — verified `runStrategyOnce` (`src/lib/strategy.ts:~253-262`)
     flips an `active`, autonomous run to `close_only` via `setPolicy`, audits

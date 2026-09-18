@@ -78,6 +78,14 @@ export interface MacroData {
   fieldSources?: Partial<Record<Exclude<keyof MacroData, "fieldSources" | "fredSourced" | "treasurySourced" | "blsSourced">, string>>;
   /** When we assembled this payload (ISO). Distinct from asOf (market/release date). */
   fetchedAt?: string;
+  /**
+   * ISO stamp of the live ^VIX overlay from fetchMacroDataWithLiveVix.  Distinct from asOf
+   * (FRED/release day) and fetchedAt (payload assembly).  Optional: absent when the live
+   * overlay missed and the cached snapshot is returned unchanged.  pruneMacro skips this
+   * key so an unchanged cache-window stamp never lands in omitted/unchangedSinceLastRun;
+   * proposeTrades re-applies it onto macroeconomicData.
+   */
+  vixAsOf?: string;
 }
 
 /**
@@ -569,7 +577,7 @@ export async function fetchLiveVix(now: number = Date.now()): Promise<{ vix: num
  * than blanking a previously-good reading). Use this instead of bare `fetchMacroData` wherever a
  * stale VIX would matter: the volatility panic brake and the regime-flip detector.
  */
-export async function fetchMacroDataWithLiveVix(userId?: string): Promise<MacroData & { vixAsOf?: string }> {
+export async function fetchMacroDataWithLiveVix(userId?: string): Promise<MacroData> {
   const [macro, live] = await Promise.all([fetchMacroData(userId), fetchLiveVix()]);
   if (live.vix === null || live.asOf === null) return macro;
   return {

@@ -3,14 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Regression (#3138 -> #3158, P1): `assertIndexMetric` is the R7 guard that verifies the Pinecone
-// index metric is actually `cosine` — every cosine-scale floor (VECTOR_MIN_SCORE, the rerank
-// relevance floor) is meaningless otherwise — and it is also the only thing that populates the
-// in-process provider-authority cache from a described index.  #3138 skipped it whenever no
-// Pinecone client existed; #3158 narrowed it further to `readBackend === "pinecone"`, so once the
-// Qdrant read knob defaulted ON the guard stopped running in production entirely, silently.
-// It is cached per init key and documented never to throw for provider/metric faults, so running
-// it on the Qdrant path costs at most one `describeIndex` per process.
+// With Pinecone writes retired (Qdrant-only), `assertIndexMetric` / `describeIndex` must NOT run
+// on the retrieval path — Cosine is asserted via `assertQdrantCollectionMetric`, and managed
+// authority comes from the durable ledger / qdrantProviderAuthority.  Earlier (#3138/#3158)
+// kept a best-effort Pinecone describeIndex even on Qdrant reads; that control-plane call is
+// retired once the write backend is qdrant.
 
 process.env.DATABASE_URL = `file:${join(tmpdir(), `socratic-qdrant-index-metric-${randomUUID()}.db`)}`;
 
@@ -118,17 +115,15 @@ describe("assertIndexMetric on the Qdrant read path", () => {
     delete process.env.RAG_EMBED_PROVIDER;
   });
 
-  it("describes the index (R7 cosine guard) even though reads are served by Qdrant", async () => {
+  it("skips Pinecone describeIndex when write backend is qdrant (Pinecone CP retired)", async () => {
     const mockFetch = qdrantSearchFetch();
     vi.stubGlobal("fetch", mockFetch);
 
     const { retrieveContextDetailed } = await import("../src/lib/vector-db");
     const chunks = await retrieveContextDetailed("Apple revenue", "AAPL", 5, "local");
 
-    // The guard ran…
-    expect(mocks.describeIndex).toHaveBeenCalled();
-    // …without reintroducing the `indexExists` control-plane preflight #3138 removed from this path,
-    // and without diverting the query away from the Qdrant mirror.
+    // Pinecone control-plane must stay quiet on the Qdrant-only write path.
+    expect(mocks.describeIndex).not.toHaveBeenCalled();
     expect(mocks.listIndexes).not.toHaveBeenCalled();
     expect(mocks.namespacedIndex.query).not.toHaveBeenCalled();
     expect(mockFetch.mock.calls.some((call) => String(call[0]).includes("/points/search"))).toBe(true);

@@ -952,7 +952,7 @@ export async function ingestEightKBody(
   }
   const vectorDb = await import("../vector-db");
   assertEightKIngestLease(leaseGuard);
-  if (!vectorDb.hasIngestTextBudget("local") || !vectorDb.hasPineconeWriteBudget("local")) {
+  if (!vectorDb.hasIngestTextBudget("local") || !vectorDb.hasVectorIngestWriteBudget("local")) {
     return { skipped: true, chunks: 0, retryable: true, capacityExhausted: true };
   }
 

@@ -96,6 +96,13 @@ if [ -z "$EXPECTED_SHA" ]; then
   fail_usage "cannot resolve expected ref '${EXPECTED_REF}' to a commit in this repo."
 fi
 
+# watch_paths in Coolify skips docs/**, so a docs-only commit never deploys.
+# Compare against the newest image-affecting commit instead.
+IMAGE_AFFECTING_SHA="$(git log -1 --format="%H" "$EXPECTED_SHA" -- . ":(exclude)docs" 2>/dev/null || true)"
+if [ -n "$IMAGE_AFFECTING_SHA" ]; then
+  EXPECTED_SHA="$IMAGE_AFFECTING_SHA"
+fi
+
 log "expecting ${EXPECTED_SHA} (${EXPECTED_REF})"
 log "probing ${URL} every ${INTERVAL_SECONDS}s for up to ${TIMEOUT_SECONDS}s"
 
@@ -208,7 +215,10 @@ while true; do
 
   NOW_EPOCH="$(date +%s)"
   ELAPSED=$((NOW_EPOCH - START_EPOCH))
-  log "waiting (${ELAPSED}s elapsed, exit-code-so-far ${LAST_CODE}): $(printf '%s\n' "$LAST_MESSAGE" | head -n 1)"
+  # First line of LAST_MESSAGE via parameter expansion, not `printf | head` -- head
+  # closing the pipe early makes the pipeline 141 under pipefail, and `set -e` would
+  # kill the poll loop over a log line. Same class as FLEET-INFRA-BH.
+  log "waiting (${ELAPSED}s elapsed, exit-code-so-far ${LAST_CODE}): ${LAST_MESSAGE%%$'\n'*}"
 
   # Only keep polling for states a pending deploy can still resolve: unreachable (container
   # restarting), behind (build still queued), unknown commit (objects still propagating). A missing

@@ -104,4 +104,9 @@ export async function register() {
   // launching broker/provider/RAG work against a credentialed or copied database.
   const { startServerBackgroundWorkers } = await import("./src/lib/background-worker-startup");
   await startServerBackgroundWorkers();
+
+  // Warm up Qdrant if configured and enabled for reads, so the first real retrieval doesn't block
+  // on cold-cache fault-in.
+  const { warmupQdrantHotTenants } = await import("./src/lib/vector-db");
+  warmupQdrantHotTenants().catch(() => {});
 }

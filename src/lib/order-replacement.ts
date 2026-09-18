@@ -7,6 +7,7 @@ import { isActiveBrokerOrderState } from "./broker-held-orders";
 import { auditDeduped } from "./audit-dedupe";
 import { hasBrokerReportedFill, hasBrokerReportedPricedFill, isRejectedOrCanceledState } from "./broker-side";
 import { listStaleLimitOrders } from "./stale-limit-orders";
+import { sqliteYieldRetry } from "./sqlite-event-loop";
 import { autoReplaceProvenanceSkipReason } from "./order-provenance";
 import { normalizeSymbol } from "./money";
 import type { BrokerGateway, ConnectedAccount, EquityOrder, EquityOrderInput, EquityPosition, ExecutionMode, TradingPolicy } from "./types";
@@ -840,7 +841,7 @@ export async function autoRemediateStaleExitOrders(input: {
         return { changes: 0 };
       });
       
-      const result = insertTx();
+      const result = await sqliteYieldRetry(() => insertTx());
       
       if (result.changes > 0) {
         out.attempted++;

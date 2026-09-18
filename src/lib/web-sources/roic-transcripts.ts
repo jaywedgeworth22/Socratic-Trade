@@ -53,7 +53,7 @@ import { rankDemandFirstSymbols, rankHighInterestSymbols } from "../rag/demand-f
 import { chunkDocument } from "../rag/chunk";
 import { storeSignalSectionDocuments } from "../rag/processed-corpus-write";
 import { yieldEventLoop } from "../slow-sync-guard";
-import { hasPineconeWriteBudget, storeDocument } from "../vector-db";
+import { hasVectorIngestWriteBudget, storeDocument } from "../vector-db";
 
 export { ROIC_TRANSCRIPT_DOC_TYPE, ROIC_TRANSCRIPT_SOURCE, roicTranscriptsKillSwitchOn };
 
@@ -746,7 +746,7 @@ export async function ingestRoicTranscriptToRag(
   const observed = new Date().toISOString();
 
   if (writeClass === "local-only") return "cached";
-  if (!hasPineconeWriteBudget(userId ?? "local")) return "cached";
+  if (!hasVectorIngestWriteBudget(userId ?? "local")) return "cached";
 
   let fullBodyOk = writeClass !== "full-body";
   if (writeClass === "full-body") {

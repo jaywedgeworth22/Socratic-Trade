@@ -1303,11 +1303,22 @@ export interface RedTeamEfficacy {
   records: RedTeamVetoRecord[];
 }
 
+/**
+ * Default scan window for getRedTeamEfficacy's `proposal_rejected_by_red_team` audit-kind
+ * query. Raised from the original 500 (2026-09-18): once those audit kinds are exempted from
+ * the 90-day retention prune (src/lib/audit-prune.ts AUDIT_PRUNE_NEVER_PRUNED_KINDS), lifetime
+ * veto history accumulates without bound on any account with sustained Red Team activity, and
+ * the old cap silently truncated this rollup to the newest 500 vetoes — a second, independent
+ * ceiling on top of the prune bug. 5000 matches the ceiling already used elsewhere for
+ * audit-kind scans (src/lib/backtest.ts DEFAULT_AUDIT_LIMIT / boundedInteger max).
+ */
+export const RED_TEAM_EFFICACY_DEFAULT_AUDIT_LIMIT = 5000;
+
 export function getRedTeamEfficacy(
   userId: string = "local",
   options: { auditLimit?: number; limit?: number; connectedAccountId?: string } = {}
 ): RedTeamEfficacy {
-  const auditLimit = options.auditLimit ?? 500;
+  const auditLimit = options.auditLimit ?? RED_TEAM_EFFICACY_DEFAULT_AUDIT_LIMIT;
   const limit = options.limit ?? 50;
 
   const vetoesByKey = new Map<string, { runId: string; symbol: string; side?: string; thesisTag?: string; reason?: string; model?: string }>();

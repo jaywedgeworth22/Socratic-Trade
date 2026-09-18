@@ -198,6 +198,48 @@ describe("pruneMacro", () => {
     expect(omitted).not.toContain("dgs2Treasury");
   });
 
+  
+  it("keeps vixAsOf out of omitted when unchanged across the live-VIX cache window", () => {
+    const stamp = "2026-09-18T10:00:00.000Z";
+    const base = {
+      fedFundsRate: "5.25%",
+      dgs3moTreasury: "5.10%",
+      dgs2Treasury: "4.60%",
+      dgs10Treasury: "4.20%",
+      inflationExpectation10y: "2.30%",
+      cpiInflation: "3.10%",
+      corePCE: "2.80%",
+      realGDPGrowth: "2.00%",
+      unemploymentRate: "3.90%",
+      initialClaims: "220K",
+      m2MoneySupply: "20.8T",
+      m2GrowthYoY: "2.50%",
+      hyCreditSpread: "3.20%",
+      usdIndex: "104.00",
+      wtiOil: "$75.00",
+      housingStarts: "1.3M",
+      consumerSentiment: "75.0",
+      nonfarmPayrollsChangeK: "+180K",
+      vix: "18.50",
+      vix3m: "20.00",
+      asOf: "2026-09-18",
+      vixAsOf: stamp
+    } as MacroData & { vixAsOf: string };
+    // Same payload again (10-min live VIX cache hit): stamp unchanged, still re-applied by caller.
+    const again = { ...base, vixAsOf: stamp } as MacroData & { vixAsOf: string };
+    const { macro, omitted } = pruneMacro(again, base);
+    expect(omitted).not.toContain("vixAsOf");
+    expect(macro.vixAsOf).toBeUndefined();
+    // Caller re-stamps — simulate proposeTrades assembly.
+    const macroeconomicData = {
+      ...macro,
+      ...(omitted.length > 0 ? { unchangedSinceLastRun: omitted.filter((k) => k !== "vixAsOf") } : {}),
+      vixAsOf: again.vixAsOf
+    };
+    expect(macroeconomicData.vixAsOf).toBe(stamp);
+    expect((macroeconomicData.unchangedSinceLastRun as string[] | undefined) ?? []).not.toContain("vixAsOf");
+  });
+
   it("never leaks the fredSourced meta flag into the LLM prompt payload (first run and delta)", () => {
     const flagged: MacroData = { ...base, fredSourced: true };
 

@@ -5062,7 +5062,7 @@ async function proposeTrades(input: {
     macroOmitted.length > 0
       ? {
           ...macroForPrompt,
-          unchangedSinceLastRun: macroOmitted,
+          unchangedSinceLastRun: macroOmitted.filter((k) => k !== "vixAsOf"),
           ...(macro.vixAsOf ? { vixAsOf: macro.vixAsOf } : {})
         }
       : {

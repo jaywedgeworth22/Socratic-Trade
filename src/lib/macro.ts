@@ -616,7 +616,11 @@ export function pruneMacro(
   if (!previous) return { macro: Object.fromEntries(entries), omitted: [] };
   const macro: Record<string, string> = {};
   const omitted: string[] = [];
-  for (const [key, value] of entries) {
+    for (const [key, value] of entries) {
+    // vixAsOf is stamp-only freshness from fetchMacroDataWithLiveVix; proposeTrades always
+    // re-applies it onto macroeconomicData. Never put it in omitted/unchanged — that would
+    // contradict the re-stamp (Instinct / Sentry MEDIUM on #3392).
+    if (key === "vixAsOf") continue;
     if (MACRO_ALWAYS_KEEP.has(key) || previous[key] !== value) {
       macro[key] = value;
     } else {

@@ -1,5 +1,26 @@
 # Current Status
 
+## 2026-09-18 CURSOR — Strict Infisical, no `.env.local` files (IN PR — verification deferred to CI `verify` ruleset)
+
+Owner directive 2026-09-18: Infisical is the sole source of truth for every secret.  This PR
+deletes the dev-only `.env.local` loader path in `src/lib/db-api-keys.ts:32-60` (keeping the
+`~/.secrets/global-api-keys` handoff paths, since that's the documented owner-side identity
+store, not an `.env` file); stops seeding `.env.local` from `.env.example` in
+`scripts/cloud-setup.sh:47-50`; shrinks `.env.example` to bootstrap-only (Infisical client
+identity + `ENCRYPTION_KEY` + `REQUIRE_SECRETS_MANAGER` arming comment); exports
+`REQUIRE_SECRETS_MANAGER=1` in `scripts/coolify-prod-start.sh` phase-2 re-exec so prod
+visibly arms the fail-closed boot guard (`src/lib/secrets-source.ts` + `instrumentation.ts:51`);
+makes `npm run dev:secrets` the canonical local start path with a one-time `predev` notice
+on plain `npm run dev`; updates AGENTS.md + docs/secrets.md + adds
+`test/no-env-loader-or-dotenv-yaml.test.ts` as a regression guard.  Branch
+`cursor/strict-infisical-no-env-files` from `origin/main`.  11 file changes (+new).  Local
+`npm install` wedged against peer-agent concurrent installs (multiple lanes competing for
+the npm registry on this machine; documented in rollout note); `node --check` passes on the
+new `predev-check.mjs`.  **Verification gate is the ruleset `verify` workflow on GitHub
+hosted runners** — that path runs `tsc --noEmit` + `vitest` + `next build` without peer
+contention.  Local first-party install deferred.  No merge from this lane.
+Rollout: `docs/rollouts/2026-09-18-strict-infisical-no-env-files.md`.
+
 ## 2026-09-18 CURSOR — Effort Issues Sync Crons margin (FLEET-INFRA-C0)
 
 Sentry `ci-effort-issues-sync` false-pages every day at 06:27Z.  The board-mirror job itself succeeds on `ubuntu-latest` in ~12-30s; GitHub just starts the `12 6 * * *` schedule 5-6.5h late (typical 11:12-11:44Z, worst retained 2026-09-14 12:37Z).  Same class as #3194 / FLEET-INFRA-C1, #3387 / FLEET-INFRA-C3, and #3389 / FLEET-INFRA-BY.  Raise `CHECKIN_MARGIN_OVERRIDES["Effort Issues Sync"]` to 600.  Cron and sync script unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` the sync.  #3302 already moved the live slug to `ci-socratic-trade-effort-issues-sync`; do not close C0 on merge.

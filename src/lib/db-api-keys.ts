@@ -4,7 +4,6 @@
 import "server-only";
 import crypto from "crypto";
 import { existsSync, readFileSync } from "fs";
-import { resolve } from "path";
 import { getDb, audit } from "./db";
 import { normalizeSymbol } from "./money";
 import { registerPlanTierLookup } from "./provider-tier-plan";
@@ -29,10 +28,14 @@ import { invalidateDashboardSnapshotCache } from "./dashboard-snapshot-cache";
 
 // ── Field-Level Encryption ──────────────────────────────────────────────────
 
-// Load .env.local and local development secrets files for local system development (production uses Infisical)
+// Load the bootstrap-identity handoff file (Infisical client credentials + ALIASES only) for
+// local development. Production uses Infisical exclusively — see docs/secrets.md. The chmod-600
+// `~/.secrets/global-api-keys` file is the documented owner-side bootstrap identity store, NOT a
+// `.env` file: a working tree with no `.env.local` is the new contract as of 2026-09-18
+// (PR `cursor/strict-infisical-no-env-files`). For dev/CI/cloud-agent seats, run
+// `npm run dev:secrets` (Infisical runner) instead of `npm run dev` plain.
 if (process.env.NODE_ENV !== "test" && !process.env.VITEST && process.env.NODE_ENV !== "production" && !process.env.COOLIFY_PROD_PHASE2) {
   const envPaths = [
-    resolve(process.cwd(), ".env.local"),
     "/Users/jay/.secrets/global-api-keys.env",
     "/Users/jay/.secrets/global-api-keys"
   ];

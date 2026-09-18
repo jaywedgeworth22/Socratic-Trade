@@ -1241,6 +1241,16 @@ body.con-overlay-open {
   user-select: none;
 }
 .con-disclosure > summary::-webkit-details-marker { display: none; }
+/* Keyboard focus ring for collapsible-card headers.  Explicit rather than relying on the global
+ * `.console-root :focus-visible` rule: the <summary> used to carry Tailwind's `focus:outline-none`,
+ * and the only reason the ring still showed was that unlayered console.css beats `@layer utilities`
+ * — one CSS reorganisation away from an invisible focus target on every collapsible card.  Inset so
+ * the ring is not clipped by, or fighting with, the card border. */
+.con-disclosure > summary:focus-visible {
+  outline: 2px solid var(--con-accent);
+  outline-offset: -2px;
+  border-radius: var(--con-radius);
+}
 
 .con-disclosure-label {
   font-size: var(--con-fs-xs);

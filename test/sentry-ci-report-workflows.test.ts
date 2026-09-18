@@ -92,6 +92,7 @@ describe("Sentry CI workflow coverage", () => {
     expect(checkinMarginOverrides(reporterScript)).toEqual({
       "Deploy freshness": 600,
       "RTH Deploy Latch": 600,
+      "Cleanup Actions Caches": 600,
     });
   });
 });

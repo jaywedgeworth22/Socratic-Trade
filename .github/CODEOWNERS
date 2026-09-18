@@ -1,10 +1,42 @@
 # Trading Execution Paths
-# Require human review from owner before agent code touches live money paths
+# Require human review from the owner before agent code touches live-money paths.
+#
+# Broadened 2026-09-18 after the #3340 review: the first draft of this file only
+# listed `/src/lib/execution*` plus four adapters, which left every other broker
+# integration (alpaca, kalshi, etoro, webull) and the whole order/proposal money
+# path unowned.  Keep this list a superset of "code that can move real money" —
+# adding a read-only helper here is cheap, missing a placement path is not.
 
+# --- Broker gateway and adapters -------------------------------------------
 /src/lib/broker.ts @jaywedgeworth22
+/src/lib/broker-*.ts @jaywedgeworth22
+/src/lib/public-broker.ts @jaywedgeworth22
+/src/lib/alpaca.ts @jaywedgeworth22
+/src/lib/alpaca-*.ts @jaywedgeworth22
 /src/lib/tradier.ts @jaywedgeworth22
 /src/lib/robinhood.ts @jaywedgeworth22
+/src/lib/etoro.ts @jaywedgeworth22
+/src/lib/etoro-*.ts @jaywedgeworth22
+/src/lib/webull.ts @jaywedgeworth22
+/src/lib/kalshi.ts @jaywedgeworth22
+/src/lib/kalshi-*.ts @jaywedgeworth22
+
+# --- Order placement, cancel, replace, provenance ---------------------------
+/src/lib/order-*.ts @jaywedgeworth22
+/src/lib/option-orders.ts @jaywedgeworth22
+/src/lib/stale-limit-orders.ts @jaywedgeworth22
+
+# --- Proposals and execution ------------------------------------------------
+/src/lib/proposal-*.ts @jaywedgeworth22
 /src/lib/execution* @jaywedgeworth22
+/src/lib/db-execution.ts @jaywedgeworth22
+/src/lib/db-proposals.ts @jaywedgeworth22
 /src/lib/strategy-execution.ts @jaywedgeworth22
+/src/lib/strategy-run-execution-registry.ts @jaywedgeworth22
+/src/lib/trading-liveness.ts @jaywedgeworth22
+/src/lib/tradingview-trigger.ts @jaywedgeworth22
 /src/lib/scheduler.ts @jaywedgeworth22
-/scripts/execute-tradier-trades.ts @jaywedgeworth22
+
+# --- API routes that place, cancel or approve real orders -------------------
+/app/api/orders/ @jaywedgeworth22
+/app/api/proposals/ @jaywedgeworth22

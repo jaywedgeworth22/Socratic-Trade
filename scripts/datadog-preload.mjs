@@ -7,6 +7,25 @@ function flagOff(value) {
   return normalized === "0" || normalized === "false" || normalized === "no" || normalized === "off";
 }
 
+/** APM-only container IDs mint extra Infrastructure Free host slots. */
+const FLEET_DD_HOSTNAME = "fleet-hetzner-nbg1";
+
+function onCoolify() {
+  return Boolean(
+    process.env.COOLIFY_RESOURCE_UUID ||
+      process.env.COOLIFY_CONTAINER_NAME ||
+      process.env.COOLIFY_FQDN ||
+      process.env.COOLIFY_APP_NAME ||
+      process.env.COOLIFY_URL
+  );
+}
+
+function attachFleetHostname() {
+  if (String(process.env.DD_HOSTNAME || "").trim()) return;
+  if (!onCoolify()) return;
+  process.env.DD_HOSTNAME = FLEET_DD_HOSTNAME;
+}
+
 try {
   if (flagOff(process.env.DD_TRACE_ENABLED) || flagOff(process.env.DD_APM_TRACING_ENABLED)) {
     // no-op
@@ -35,6 +54,8 @@ try {
       if (apiKey && !agent && !process.env.DD_TRACE_EXPERIMENTAL_EXPORTER) {
         process.env.DD_TRACE_EXPERIMENTAL_EXPORTER = "agentless";
       }
+      // Host tag only.  dd-trace init `hostname` is the Agent address, not DD_HOSTNAME.
+      attachFleetHostname();
       const sampleRate = Number(process.env.DD_TRACE_SAMPLE_RATE || "0.1");
       const require = createRequire(import.meta.url);
       require("dd-trace").init({

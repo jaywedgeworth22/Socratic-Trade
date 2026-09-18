@@ -105,6 +105,7 @@ describe("datadog integration is inert without env vars", () => {
     expect(source).toContain("attachFleetHostname");
     expect(source).toContain("DD_HOSTNAME");
     expect(source).toContain("Host tag only");
+    expect(source).toContain("os.hostname");
   });
 
   it("coolify-prod-start arms Datadog via --import and never --require", () => {

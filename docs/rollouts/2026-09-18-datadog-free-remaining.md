@@ -8,7 +8,7 @@ Board `f03c5542`.  Stay on Infrastructure Free (us5).  Sentry remains the app er
 
 - Diagnosed ST RUM `is_active=false`: the existing `Socratic Trade` app is the only RUM application.  Infisical has server `DD_APPLICATION_ID` + `DD_CLIENT_TOKEN` and no `NEXT_PUBLIC_DD_*` pair, so `instrumentation-client.ts` does not boot.  `DatadogRumBoot` can still see the server pair at SSR.
 - Set Infisical `DD_RUM_ENABLED=false` and `NEXT_PUBLIC_DD_RUM_ENABLED=false` so runtime boot stays fail-closed.  Did not mint a second RUM app.  Did not copy tokens into `NEXT_PUBLIC_*`.
-- Set Infisical `DD_HOSTNAME=fleet-hetzner-nbg1`.  Preload attaches that host tag on Coolify only.  dd-trace `init({ hostname })` is the Agent address and is left alone.
+- Set Infisical `DD_HOSTNAME=fleet-hetzner-nbg1`.  Preload attaches that host tag on Coolify only.  Agentless dd-trace reads `os.hostname()` (the container id), so preload patches that function.  `init({ hostname })` remains the Agent address.
 - Files: `scripts/datadog-preload.mjs`, `test/datadog-inert.test.ts`, `test/datadog-env.test.ts`.
 
 ## Decisions & Trade-offs

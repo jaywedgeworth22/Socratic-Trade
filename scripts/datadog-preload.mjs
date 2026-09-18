@@ -20,10 +20,18 @@ function onCoolify() {
   );
 }
 
-function attachFleetHostname() {
-  if (String(process.env.DD_HOSTNAME || "").trim()) return;
-  if (!onCoolify()) return;
-  process.env.DD_HOSTNAME = FLEET_DD_HOSTNAME;
+function attachFleetHostname(require) {
+  const wanted =
+    String(process.env.DD_HOSTNAME || "").trim() || (onCoolify() ? FLEET_DD_HOSTNAME : "");
+  if (!wanted) return;
+  process.env.DD_HOSTNAME = wanted;
+  // Agentless dd-trace tags host from os.hostname() (the container id), not DD_HOSTNAME.
+  try {
+    const os = require("node:os");
+    os.hostname = () => wanted;
+  } catch {
+    // Preload still proceeds; host tag may stay the container id.
+  }
 }
 
 try {
@@ -55,9 +63,9 @@ try {
         process.env.DD_TRACE_EXPERIMENTAL_EXPORTER = "agentless";
       }
       // Host tag only.  dd-trace init `hostname` is the Agent address, not DD_HOSTNAME.
-      attachFleetHostname();
       const sampleRate = Number(process.env.DD_TRACE_SAMPLE_RATE || "0.1");
       const require = createRequire(import.meta.url);
+      attachFleetHostname(require);
       require("dd-trace").init({
         logInjection: true,
         runtimeMetrics: true,

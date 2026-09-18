@@ -20,6 +20,15 @@ new `predev-check.mjs`.  **Verification gate is the ruleset `verify` workflow on
 hosted runners** — that path runs `tsc --noEmit` + `vitest` + `next build` without peer
 contention.  Local first-party install deferred.  No merge from this lane.
 Rollout: `docs/rollouts/2026-09-18-strict-infisical-no-env-files.md`.
+## 2026-09-18 CLAUDE — Collapsible-card keyboard focus ring made explicit (board bf05f16a)
+
+The collapsible `Card` `<summary>` carried `focus:outline-none`.  On the current build the global
+ring still won (unlayered console.css beats `@layer utilities`), so the defect was latent rather than
+live, but nothing pinned it.  Removed the opt-out, added an explicit inset `:focus-visible` rule and
+two source guards in `test/console-a11y.test.ts`.  The 320px scope-selector collapse is not verified
+and stays open on the row.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-console-card-focus-ring.md`.
+
 ## 2026-09-18 CLAUDE — Post-cancel protective-stop bookkeeping after the #3383 pin (money path)
 
 `#3383` dropped the serving `busy_timeout` 60000ms -> 100ms, so a sync SQLite write that used to

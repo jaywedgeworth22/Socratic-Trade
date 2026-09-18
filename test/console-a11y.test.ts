@@ -94,3 +94,20 @@ describe("console stacked-surface Escape ownership (#2561)", () => {
     releaseFocusTrap(sheet);
   });
 });
+
+describe("collapsible card keyboard focus (board bf05f16a)", () => {
+  const PRIMITIVES = readFileSync(resolve(process.cwd(), "app/console/ui/primitives.tsx"), "utf8");
+
+  it("does not strip the focus outline from the collapsible Card <summary>", () => {
+    const summary = PRIMITIVES.match(/<summary[^>]*>/);
+    expect(summary, "collapsible Card renders a <summary>").not.toBeNull();
+    expect(summary![0]).not.toMatch(/outline-none|outline-hidden/);
+  });
+
+  it("gives the disclosure summary an explicit, visible :focus-visible ring", () => {
+    const rule = CONSOLE_CSS.match(/\.con-disclosure\s*>\s*summary:focus-visible\s*\{([^}]*)\}/);
+    expect(rule, "console.css has a .con-disclosure > summary:focus-visible rule").not.toBeNull();
+    expect(rule![1]).toMatch(/outline:\s*2px\s+solid\s+var\(--con-accent\)/);
+    expect(rule![1]).not.toMatch(/outline:\s*none/);
+  });
+});

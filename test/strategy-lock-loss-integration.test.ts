@@ -176,6 +176,8 @@ beforeEach(() => {
     asOf: "unavailable",
     fredSourced: false
   });
+  // Vol-brake fail-open contract: a missing live overlay is `undefined`.  proposeTrades must
+  // fall back to fetchMacroData rather than throwing in pruneMacro.
   macroMocks.fetchMacroDataWithLiveVix.mockReset().mockResolvedValue(undefined);
 });
 

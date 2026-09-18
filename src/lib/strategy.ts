@@ -5053,7 +5053,11 @@ async function proposeTrades(input: {
   // Aug-17 trading-outcomes #1: proposeTrades was the last money-path holdout on the stale path.
   // Delta-only prune still applies to the slow FRED suite; `vixAsOf` is stamped when the live
   // overlay succeeded so Green/Red can see freshness explicitly.
-  const macro = await fetchMacroDataWithLiveVix(input.userId);
+  // Fail-open onto the 24h snapshot: existing tests (and the vol-brake site) treat a missing
+  // live overlay as `undefined`.  pruneMacro(Object.entries(undefined)) throws
+  // "Cannot convert undefined or null to object" and would abort the money path.
+  const liveMacro = await fetchMacroDataWithLiveVix(input.userId).catch(() => undefined);
+  const macro: MacroData & { vixAsOf?: string } = liveMacro ?? (await fetchMacroData(input.userId));
   const macroCacheKey = `last_macro_sent:${input.userId}`;
   const previousMacro = getInternalSetting<MacroData>(macroCacheKey);
   const { macro: macroForPrompt, omitted: macroOmitted } = pruneMacro(macro, previousMacro);

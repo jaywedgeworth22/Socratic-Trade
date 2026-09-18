@@ -17,7 +17,10 @@ describe("strategy.ts live VIX + macroTrends prompt wiring (2026-09-18 audit)", 
     const src = readFileSync(join(process.cwd(), "src/lib/strategy.ts"), "utf8");
     // Pin the proposeTrades block (comment + call) so other fetchMacroData sites do not satisfy this.
     expect(src).toMatch(
-      /Live VIX overlay[\s\S]*?const macro = await fetchMacroDataWithLiveVix\(input\.userId\);/
+      /Live VIX overlay[\s\S]*?fetchMacroDataWithLiveVix\(input\.userId\)\.catch\(\(\) => undefined\)/
+    );
+    expect(src).toMatch(
+      /const macro: MacroData & \{ vixAsOf\?: string \} = liveMacro \?\? \(await fetchMacroData\(input\.userId\)\);/
     );
     expect(src).toMatch(/fetchMacroHistory\(Date\.now\(\), input\.userId\)/);
     expect(src).toMatch(/compactMacroTrendsForPrompt/);

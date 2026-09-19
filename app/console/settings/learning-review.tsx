@@ -50,7 +50,6 @@ const reviewModelOption = (value: string, fallbackLabel: string) => {
 
 const NORMALIZED_REVIEW_MODEL_OPTIONS = [
   reviewModelOption("gpt-5.6-sol", "gpt-5.6-sol — recommended frontier audit · $$$"),
-  reviewModelOption("gpt-5.6-terra", "gpt-5.6-terra — balanced current-generation audit · $$$"),
   reviewModelOption("gpt-5.6-luna", "gpt-5.6-luna — lower-cost current-generation audit · $$"),
   reviewModelOption("claude-fable-5", "claude-fable-latest (5.1) — most capable Claude · $$$"),
   reviewModelOption("claude-opus-4-8", "claude-opus-4-8 — premium Claude reasoning · $$$"),

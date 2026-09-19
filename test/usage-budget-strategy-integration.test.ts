@@ -277,9 +277,12 @@ describe("usage-budget Phase 2: enforcement ON + downgrade", () => {
     expect(payload.after?.llmModel).toBe("openai/gpt-5.6-sol");
 
     // The model actually used for the Bull call was the downgraded one (OpenRouter wire slug).
-    expect(bullModelUsed).toBe("~openai/gpt-5.6-sol");
+    // 2026-09-18: gpt-5.6-sol is a catalog hit — its openRouterSlug is 'openai/gpt-5.6-sol'
+    // (no tilde). Tilde is reserved for openRouterOnly entries that must be force-routed;
+    // gpt-5.6-sol is reachable on OpenAI's native API too, so the wire field has no tilde.
+    expect(bullModelUsed).toBe("openai/gpt-5.6-sol");
     // Finding 6: the Bear (Red Team) request also carried the downgraded model.
-    expect(redTeamModelUsed).toBe("~openai/gpt-5.6-sol");
+    expect(redTeamModelUsed).toBe("openai/gpt-5.6-sol");
 
     // The persisted proposal reflects the served (downgraded) model.
     const proposals = listRecentProposals("TEST", 100, "local");

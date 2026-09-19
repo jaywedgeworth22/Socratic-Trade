@@ -183,9 +183,12 @@ describe("resolveLlmEndpoint", () => {
       ["~moonshotai/kimi-latest", "~moonshotai/kimi-latest"],
       ["minimax-m3", "minimax/minimax-m3"],
       ["minimax/minimax-m3", "minimax/minimax-m3"],
-      ["deepseek-reasoner", "deepseek/deepseek-r1"],
-      ["deepseek/deepseek-reasoner", "deepseek/deepseek-r1"],
-      ["deepseek-r1", "deepseek/deepseek-r1"]
+      // 2026-09-18: deepseek-r1 removed from the curated catalog (the new deepseek-flash-latest /
+      // deepseek-pro-latest rows subsume the v4 use cases). deepseek-reasoner is no longer a
+      // catalog alias of any row, so it now normalizes to a vendor-prefixed slug instead of
+      // collapsing to deepseek-r1.
+      ["deepseek/deepseek-reasoner", "deepseek/deepseek-reasoner"],
+      ["deepseek-r1", "deepseek/deepseek-reasoner"]
     ];
     for (const [input, expected] of cases) {
       expect(normalizeOpenRouterModelId(input), input).toBe(expected);

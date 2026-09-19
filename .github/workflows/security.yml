@@ -97,6 +97,7 @@ jobs:
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           MERGE_GROUP_HEAD: ${{ github.event.merge_group.head_sha }}
+          MERGE_GROUP_BASE: ${{ github.event.merge_group.base_sha }}
           PUSH_BEFORE: ${{ github.before }}
           PUSH_AFTER: ${{ github.after }}
         run: |
@@ -110,10 +111,13 @@ jobs:
               ;;
             merge_group)
               # merge_queue commits aren't reachable on the PR branch head
-              # at scan time — use the merge_group's head SHA against the
-              # PR base.
-              range="${PR_BASE}..${MERGE_GROUP_HEAD}"
-              [ "${MERGE_GROUP_HEAD:-}" != "" ] || range=""
+              # at scan time. `github.event.pull_request.base.sha` is empty
+              # in merge_group context, so we MUST source the base from
+              # `merge_group.base_sha` — otherwise the constructed range
+              # would be the invalid `"..<head>"`.
+              base_sha="${MERGE_GROUP_BASE:-${PR_BASE:-}}"
+              range="${base_sha}..${MERGE_GROUP_HEAD}"
+              [ -n "${base_sha}" ] && [ -n "${MERGE_GROUP_HEAD:-}" ] || range=""
               ;;
             push)
               if [ -z "${PUSH_BEFORE:-}" ] || [ "$PUSH_BEFORE" = "0000000000000000000000000000000000000000" ]; then

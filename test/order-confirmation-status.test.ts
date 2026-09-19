@@ -96,6 +96,20 @@ vi.mock("@alpacahq/alpaca-trade-api", () => {
       async getOrders() {
         return [];
       }
+      async getAsset(symbol: string) {
+        // PR #3380 turned getEquityTradability into a real Alpaca asset lookup; without this
+        // stub every order gets blocked as not-tradable.  Reflect Alpaca's "default" tradable
+        // shape so the test exercises the same code path it did before the refactor.
+        return {
+          symbol,
+          tradable: true,
+          fractionable: true,
+          shortable: true,
+          easy_to_borrow: true,
+          marginable: true,
+          status: "active"
+        };
+      }
       async getLatestQuotes(symbols: string[]) {
         if (symbols.includes("BRK.B")) return { "BRK.B": { bp: 409, ap: 410, t: new Date().toISOString() } };
         return Object.fromEntries(

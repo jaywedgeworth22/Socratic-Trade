@@ -16,7 +16,11 @@ import { isHardGateReason } from "../src/lib/policy";
 
 // Real reason strings (or exact substrings) emitted by src/lib/policy.ts.
 const HARD_REASONS: Array<[string, string]> = [
-  ["account boundary", "No Robinhood account is selected."],
+  // 2026-09-18 (#3380 venue-normalization takeover): production switched from the
+  // broker-specific "No Robinhood account is selected." to the broker-agnostic
+  // "No broker account is selected." (the venue-normalization refactor made the policy
+  // message match the consolidated cross-broker story). Updated here to match.
+  ["account boundary", "No broker account is selected."],
   ["symbol not tradable", "AAPL is not tradable right now."],
   ["insufficient buying power", "Order of $7000.00 exceeds available buying power $6000.00."],
   ["sell exceeds holdings", "Sell quantity exceeds current AAPL holdings."],

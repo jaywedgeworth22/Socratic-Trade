@@ -212,8 +212,8 @@ export function resolveAlpacaTimeInForce(input: {
   const isExtendedHours = input.extendedHours === true;
   const requiresDay = input.isBracket || isFractionalQty || isNotional || isExtendedHours;
   const timeInForce: "day" | "gtc" = requiresDay || input.requestedTimeInForce === "gfd" ? "day" : "gtc";
-  const normalized = input.requestedTimeInForce === "gtc" && requiresDay;
-  const reason = normalized ? (isExtendedHours ? "extended_hours" : (isFractionalQty ? "fractional_quantity" : (isNotional ? "notional" : "bracket"))) : undefined;
+  const normalized = input.requestedTimeInForce === "gtc" && (isFractionalQty || isNotional || isExtendedHours);
+  const reason = normalized ? (isExtendedHours ? "extended_hours" : (isFractionalQty ? "fractional_quantity" : "notional")) : undefined;
   return {
     timeInForce,
     normalized,

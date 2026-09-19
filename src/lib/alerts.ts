@@ -90,7 +90,7 @@ export async function checkPriceAlerts(userId: string): Promise<PriceAlert[]> {
 
     try {
       const fakeTriggeredAlert = { ...alert, status: "triggered" as const, triggeredPrice: currentPrice, triggeredAt: new Date().toISOString() };
-      await sendNotification(
+      const event = await sendNotification(
         {
           type: "price_alert",
           title: `Price alert: ${alert.symbol}`,
@@ -105,6 +105,10 @@ export async function checkPriceAlerts(userId: string): Promise<PriceAlert[]> {
           directBody: `${alert.symbol} ${alert.op} $${alert.price} — now $${currentPrice}.`
         }
       );
+      if (event.status === "failed") {
+        console.error(`[alerts] notification failed for alert ${alert.id}, skipping trigger:`, event.error);
+        continue;
+      }
     } catch (err) {
       console.error(`[alerts] notification failed for alert ${alert.id}, skipping trigger:`, err);
       continue;

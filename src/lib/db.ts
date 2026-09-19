@@ -7,6 +7,7 @@ import "server-only";
 import Database from "better-sqlite3";
 import { mkdirSync } from "fs";
 import { dirname, resolve } from "path";
+import { resetDrizzleForTesting } from "./db/client";
 import crypto from "crypto";
 import { DEFAULT_POLICY, DEFAULT_SCORING_WEIGHTS, DEFAULT_STRATEGY_PROMPT } from "./defaults";
 import { SQLITE_BUSY_PIN_MS } from "./sqlite-event-loop";
@@ -120,6 +121,12 @@ export function resetDbForTesting(): void {
     } catch {}
     db = undefined;
   }
+  // Drop the cached Drizzle wrapper too — it captures the underlying Database handle
+  // at construction time, so resetting only the raw sqlite connection would leave a
+  // dangling wrapper that throws "The database connection is not open" on the next
+  // query. Test-only helper, no production effect (resetDrizzleForTesting is a no-op
+  // outside the test runtime in practice — getDrizzle is module-private to tests).
+  resetDrizzleForTesting();
 }
 
 // ── Versioned migrations ─────────────────────────────────────────────────────

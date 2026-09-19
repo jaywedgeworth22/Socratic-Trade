@@ -1,7 +1,17 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { beforeAll, describe, it, expect, beforeEach } from "vitest";
 import { resetDbForTesting, setPolicy, getPolicy } from "../src/lib/db";
 import { DEFAULT_POLICY } from "../src/lib/defaults";
 import { POST } from "../app/api/strategy/pause/route";
+
+beforeAll(() => {
+  // Per-run temp DB (canonical repo pattern): keeps this test off the production
+  // ./data/app.db and matches every other test that exercises setPolicy.
+  process.env.DATABASE_URL = `file:${join(tmpdir(), `agentic-route-strategy-pause-${randomUUID()}.db`)}`;
+  resetDbForTesting();
+});
 
 describe("POST /api/strategy/pause", () => {
   beforeEach(() => {

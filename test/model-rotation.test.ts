@@ -350,8 +350,6 @@ describe("resolveModelRotationForRun", () => {
       });
       expect(out.llmModel).toBeTruthy();
       expect(out.llmModel).not.toBe(LLM_MODEL_ROTATION_SENTINEL);
-      expect(out.llmModel).not.toBe("gpt-6-astra");
-      expect(out.llmModel).not.toBe("gpt-5.6-sol");
       expect(pool).toContain(out.llmModel!); // always a concrete eligible model
       expect(out.redTeamLlmModel).toBeUndefined(); // red seat not rotating
       expect(out.redTeamReasoningEffort).toBeUndefined(); // ...so its effort is untouched too

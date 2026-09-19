@@ -331,6 +331,7 @@ final class PushDeepLinkContractTests: XCTestCase {
         Row("kill_switch", "https://socratictrade.com/console/activity?tab=alerts", .activity),
         Row("block", "https://socratictrade.com/console/activity?tab=notifications", .activity),
         Row("provider_degraded", "https://socratictrade.com/console/activity?tab=notifications", .activity),
+        Row("liveness_warning", "https://socratictrade.com/console/activity?tab=notifications", .activity),
         Row("budget_alert", "https://socratictrade.com/console/activity?tab=notifications", .activity),
         Row("learning_review", "https://socratictrade.com/console/activity?tab=notifications", .activity),
         Row("deterministic_bear_veto", "https://socratictrade.com/console/activity?tab=notifications", .activity),

@@ -569,6 +569,7 @@ export function isLitestreamReplicaCloudflareR2(
 
 /** True while litestream replication is disabled by the kill-switch marker. */
 export function isR2ReplicationDisabled(cfg: R2UsageMonitorConfig = loadR2UsageMonitorConfig()): boolean {
+  if (!isLitestreamReplicaCloudflareR2()) return false;
   try {
     return existsSync(cfg.disableMarkerPath);
   } catch {

@@ -452,61 +452,116 @@ export function getCongressSignals(symbols: string[], now: number = Date.now()):
  *   GET /search/ -> CSRF + cookies; POST /search/home/ (accept terms, token rotates);
  *   POST /search/report/data/ -> filings; GET each e-filed PTR -> parse table.
  */
+
+async function getSenateSessionFromKV(): Promise<Record<string, string> | null> {
+  const account = process.env.CLOUDFLARE_ST_ACCOUNT_ID;
+  const token = process.env.CLOUDFLARE_ST_API_TOKEN;
+  const namespace = process.env.CLOUDFLARE_SENATE_KV_NAMESPACE;
+  if (!account || !token || !namespace) return null;
+
+  try {
+    const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/storage/kv/namespaces/${namespace}/values/senate_efd_session`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) return null;
+    return await res.json() as Record<string, string>;
+  } catch {
+    return null;
+  }
+}
+
+async function putSenateSessionToKV(jar: Record<string, string>): Promise<void> {
+  const account = process.env.CLOUDFLARE_ST_ACCOUNT_ID;
+  const token = process.env.CLOUDFLARE_ST_API_TOKEN;
+  const namespace = process.env.CLOUDFLARE_SENATE_KV_NAMESPACE;
+  if (!account || !token || !namespace) return;
+
+  try {
+    await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/storage/kv/namespaces/${namespace}/values/senate_efd_session`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(jar)
+    });
+  } catch {
+    // ignore
+  }
+}
+
 export async function scrapeSenateEfd(now: number = Date.now()): Promise<CongressTrade[]> {
-  const jar: Record<string, string> = {};
-  const landing = await politeFetch(`${EFD_BASE}/search/`, { headers: { "user-agent": BROWSER_UA } });
-  mergeSetCookies(jar, landing);
-  const landingHtml = await landing.text();
-  const formCsrf = landingHtml.match(/name=["']csrfmiddlewaretoken["']\s+value=["']([^"']+)["']/)?.[1] ?? jar.csrftoken;
-  if (!formCsrf) throw new Error("Senate eFD: no CSRF token");
-
-  const acceptBody = new URLSearchParams({ prohibition_agreement: "1", csrfmiddlewaretoken: formCsrf });
-  const accept = await politeFetch(`${EFD_BASE}/search/home/`, {
-    method: "POST",
-    redirect: "manual",
-    headers: {
-      "user-agent": BROWSER_UA,
-      "content-type": "application/x-www-form-urlencoded",
-      referer: `${EFD_BASE}/search/`,
-      cookie: cookieHeader(jar),
-      "x-csrftoken": formCsrf
-    },
-    body: acceptBody
-  });
-  mergeSetCookies(jar, accept);
-  const apiToken = jar.csrftoken ?? formCsrf; // token rotates after accepting terms
-
+  let jar = await getSenateSessionFromKV();
+  let apiToken = jar?.csrftoken ?? "";
+  
   const lookbackDays = Number(process.env.WEB_SOURCE_CONGRESS_LOOKBACK_DAYS ?? DEFAULT_LOOKBACK_DAYS);
   const from = new Date(now - lookbackDays * 24 * 60 * 60_000);
   const fmt = (d: Date) => `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
-  const searchBody = new URLSearchParams();
-  searchBody.append("draw", "1");
-  searchBody.append("start", "0");
-  searchBody.append("length", "100");
-  searchBody.append("report_types", "[11]"); // Periodic Transaction Reports
-  searchBody.append("filer_types", "[]");
-  searchBody.append("submitted_start_date", `${fmt(from)} 00:00:00`);
-  searchBody.append("submitted_end_date", "");
-  searchBody.append("candidate_state", "");
-  searchBody.append("senator_state", "");
-  searchBody.append("office_id", "");
-  searchBody.append("first_name", "");
-  searchBody.append("last_name", "");
-  searchBody.append("csrfmiddlewaretoken", apiToken);
+  
+  async function performSearch() {
+    const searchBody = new URLSearchParams();
+    searchBody.append("draw", "1");
+    searchBody.append("start", "0");
+    searchBody.append("length", "100");
+    searchBody.append("report_types", "[11]"); // Periodic Transaction Reports
+    searchBody.append("filer_types", "[]");
+    searchBody.append("submitted_start_date", `${fmt(from)} 00:00:00`);
+    searchBody.append("submitted_end_date", "");
+    searchBody.append("candidate_state", "");
+    searchBody.append("senator_state", "");
+    searchBody.append("office_id", "");
+    searchBody.append("first_name", "");
+    searchBody.append("last_name", "");
+    searchBody.append("csrfmiddlewaretoken", apiToken);
 
-  const searchJson = await politeFetch(`${EFD_BASE}/search/report/data/`, {
-    method: "POST",
-    headers: {
-      "user-agent": BROWSER_UA,
-      "content-type": "application/x-www-form-urlencoded",
-      referer: `${EFD_BASE}/search/`,
-      cookie: cookieHeader(jar),
-      "x-csrftoken": apiToken,
-      "x-requested-with": "XMLHttpRequest"
-    },
-    body: searchBody
-  });
-  if (!searchJson.ok) throw new Error(`Senate eFD search HTTP ${searchJson.status}`);
+    return await politeFetch(`${EFD_BASE}/search/report/data/`, {
+      method: "POST",
+      headers: {
+        "user-agent": BROWSER_UA,
+        "content-type": "application/x-www-form-urlencoded",
+        referer: `${EFD_BASE}/search/`,
+        cookie: cookieHeader(jar!),
+        "x-csrftoken": apiToken,
+        "x-requested-with": "XMLHttpRequest"
+      },
+      body: searchBody
+    });
+  }
+
+  let searchJson: Response | null = null;
+  if (jar && apiToken) {
+    searchJson = await performSearch();
+    if (!searchJson.ok) {
+      searchJson = null; // force re-handshake
+    }
+  }
+
+  if (!searchJson) {
+    jar = {};
+    const landing = await politeFetch(`${EFD_BASE}/search/`, { headers: { "user-agent": BROWSER_UA } });
+    mergeSetCookies(jar, landing);
+    const landingHtml = await landing.text();
+    const formCsrf = landingHtml.match(/name=["']csrfmiddlewaretoken["']\s+value=["']([^"']+)["']/)?.[1] ?? jar.csrftoken;
+    if (!formCsrf) throw new Error("Senate eFD: no CSRF token");
+
+    const acceptBody = new URLSearchParams({ prohibition_agreement: "1", csrfmiddlewaretoken: formCsrf });
+    const accept = await politeFetch(`${EFD_BASE}/search/home/`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        "user-agent": BROWSER_UA,
+        "content-type": "application/x-www-form-urlencoded",
+        referer: `${EFD_BASE}/search/`,
+        cookie: cookieHeader(jar),
+        "x-csrftoken": formCsrf
+      },
+      body: acceptBody
+    });
+    mergeSetCookies(jar, accept);
+    apiToken = jar.csrftoken ?? formCsrf;
+    
+    await putSenateSessionToKV(jar);
+    
+    searchJson = await performSearch();
+    if (!searchJson.ok) throw new Error(`Senate eFD search HTTP ${searchJson.status}`);
+  }
   const filings = parseEfdReportRows(await searchJson.json())
     .filter((f) => f.isPtr)
     .slice(0, Number(process.env.WEB_SOURCE_CONGRESS_MAX_FILINGS ?? DEFAULT_MAX_FILINGS));

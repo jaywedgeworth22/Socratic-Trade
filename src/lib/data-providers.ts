@@ -1,3 +1,4 @@
+import { resolveTickerAlias } from "@jaywedgeworth22/congress-trading-shared";
 // Market enrichment: fundamentals (P/E) + analyst-consensus sentiment layered on top of
 // the NASDAQ screener scan.
 //
@@ -2347,7 +2348,7 @@ export class AlpacaNewsEnrichmentProvider implements MarketEnrichmentProvider {
     const aliasesByCanonical = new Map<string, Set<string>>();
     for (const rawSymbol of symbols) {
       const requested = normalizeSymbol(rawSymbol);
-      const canonical = fromAlpacaSymbol(toAlpacaSymbol(requested));
+      const canonical = resolveTickerAlias(fromAlpacaSymbol(toAlpacaSymbol(requested)));
       if (!canonical) continue;
       const aliases = aliasesByCanonical.get(canonical) ?? new Set<string>();
       aliases.add(canonical);

@@ -1,3 +1,4 @@
+import { resolveTickerAlias } from "@jaywedgeworth22/congress-trading-shared";
 import Alpaca from "@alpacahq/alpaca-trade-api";
 import crypto from "crypto";
 import type {
@@ -798,7 +799,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
     const aliasesByCanonical = new Map<string, Set<string>>();
     for (const rawSymbol of symbols) {
       const requested = normalizeSymbol(rawSymbol);
-      const canonical = fromAlpacaSymbol(toAlpacaSymbol(requested));
+      const canonical = resolveTickerAlias(fromAlpacaSymbol(toAlpacaSymbol(requested)));
       if (!canonical) continue;
       const aliases = aliasesByCanonical.get(canonical) ?? new Set<string>();
       aliases.add(canonical);
@@ -1147,12 +1148,12 @@ class AlpacaBrokerGateway implements BrokerGateway {
   // cancelled/filled. This always goes through native REST (this.alpaca), never the MCP tool
   // surface — this repo's alpaca-mcp integration has no documented equivalent for a nested-legs
   // fetch, and `this.alpaca` is constructed with the same REST-capable keys regardless of isMcp
-  // whenever an underlying API key is configured (see the constructor) — so this degrades to a
-  // best-effort no-op only on an MCP-ONLY account with no REST-capable key at all.
+  // whenever an underlying API key is configured (see the constructor).  An MCP-only account
+  // with no REST key cannot inspect or cancel siblings — throw so teardown stays pending.
   async cancelBracketSiblingLegs(accountNumber: string, originalOrderId: string): Promise<{ cancelledOrderIds: string[] }> {
     if (this.isMcp && !this.hasRestKeys) {
       audit("alpaca_mcp_bracket_cancel_unsupported", { message: "Bracket sibling legs cannot be cancelled on MCP accounts without REST credentials", originalOrderId, accountNumber });
-      return { cancelledOrderIds: [] };
+      throw new Error("Alpaca MCP-only account cannot cancel bracket sibling legs without REST keys");
     }
     let raw: any;
     try {

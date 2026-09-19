@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { listAuditByKind, listConnectedAccounts, listFillEvents } from "@/lib/db";
 import { getLlmUsageSummary } from "@/lib/llm-usage";
 import { aggregateModelStats, normalizeBenchmarkSummaries, type ClosedLotLike } from "@/lib/model-stats";
-import { calculatePnl, getRedTeamEfficacy } from "@/lib/performance";
+import { calculatePnl, getRedTeamEfficacy, RED_TEAM_EFFICACY_DEFAULT_AUDIT_LIMIT } from "@/lib/performance";
 import { resolveRequestUserId } from "@/lib/request-user";
 // Static benchmark reference (2026-07-08 model benchmark run): bundled at build time so the
 // endpoint has cost/latency numbers for every catalog model even with zero live traffic.
@@ -61,7 +61,10 @@ export async function GET(request: Request) {
 
   // Reviewer veto value-add, user-wide (omit connectedAccountId) so it aggregates across all
   // the user's accounts — matching how the Proposer's realized P&L above spans every account.
-  const reviewerPerfByModel = getRedTeamEfficacy(userId, { auditLimit: 500 }).byModel;
+  // auditLimit matches getRedTeamEfficacy's own default (RED_TEAM_EFFICACY_DEFAULT_AUDIT_LIMIT)
+  // rather than a separate hardcoded number — see that constant's comment for why this was
+  // raised past the original 500.
+  const reviewerPerfByModel = getRedTeamEfficacy(userId, { auditLimit: RED_TEAM_EFFICACY_DEFAULT_AUDIT_LIMIT }).byModel;
 
   const stats = aggregateModelStats({
     usageRows,

@@ -1,6 +1,11 @@
 import { isBracketOrderClass } from "./broker-side";
 import { getDb } from "./db";
-import { getInternalSetting, setInternalSetting } from "./db-settings";
+import {
+  deleteInternalSetting,
+  getInternalSetting,
+  listInternalSettingKeysByPrefix,
+  setInternalSetting
+} from "./db-settings";
 import { normalizeSymbol } from "./money";
 import type { EquityOrder } from "./types";
 
@@ -114,4 +119,23 @@ export function recordOwnerCancelledProtectiveStop(userId: string, accountNumber
 
 export function hasOwnerCancelledProtectiveStop(userId: string, accountNumber: string, symbol: string): boolean {
   return Boolean(getInternalSetting(ownerCancelledProtectiveStopKey(userId, accountNumber, symbol)));
+}
+
+/**
+ * Retire the tombstone.  The tombstone means "do not re-place the stop on the position the
+ * owner just un-protected" — it is scoped to THAT position and must not outlive it.  The only
+ * caller is the protective-stop reconciler's flat-position sweep; see
+ * `broker-protective-stops.ts` for why a flat symbol is positive evidence rather than a failed
+ * broker read.
+ */
+export function clearOwnerCancelledProtectiveStop(userId: string, accountNumber: string, symbol: string): void {
+  deleteInternalSetting(ownerCancelledProtectiveStopKey(userId, accountNumber, symbol));
+}
+
+/** Every symbol currently carrying an owner-cancel tombstone for this user + account. */
+export function listOwnerCancelledProtectiveStopSymbols(userId: string, accountNumber: string): string[] {
+  const prefix = `${OWNER_CANCELLED_PROTECTIVE_STOP_PREFIX}${userId}:${accountNumber}:`;
+  return listInternalSettingKeysByPrefix(prefix)
+    .map((key) => key.slice(prefix.length))
+    .filter((symbol) => symbol.length > 0);
 }

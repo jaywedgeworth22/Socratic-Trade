@@ -41,18 +41,12 @@ echo "==> Node: $(node --version 2>/dev/null || echo 'not found')  npm: $(npm --
 echo "==> Installing dependencies (npm ci)"
 npm ci
 
-# Give the sandbox explicit, safe defaults + a place for injected secrets.
-# Non-destructive: never clobber an existing .env.local.
-if [ ! -f .env.local ] && [ -f .env.example ]; then
-  echo "==> Seeding .env.local from .env.example (keys blank)"
-  cp .env.example .env.local
-fi
-
 # Resolve the local Infisical machine-identity bootstrap without sourcing the
 # global key file as shell code and without copying/printing credential values.
-# The runner repeats this resolution at launch, after reading .env.local itself.
-# The global path is intentionally fixed; an inherited legacy override must not
-# redirect setup to an arbitrary credential file.
+# The runner repeats this resolution at launch. The global path is intentionally
+# fixed; an inherited legacy override must not redirect setup to an arbitrary
+# credential file. Cloud VMs do not have ~/.secrets/global-api-keys — missing
+# identities are expected; do not fail setup for a keyless checkout.
 unset GLOBAL_API_KEYS_FILE
 echo "==> Checking Infisical bootstrap identity (values stay private)"
 # Cloud VMs do not have ~/.secrets/global-api-keys. Missing identities are
@@ -65,5 +59,6 @@ node scripts/infisical-bootstrap-env.mjs || echo "==> Infisical bootstrap skippe
 echo "==> Installing Slack coordination sync (global SessionStart hook)"
 bash scripts/setup-slack-sync.sh || echo "    (slack-sync install skipped; see docs/slack-coordination.md)"
 
-echo "==> Setup complete. Start the app with: npm run dev   (Next.js on :3000)"
+echo "==> Setup complete. Start the app with: npm run dev:secrets   (Infisical runner on :3000)"
+echo "    'npm run dev' (plain) is for tests-only — it no longer reads .env.local."
 echo "    Verify a change with: npx tsc --noEmit && npm test && npm run build"

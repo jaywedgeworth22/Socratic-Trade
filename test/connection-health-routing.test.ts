@@ -293,6 +293,28 @@ describe("Connection Health & Failure Routing", () => {
     expect(body.checks.dependencies.pinecone.ok).toBe(false);
   });
 
+  it("/api/health stays 200 when Pinecone is hard-stopped but Qdrant is the read backend", async () => {
+    process.env.QDRANT_URL = "http://127.0.0.1:6333";
+    process.env.QDRANT_API_KEY = "test-qdrant-key";
+    try {
+      const { healthRoute, db } = await load();
+      db.setInternalSetting("scheduler:lastTick", new Date().toISOString());
+      for (let i = 0; i < 5; i++) {
+        db.logApiHealth({ service: "pinecone", ok: false, errorText: "fetch failed", keySource: "env" });
+      }
+      const response = await healthRoute.GET(anonymousHealthRequest());
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.ok).toBe(true);
+      expect(body.checks.qdrantConfigured).toBe(true);
+      expect(body.checks.ragVectorReadBackend).toBe("qdrant");
+      expect(body.checks.ragVectorWriteBackend).toBe("qdrant");
+    } finally {
+      delete process.env.QDRANT_URL;
+      delete process.env.QDRANT_API_KEY;
+    }
+  });
+
   it("/api/health stays 200 when env lane hard-stops but a user-keyed lane for the same critical service is healthy", async () => {
     // Prod failure mode 2026-08-05: Infisical env Alpaca keys 401 (env lane hard-stopped) while
     // Connections user keys succeed — Coolify healthcheck required HTTP 200 and rolled every deploy.

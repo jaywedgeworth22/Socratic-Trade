@@ -116,7 +116,7 @@ describe("operator diagnostic UI wiring", () => {
     ["app/console/lessons/page.tsx", "LearningLedgerPanel"],
     ["app/console/activity/page.tsx", "AuditFeed"],
     ["app/console/activity/audit-feed.tsx", "AuditLogPanel"],
-    ["app/admin/layout.tsx", "/admin/backtest-ic"]
+    ["app/admin/admin-shell.tsx", "/admin/backtest-ic"]
   ] as const;
 
   for (const [path, marker] of files) {

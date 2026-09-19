@@ -44,7 +44,12 @@ export async function register() {
   // no-op in dev/tests). Installed before anything below can exit or receive a stop
   // signal. See src/lib/exit-guard.ts and docs/rollouts/2026-08-02-exit0-outage-audit.md.
   const { installProcessExitGuard } = await import("./src/lib/exit-guard");
-  installProcessExitGuard();
+  const { recordBoot, noteExitReceipt, reportRestartLoop } = await import("./src/lib/boot-ledger");
+  installProcessExitGuard(process, { receipt: noteExitReceipt });
+  // Durable boot/exit ledger on the persistent data volume + restart-loop detection (board a9676caf).
+  // Container logs (and the exit-guard receipts above) die with the container when Coolify replaces it
+  // on restart; this keeps one JSON line per boot/exit beside the DB.  Synchronous, never throws.
+  const restartAssessment = recordBoot();
 
   // Fail fast if this deployment requires a secrets manager but wasn't launched through one
   // (REQUIRE_SECRETS_MANAGER set, but not started via start:secrets). Default off →
@@ -75,6 +80,10 @@ export async function register() {
       // Native profiler is optional.  Missing binary must not take down Sentry.init.
     }
   }
+
+  // Loud, fire-and-forget: a restart loop is exactly when boot itself may be unhealthy, so this must not
+  // block or fail startup.  Runs after Sentry init so the fatal message is actually captured.
+  void reportRestartLoop(restartAssessment).catch(() => {});
 
   const { datadogApmEnabled, datadogLogsEnabled } = await import("./src/lib/datadog-env");
   if (datadogApmEnabled() || datadogLogsEnabled()) {

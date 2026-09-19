@@ -912,8 +912,14 @@ class AlpacaBrokerGateway implements BrokerGateway {
     // Single TIF resolution per order — used by all three submission paths below (native
     // trailing, REST, MCP) so they can't disagree, and audited once when we override the
     // caller's intent (Codex review, item 10).
+    //
+    // Use the ORIGINAL rawInput.timeInForce (the caller's expressed intent) — normalizeVenueOrder
+    // already coerced fractional/notional gtc -> day, so by the time we reach this line the
+    // request looks like a 'day' request and we couldn't tell what the caller actually asked
+    // for. The audit payload's requestedTimeInForce field must reflect the original 'gtc'/'gfd'
+    // so the override is observable downstream.
     const tifResolution = resolveAlpacaTimeInForce({
-      requestedTimeInForce: input.timeInForce,
+      requestedTimeInForce: rawInput.timeInForce,
       isBracket,
       quantity: input.quantity,
       notional: input.dollarAmount
@@ -921,7 +927,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
     if (tifResolution.normalized) {
       audit("alpaca_tif_normalized_to_day", {
         symbol: input.symbol,
-        requestedTimeInForce: input.timeInForce,
+        requestedTimeInForce: rawInput.timeInForce,
         reason: tifResolution.reason,
         ...(input.quantity != null ? { quantity: input.quantity } : {}),
         ...(input.dollarAmount != null ? { dollarAmount: input.dollarAmount } : {})

@@ -8367,12 +8367,16 @@ export async function retrieveContextDetailed(
   } catch (err) {
     console.error("[vector-db] Error retrieving context:", err);
     if (!wasRagSentryCaptured(err)) {
+      // Same leftover as the storeContexts catch (fixed 2026-09-07): a hardcoded
+      // `provider: "pinecone"` folded post-cutover Qdrant retrieve failures into
+      // SOCRATIC-TRADE-1T / PD #116 even when denseTierQuery never touched Pinecone.
       await captureRagSentryMessage("error", "RAG retrieval failed", {
-        provider: "pinecone",
+        provider: readBackend,
         operation: "retrieveContext",
         source: userId === "local" ? "operator" : "user",
         symbol,
-        reason: err instanceof Error ? err.message : String(err)
+        reason: err instanceof Error ? err.message : String(err),
+        ...(isTransientNetworkError(err) ? { isTransient: true } : {})
       });
     }
     reportRetrievalStatus(options, "lookup_failed", { userId, symbol });

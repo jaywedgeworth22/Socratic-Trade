@@ -101,6 +101,10 @@ private struct ReadinessChecklistHero: View {
                 }
 
                 if needsAccount {
+                    Text("Broker connections must be configured on the website.")
+                        .font(.appBody)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     ConsoleHandoffButton(
                         title: DeskCopy.openConnectionsButton,
                         systemImage: "link",

@@ -44,6 +44,17 @@ Rollout: `docs/rollouts/2026-09-18-datadog-free-remaining.md`.
 Hosted tsc failed on `@/app/ui/theme` (alias is `src/*`).  Relative import from console chrome/ticker-logo.  Default stays light.  Extra-ship no.  No Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-18-ag-takeover-theme-ci.md`.
 
+## 2026-09-18 CLAUDE — Restart loops now leave a durable trail and raise an alert (board a9676caf)
+
+Coolify replaces the container on every restart, so a previous container's logs and exit-guard
+receipts vanished and nothing alerted on the loop itself.  New `src/lib/boot-ledger.ts` appends one
+JSON line per boot/exit to `boot-ledger.jsonl` beside the DB on the persistent volume (exit code,
+signal, `process.exit` call site via a new `exit-guard` receipt hook; a boot with no predecessor
+exit line reads as "killed").  3 boots in 45 minutes raises a Sentry `fatal` message plus one admin
+alert per 12h.  Repo code only: the Coolify-side restart-count monitor is still a host task.
+Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-restart-loop-boot-ledger.md`.
+
 ## 2026-09-18 CURSOR — Effort Issues Sync Crons margin (FLEET-INFRA-C0)
 
 Sentry `ci-effort-issues-sync` false-pages every day at 06:27Z.  The board-mirror job itself succeeds on `ubuntu-latest` in ~12-30s; GitHub just starts the `12 6 * * *` schedule 5-6.5h late (typical 11:12-11:44Z, worst retained 2026-09-14 12:37Z).  Same class as #3194 / FLEET-INFRA-C1, #3387 / FLEET-INFRA-C3, and #3389 / FLEET-INFRA-BY.  Raise `CHECKIN_MARGIN_OVERRIDES["Effort Issues Sync"]` to 600.  Cron and sync script unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` the sync.  #3302 already moved the live slug to `ci-socratic-trade-effort-issues-sync`; do not close C0 on merge.
@@ -72,6 +83,14 @@ Rollout: `docs/rollouts/2026-09-17-post-claim-sqlite-busy-fire.md`.
 
 Hosted `verify` on #3383 timed out (`test/synthetic-stops.test.ts` and sibling reprice files at 60s/30s).  Cause: `runSyntheticStopMonitor` now `await yieldEventLoop()` (`setImmediate`), and those tests used full `vi.useFakeTimers()` which never flushes it.  Tests now fake `Date` only; `isSqliteBusy` does not retry a stamped non-BUSY sqlite code.  Pin+yield production behavior unchanged.  Extra-ship no.  No Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-17-sqlite-busy-event-loop-pin.md`.
+
+## 2026-09-18 FIXER — RAG retrieval no longer pages as Pinecone (PD #116 leftover)
+
+`retrieveContextDetailed` catch hardcoded `provider: "pinecone"` after Qdrant cutover, so
+Qdrant `fetch failed` kept fingerprinting as SOCRATIC-TRADE-1T.  Catch uses `readBackend`;
+Qdrant search retries transients; `/api/health` reports the active vector backend and does
+not 503 on leftover Pinecone while Qdrant is serving.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-rag-retrieval-qdrant-mislabel.md`.
 
 ## 2026-09-17 GROK — SQLITE_BUSY event-loop pin+yield (board e7b49943)
 
@@ -110,6 +129,27 @@ Merged PR #3230 to address Issue #3220:
 4. Audited Alpaca MCP bracket sibling cancellations when REST credentials are not provided.
 5. Triggered teardown of sibling bracket legs upon manual cancellation.
 Rollout: \`docs/rollouts/2026-09-12-issue-3220-tradier-broker-fixes.md\`.
+## 2026-09-18 CURSOR — Strict Infisical, no `.env.local` files (IN PR — verification deferred to CI `verify` ruleset)
+
+Owner directive 2026-09-18: Infisical is the sole source of truth for every secret.  This PR
+deletes the dev-only `.env.local` loader path in `src/lib/db-api-keys.ts:32-60` (keeping the
+`~/.secrets/global-api-keys` handoff paths, since that's the documented owner-side identity
+store, not an `.env` file); stops seeding `.env.local` from `.env.example` in
+`scripts/cloud-setup.sh:47-50`; shrinks `.env.example` to bootstrap-only (Infisical client
+identity + `ENCRYPTION_KEY` + `REQUIRE_SECRETS_MANAGER` arming comment); exports
+`REQUIRE_SECRETS_MANAGER=1` in `scripts/coolify-prod-start.sh` phase-2 re-exec so prod
+visibly arms the fail-closed boot guard (`src/lib/secrets-source.ts` + `instrumentation.ts:51`);
+makes `npm run dev:secrets` the canonical local start path with a one-time `predev` notice
+on plain `npm run dev`; updates AGENTS.md + docs/secrets.md + adds
+`test/no-env-loader-or-dotenv-yaml.test.ts` as a regression guard.  Branch
+`cursor/strict-infisical-no-env-files` from `origin/main`.  11 file changes (+new).  Local
+`npm install` wedged against peer-agent concurrent installs (multiple lanes competing for
+the npm registry on this machine; documented in rollout note); `node --check` passes on the
+new `predev-check.mjs`.  **Verification gate is the ruleset `verify` workflow on GitHub
+hosted runners** — that path runs `tsc --noEmit` + `vitest` + `next build` without peer
+contention.  Local first-party install deferred.  No merge from this lane.
+Rollout: `docs/rollouts/2026-09-18-strict-infisical-no-env-files.md`.
+
 ## 2026-09-15 GROK — PR #3296 401 JSON still redirects
 
 Sentry thread on `use-live-scan.ts`: `readErrorMessage` parsed JSON before the 401 check, so a JSON 401 body would skip `redirectToLogin()`.  Status is checked first now.  Merge is live — no Coolify Deploy.
@@ -135,6 +175,11 @@ Rollout: `docs/rollouts/2026-09-13-issue-3223-qdrant-fuses-fts-optimization.md`.
 
 Executed an exhaustive, multi-subagent audit across the entire codebase covering Trading Execution & Persistence, Security & API Routes, AI Strategy & Vector Retrieval, and Web Console & iOS Client.  Identified 3 Critical trading bugs (Tradier bracket entry dropping in `equityRowsFromTradierOrder`, missing `ordersListIncludesTerminal` on Tradier, and HTTP 200 rejection envelope misclassification), 2 Critical console bugs (duplicate strategy runs from mounted desktop/mobile `RunOnceButton` listeners and an un-backed-off deadline retry spin loop), 2 Critical AI engine bugs (`withDatadogLlmObs` duplicate execution on failure, and Red Team unhandled JSON parse failure aborting fallback models), plus over 15 High/Medium vulnerabilities, storage bloat drivers, and event-loop stall sources.  Logged and triaged all findings into 8 dedicated GitHub issues (#3220–#3227) with detailed reproduction mechanics and remediation steps.  Effort logs updated on both branch-neutral live board (`/Users/jay/apps/TRADING-EFFORT-LOG.md`) and repo mirror (`docs/EFFORT-LOG.md`).
 Rollout: `docs/rollouts/2026-09-12-codebase-full-audit.md`.
+
+## 2026-09-18 CURSOR — CI Crons margin (FLEET-INFRA-DB)
+
+Sentry `ci-socratic-trade-ci` false-paged at 08:02Z (first miss on the #3302 slug).  Scheduled `ci.yml` itself succeeds; GitHub starts the nightly `47 7 * * *` canary 5-6.5h late (typical ~12:46-14:24Z, worst retained 2026-09-14 14:24Z) and today's 07:47Z tick had no `schedule` run because main-push CI held `ci-CI-refs/heads/main`.  Same class as #3194 / FLEET-INFRA-C1, #3387 / C3, #3389 / BY, and #3390 / C0.  Raise `CHECKIN_MARGIN_OVERRIDES["CI"]` to 600.  Cron and verify suite unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` CI.  Do not close DB on merge.
+Rollout: `docs/rollouts/2026-09-18-ci-monitor-margin.md`.
 
 ## 2026-09-10 GROK — PR #3208 fixer tip (tini PID1 / HEALTHCHECK curl self-timeout)
 
@@ -236,6 +281,11 @@ events during the measured stall burst; 09-07 had *more* lock events than 09-08 
 less pinning; and a busy-wait sleeps rather than burning the 107% CPU observed).  No timeout
 widened — that shipped separately in PR #3201.  Rollout:
 `docs/rollouts/2026-09-09-fts-mirror-nonconvergence.md`.
+## 2026-09-18 GROK — AG entry-path remainder (board 6aa1e66e)
+
+MM takeover of `ag/620ef423` was empty.  Land iOS first-run copy + Auth.js error=/login, with the login page now explaining `?error=` codes.  The header-based already-signed-in redirect was dropped (dead code on a public path; Sentry finding on #3396).  Do not rename callbackUrl to next.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-ag-entry-paths.md`.
+
 ## 2026-09-09 GROK — PR #3204 fixer tip (multipart retry, drill cleanup, fail-closed counts)
 
 Codex P1+P2 on `claude/backup-methodology`.  CompleteMultipartUpload 200+`<Error>` bodies now

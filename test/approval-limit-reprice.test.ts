@@ -284,9 +284,14 @@ describe("executeProposal — approval-time ordinary-limit re-anchor", () => {
         executionMode: "broker/live" as const,
         typedText: liveApprovalText("AAPL")
       };
-      const first = await executeProposal(proposalId, userId, { liveConfirmation: confirmation });
-      expect(first.status).toBe("proposed");
-      expect(first.reasons?.[0]).toContain("approve the repriced order again");
+      // #3343: executeProposal now THROWS for the approval-time re-anchor re-queue (no order was
+      // placed). The reason text is on error.message; the proposal status was already persisted
+      // to 'proposed' before the throw.
+      const firstError: Error = await executeProposal(proposalId, userId, { liveConfirmation: confirmation }).then(
+        (v) => { throw new Error(`expected throw, got ${JSON.stringify(v)}`); },
+        (e) => e
+      );
+      expect(firstError.message).toContain("approve the repriced order again");
       expect(broker.placed).toHaveLength(0);
       const requeued = getProposal(proposalId, userId);
       expect(requeued?.status).toBe("proposed");
@@ -347,9 +352,13 @@ describe("executeProposal — approval-time ordinary-limit re-anchor", () => {
       // Once the reprice moves the limit, the drift guard's limit-order exemption no longer
       // holds, so even a PAPER opening goes back to the human.
       const proposalId = seedPending(userId, { ...STORED_BUY_LIMIT, limitPrice: 178, referencePrice: 180 });
-      const result = await executeProposal(proposalId, userId);
-      expect(result.status).toBe("proposed");
-      expect(result.reasons?.[0]).toContain("entry-drift cap");
+      // #3343: executeProposal throws for the drift-cap re-queue. Capture the error to verify the
+      // message text, then check the persisted proposal state directly.
+      const requeueError: Error = await executeProposal(proposalId, userId).then(
+        (v) => { throw new Error(`expected throw, got ${JSON.stringify(v)}`); },
+        (e) => e
+      );
+      expect(requeueError.message).toContain("entry-drift cap");
       expect(broker.placed).toHaveLength(0);
       const requeued = getProposal(proposalId, userId);
       expect(requeued?.status).toBe("proposed");

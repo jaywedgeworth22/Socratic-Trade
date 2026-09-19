@@ -44,24 +44,31 @@ describe("live catalog wins over the (removed) permanent dead-slug list", () => 
   // Verification item (a): a live catalog listing both slugs keeps BOTH in the rotation pool.
   // This is the core regression -- it FAILS on the pre-fix code, which drops both unconditionally.
   it("keeps BOTH claude-fable-latest and kimi-latest when the live /models/user catalog lists them", () => {
+    // 2026-09-18: gpt-5.4-mini was removed from the curated catalog. Use a different openai row
+    // (gpt-6-astra) to exercise the same live-catalog-includes-it path; the structural assertion
+    // — claude-fable-latest + kimi-latest are kept when the live catalog lists them — is the
+    // property that matters, not which OpenAI slug is present.
     const liveCatalog = new Set([
       "anthropic/claude-fable-latest",
       "~moonshotai/kimi-latest",
-      "openai/gpt-5.4-mini",
+      "openai/gpt-6-astra",
       "google/gemini-3.7-flash"
     ]);
     const result = applyRotationUserModelAllowlist(MODEL_ROTATION_POOL, liveCatalog);
     expect(result.emptiedByAllowlist).toBe(false);
     expect(result.pool).toContain("claude-fable-latest");
     expect(result.pool).toContain("kimi-latest");
+    expect(result.pool).toContain("gpt-6-astra");
     expect(result.skipped).not.toContain("claude-fable-latest");
     expect(result.skipped).not.toContain("kimi-latest");
   });
 
   it("still excludes a model the live catalog genuinely does not list (the allowlist itself is unchanged)", () => {
-    const liveCatalog = new Set(["openai/gpt-5.4-mini"]);
+    // 2026-09-18: gpt-5.4-mini / gpt-mini-latest removed. Use openai/gpt-6-astra as the lone live
+    // hit; the allowlist-keeps-only-live-listed-model invariant is unchanged.
+    const liveCatalog = new Set(["openai/gpt-6-astra"]);
     const result = applyRotationUserModelAllowlist(MODEL_ROTATION_POOL, liveCatalog);
-    expect(result.pool).toEqual(["gpt-mini-latest"]);
+    expect(result.pool).toEqual(["gpt-6-astra"]);
     expect(result.skipped).toContain("claude-fable-latest");
     expect(result.skipped).toContain("kimi-latest");
   });
@@ -69,10 +76,12 @@ describe("live catalog wins over the (removed) permanent dead-slug list", () => 
   it("a live-catalog hit wins even while the SAME slug is simultaneously cooling down from a past 404", () => {
     recordOpenRouterModelNotFound("claude-fable-latest");
     expect(isOpenRouterModelCoolingDown("claude-fable-latest")).toBe(true);
-    const liveCatalog = new Set(["anthropic/claude-fable-latest", "openai/gpt-5.4-mini"]);
+    // 2026-09-18: use gpt-6-astra (in curated catalog) instead of the removed gpt-5.4-mini.
+    const liveCatalog = new Set(["anthropic/claude-fable-latest", "openai/gpt-6-astra"]);
     const result = applyRotationUserModelAllowlist(MODEL_ROTATION_POOL, liveCatalog);
     // The live catalog says it's servable right now -- that wins over a stale cooldown.
     expect(result.pool).toContain("claude-fable-latest");
+    expect(result.pool).toContain("gpt-6-astra");
   });
 });
 

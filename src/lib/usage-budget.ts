@@ -363,21 +363,29 @@ export async function checkBudgetAndAlert(
 // ── Phase 2: enforcement (model downgrade / cycle skip) ─────────────────────────
 
 const CHEAPER_MODEL: Record<string, string> = {
-  // OpenAI
+  // OpenAI — 2026-09-18 cleanup: gpt-5.6-terra / gpt-5.4-mini / gpt-5.4-nano / gpt-mini-latest /
+  // gpt-4o / gpt-4.1 / o1 / o1-preview were removed from the curated catalog. Downgrade chain
+  // for the four remaining OpenAI rows:
+  //   gpt-6-astra-pro -> gpt-5.6-sol -> gpt-5.6-luna (no further OpenAI downgrade)
+  // The chain stops at luna: there is no cheaper OpenAI tier left in the catalog, so any further
+  // downgrade attempt falls out to a skip/cycle-skip rather than a bogus tier. The historical
+  // entries below are kept so persisted pre-cleanup policies (which may still carry the older
+  // slug names) downgrade to a valid catalog row instead of failing closed.
   "gpt-6-astra-pro": "gpt-5.6-sol",
   "gpt-6-astra": "gpt-5.6-sol",
-  "gpt-5.6": "gpt-5.6-terra",
-  "gpt-5.6-sol": "gpt-5.6-terra",
+  "gpt-5.6": "gpt-5.6-luna",
+  "gpt-5.6-sol": "gpt-5.6-luna",
   "gpt-5.6-terra": "gpt-5.6-luna",
-  "gpt-5.6-luna": "gpt-mini-latest",
-  "gpt-5.5": "gpt-mini-latest",
-  "gpt-5.4": "gpt-mini-latest",
-  "gpt-mini-latest": "gpt-5.4-nano",
-  "gpt-5.4-mini": "gpt-5.4-nano",
-  "gpt-4o": "gpt-mini-latest",
-  "gpt-4.1": "gpt-4.1-mini",
-  "o1": "o1-mini",
-  "o1-preview": "o1-mini",
+  "gpt-5.6-luna": "gpt-5.6-luna", // already at the bottom of the curated OpenAI chain
+  "gpt-5.5": "gpt-5.6-luna",
+  "gpt-5.4": "gpt-5.6-luna",
+  "gpt-mini-latest": "gpt-5.6-luna",
+  "gpt-5.4-mini": "gpt-5.6-luna",
+  "gpt-5.4-nano": "gpt-5.6-luna",
+  "gpt-4o": "gpt-5.6-luna",
+  "gpt-4.1": "gpt-5.6-luna",
+  "o1": "gpt-5.6-luna",
+  "o1-preview": "gpt-5.6-luna",
   // Anthropic
   "claude-fable-latest": "claude-sonnet-latest",
   "claude-opus-latest": "claude-sonnet-latest",

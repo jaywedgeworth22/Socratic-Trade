@@ -20,13 +20,16 @@
  *  - Strategist (AI review / strategy-tune): no benchmark, no perf/efficacy join —
  *    just live cost/call, run count, and TOTAL cost per model over the window (the
  *    owner's explicit ask: historical spend on running AI review, per model). The
- *    table swaps Latency + performance for Runs + Total cost for this role. */
+ *    table swaps Latency + performance for Runs + Total cost for this role.
+ *  A trailing "Retired Models" group (owner 2026-09-18) lists any model id that has recorded
+ *  stats for this role but is no longer a catalog row — see deriveRetiredModelIds below — so a
+ *  catalog cleanup never silently deletes a model's history off this screen. */
 
 import { useCallback, useState } from "react";
 import { BarChart2 } from "lucide-react";
 // Pure curated-model DATA (no legacy UI components) — same import the strategy
 // page already uses, so the drawer lists exactly what the dropdowns offer.
-import { CURATED_LLM_MODEL_GROUPS } from "../../ui/llm-model-catalog";
+import { CURATED_LLM_MODEL_GROUPS, CURATED_LLM_MODEL_IDS } from "../../ui/llm-model-catalog";
 // Reuse the SAME veto-value-add gates + tone the Results page 'Red Team veto efficacy'
 // scorecard uses, so the drawer and the scorecard never drift apart. Do NOT redefine these.
 import {
@@ -215,6 +218,22 @@ function PerfCell({ s, role }: { s: ModelRoleStats | undefined; role: Exclude<Pi
   );
 }
 
+/** Model ids with recorded stats that have since left the curated catalog (e.g. a catalog
+ *  cleanup removed the row, or a raw historical id was never a catalog member at all) — derived
+ *  as ids-with-stats MINUS ids-in-the-catalog, never a hardcoded list, so this keeps working
+ *  after any future catalog edit without a matching change here. Pure so it's unit-testable
+ *  without rendering: see test/model-stats-drawer.test.ts. `statsModelIds` should already be
+ *  canonicalModelId output (that's what `s.model` on every ModelRoleStats row is), so a retired
+ *  model's historical variants collapse onto the same one bare-slug entry here too. */
+export function deriveRetiredModelIds(statsModelIds: Iterable<string>, catalogModelIds: Iterable<string>): string[] {
+  const known = new Set(catalogModelIds);
+  const retired = new Set<string>();
+  for (const model of statsModelIds) {
+    if (!known.has(model)) retired.add(model);
+  }
+  return Array.from(retired).sort();
+}
+
 /** Small stats button + drawer for ONE picker. `role` picks which side of the
  *  per-(model, role) stats to show: proposer = green, red-team = red, strategist = strategist
  *  (the AI review / strategy-tune seat — no benchmark, no perf/efficacy join, just live cost/call,
@@ -241,6 +260,10 @@ export function ModelStatsButton({ role }: { role: PickerRole }) {
 
   const statsRole = role === "proposer" ? "green" : role === "red-team" ? "red" : "strategist";
   const byModel = new Map((data?.stats ?? []).filter((s) => s.role === statsRole).map((s) => [s.model, s]));
+  // Models that have stats for this role but have since left the curated catalog — shown as a
+  // trailing "Retired Models" group below so their history doesn't silently disappear from the
+  // drawer the moment a catalog cleanup removes the row (owner 2026-09-18).
+  const retiredModelIds = deriveRetiredModelIds(byModel.keys(), CURATED_LLM_MODEL_IDS);
   // Naming follows the owner-directed convention from PR #1466 (Green Team / Red Team).
   const roleLabel = role === "proposer" ? "Green Team (proposer)" : role === "red-team" ? "Red Team (reviewer)" : "Strategist (AI review)";
   const isStrategist = role === "strategist";
@@ -304,6 +327,9 @@ export function ModelStatsButton({ role }: { role: PickerRole }) {
                 {CURATED_LLM_MODEL_GROUPS.map((group) => (
                   <ProviderRows key={group.provider} label={group.label} models={group.options.map((o) => o.value)} byModel={byModel} role={role} />
                 ))}
+                {retiredModelIds.length > 0 && (
+                  <ProviderRows key="retired" label="Retired Models" models={retiredModelIds} byModel={byModel} role={role} />
+                )}
               </tbody>
             </table>
           </div>

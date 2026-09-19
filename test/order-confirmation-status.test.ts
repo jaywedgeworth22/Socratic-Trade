@@ -211,10 +211,13 @@ describe("executeProposal — broker-agnostic order-placement confirmation", () 
     const { executeProposal } = await import("../src/lib/strategy");
     const { getProposal } = await import("../src/lib/db");
 
-    const result = await executeProposal(proposalId, userId);
-
-    expect(result.status).toBe("error");
-    expect(result.brokerState).toBe("rejected");
+    // #3343: a broker synchronous decline surfaces as a thrown Error with the broker state
+    // persisted on the row. The Error's message carries the decline reason.
+    const result: Error = await executeProposal(proposalId, userId).then(
+      (v) => { throw new Error(`expected throw, got ${JSON.stringify(v)}`); },
+      (e) => e
+    );
+    expect(result.message).toContain("Broker declined the order");
     expect(lastCreateOrderOpts).not.toBeNull();
 
     const row = getProposal(proposalId, userId);

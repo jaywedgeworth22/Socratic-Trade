@@ -1,3 +1,33 @@
+## 2026-09-18 Catalog cleanup
+
+The curated catalog (`src/lib/llm-model-catalog.ts`) dropped from 32 rows to 21. Removed, each
+strictly dominated by a same-provider sibling already in the catalog (same-or-worse price, and
+worse on every other axis — see `docs/rollouts/2026-09-18-model-catalog-cleanup.md` for the
+live-priced before/after table): **GPT-5.4 Nano, GPT Mini (5.4), GPT-5.6 Terra, GPT-4o, GPT-4o
+mini, Grok Build 0.1, MiniMax M2.7, DeepSeek R1, Llama 4 Maverick, Llama 4 Scout, Llama 3.3
+70B.** The Green Team recommendation that used to sit on GPT-5.6 Terra moved to **GPT-5.6 Sol**
+(same input price, cheaper output, stronger model — Sol now carries both the Green and Red
+recommendation chips). Mistral Medium is no longer described as "frontier": at $1.50/$7.50 it is
+now the **priciest** Mistral row, more expensive than Mistral Large ($0.50/$1.50) — the two
+`$`-tier fields were swapped to match. `mistral-large-latest`'s OpenRouter route
+(`mistralai/mistral-large-2512`) has no non-batch listing as of 2026-09-18 — see the in-code
+comment on that catalog row and the rollout note; the native Mistral API fallback is the
+reliable path until OpenRouter lists one. GPT-6 Astra Pro's label no longer says "via
+OpenRouter" (every catalog model routes through OpenRouter whenever a credential is
+configured, so naming it on one row implied a distinction that doesn't exist) and now explains
+what Astra Pro actually is: GPT-6 Astra served with `reasoning.mode=pro`, not a separate SKU.
+The Meta picker group header changed from "Meta (via OpenRouter)" to "Meta" for the same
+reason. MiniMax M3, Muse Spark 1.3, and Muse Glimmer 30B labels now start with their
+`displaySlug` (matching every other row and the Model Stats / Usage pages, which have always
+rendered the bare slug). The `MODEL_PRICE_PER_M` budget-estimate table
+(`src/lib/llm-usage.ts`) was re-verified against the live OpenRouter list and several entries
+were wrong: GPT-5.6 Sol ($5/$30 → real $2/$10), GPT-5.6 Luna ($1/$6 → real $0.20/$1.20), Claude
+Sonnet 5 ($3/$15 → real $2/$10), Kimi K3 ($0.30/$1.20 → real $1.95/$10.92 — the old figure was
+Kimi's cache-HIT input price, not the real rate), plus smaller corrections to DeepSeek Flash,
+DeepSeek Pro, Gemini Flash Lite, and Muse Glimmer 30B. Prices for the 11 removed rows were left
+in that table under a clearly commented "retired" block so any already-recorded historical
+usage still resolves to a cost estimate.
+
 ## 2026-09-09 Meta refresh
 
 GPT-6 Astra Pro is available via OpenRouter; its native API route is not assumed.  Muse Spark 1.3 and Muse Glimmer 30B join Llama 4 in the Meta group.  Meta models require an OpenRouter key; standalone Meta credentials are never forwarded to OpenAI.  MiniMax supports its native pay-as-you-go API key or OpenRouter, including explicit `CHAT_LLM=minimax` operator configuration.  Native MiniMax provider-envelope errors enter the same failure handling as HTTP errors, including billing cooldowns.  Its schema-prompt proposal responses pass the existing completeness gate before sizing; MiniMax and Muse use the wider default-reasoning timeout.  Chat availability and budget enforcement follow the tenant credential route actually used.  Learning-review labels resolve historical aliases through the current catalog, and audit metadata distinguishes the resolved request model from the model reported by the provider.

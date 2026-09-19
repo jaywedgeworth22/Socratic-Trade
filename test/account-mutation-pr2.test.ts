@@ -272,11 +272,10 @@ describe("PR-2 lease-loss short-circuit (regression for the FIX-1 mutation-lease
       // OperationLeaseOwnershipError before gateway.placeEquityOrder is ever called.
       leaseLossHooks.armed = true;
 
-      const result = await executeProposal(proposalId, userId);
-
-      expect(result.status).toBe("not_placed");
-      expect(result.reasons).toBeDefined();
-      expect(result.reasons![0]).toMatch(/lease lost/i);
+      // executeProposal now THROWS for non-placement outcomes (#3343). The lease-lost refusal
+      // is a deterministic pre-submission refusal — no order was placed — so the caller surfaces
+      // it via an exception instead of a return object.
+      await expect(executeProposal(proposalId, userId)).rejects.toThrow(/lease lost/i);
 
       const row = getProposal(proposalId, userId);
       expect(row?.status).toBe("not_placed");

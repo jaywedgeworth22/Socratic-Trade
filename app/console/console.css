@@ -26,8 +26,8 @@
   --con-surface: #ffffff;
   --con-surface-2: #f4f6fa;
   --con-surface-3: #e9edf4;
-  --con-line: rgba(23, 32, 46, 0.1);
-  --con-line-strong: rgba(23, 32, 46, 0.2);
+  --con-line: rgba(23, 32, 46, 0.14);
+  --con-line-strong: rgba(23, 32, 46, 0.5);
 
   --con-fg: #17202e;
   --con-muted: #46556b;   /* ≥7:1 on surface */
@@ -171,8 +171,8 @@
   --con-surface: rgba(22, 22, 22, 0.78);
   --con-surface-2: rgba(30, 30, 30, 0.72);
   --con-surface-3: rgba(42, 42, 42, 0.68);
-  --con-line: rgba(255, 255, 255, 0.08);
-  --con-line-strong: rgba(255, 255, 255, 0.14);
+  --con-line: rgba(255, 255, 255, 0.12);
+  --con-line-strong: rgba(255, 255, 255, 0.35);
 
   --con-fg: #f0f0f0;
   --con-muted: #b0b0b0;
@@ -210,8 +210,8 @@
     --con-surface: rgba(22, 22, 22, 0.78);
     --con-surface-2: rgba(30, 30, 30, 0.72);
     --con-surface-3: rgba(42, 42, 42, 0.68);
-    --con-line: rgba(255, 255, 255, 0.08);
-    --con-line-strong: rgba(255, 255, 255, 0.14);
+    --con-line: rgba(255, 255, 255, 0.12);
+    --con-line-strong: rgba(255, 255, 255, 0.35);
 
     --con-fg: #f0f0f0;
     --con-muted: #b0b0b0;

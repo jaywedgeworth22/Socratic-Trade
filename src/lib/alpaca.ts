@@ -45,7 +45,7 @@ export function resolveAlpacaTimeInForce(input: {
   isBracket: boolean;
   quantity?: number;
   notional?: number;
-}): { timeInForce: TimeInForce; normalized: boolean; reason?: "fractional_quantity" | "notional" } {
+}): { timeInForce: TimeInForce | "day"; normalized: boolean; reason?: "fractional_quantity" | "notional" } {
   const { requestedTimeInForce, isBracket, quantity, notional } = input;
   const isFractionalQty = quantity != null && !Number.isInteger(quantity);
   const isNotional = notional != null && notional > 0;

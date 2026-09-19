@@ -151,7 +151,7 @@ export function ScopeSelector({ snapshot }: { snapshot: DashboardSnapshot; compa
       <button
         key={account.id}
         type="button"
-        role="menuitemradio"
+        role="radio"
         aria-checked={isActive}
         disabled={isActive || busyId !== null}
         onClick={() => guardAction(() => void switchTo(account.id))}
@@ -213,7 +213,7 @@ export function ScopeSelector({ snapshot }: { snapshot: DashboardSnapshot; compa
         ref={triggerRef}
         type="button"
         onClick={() => (open ? close() : setOpen(true))}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-expanded={open}
         className="flex w-full items-center gap-2 overflow-hidden rounded-control border border-[color:var(--con-line-strong)] bg-[color:var(--con-surface-2)] px-2.5 py-1.5 text-left transition-colors hover:border-[color:var(--con-accent)] sm:px-3 con-bar-ctl con-bar-ctl-scope"
         title="Switch which account this console shows"
@@ -260,7 +260,7 @@ export function ScopeSelector({ snapshot }: { snapshot: DashboardSnapshot; compa
                 </p>
               </div>
             ) : (
-              <div className="flex flex-col gap-1.5">{ordered.map(renderRow)}</div>
+              <div role="radiogroup" aria-label="Select active account" className="flex flex-col gap-1.5">{ordered.map(renderRow)}</div>
             )}
             <div className="my-0.5 h-px bg-[color:var(--con-line)]" />
             <Link

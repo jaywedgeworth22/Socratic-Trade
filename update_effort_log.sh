@@ -1,0 +1,2 @@
+#!/bin/bash
+awk 'NR==1{print; print "- **[Socratic.Trade][AG] Fix test coverage CI cost — COMPLETED 2026-09-19 (branch `ag/review-fixes-ops`).** Removed maxWorkers:1 from vitest.config.ts and added setup-network-block.ts to prevent tests from reaching the live internet. Issues 1 and 3 from the review were already resolved in prior commits."; next} 1' docs/EFFORT-LOG.md > docs/EFFORT-LOG.md.tmp && mv docs/EFFORT-LOG.md.tmp docs/EFFORT-LOG.md

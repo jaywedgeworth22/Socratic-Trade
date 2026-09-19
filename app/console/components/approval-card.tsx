@@ -128,7 +128,7 @@ export function modelProvenance(p: TradeProposal, policy: TradingPolicy | undefi
       ? `configured to rotate; rotation pick ${cause}; served by fallback ${served}`
       : `${cause}; served by fallback ${served}`;
   }
-  if (served && rotating) return `configured to rotate; served ${served} (this run's rotation pick)`;
+  if (served && rotating) return `configured to rotate; served ${served}`;
   const normConfigured = normalizeModelId(configured);
   const normServed = normalizeModelId(served);
   if (served && configured && normServed !== normConfigured) return `served ${served}; configured primary was ${configured}`;

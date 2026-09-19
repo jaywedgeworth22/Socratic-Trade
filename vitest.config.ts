@@ -29,7 +29,6 @@ export default defineConfig({
     }
   },
   test: {
-    maxWorkers: 1,
     testTimeout: 60_000,
     hookTimeout: 60_000,
     // Skip Vitest's console spy.  `onConsoleLog: () => false` still forwards every
@@ -38,7 +37,7 @@ export default defineConfig({
     // (hit on main after #3162, attributed to economic-calendar-prompt-wiring).
     disableConsoleIntercept: true,
     globalSetup: "./test/global-setup.ts",
-    setupFiles: ["./test/setup-peer-lane-cleanup.ts"],
+    setupFiles: ["./test/setup-peer-lane-cleanup.ts", "./test/setup-network-block.ts"],
     // Force isTradingDay()'s no-argument "today" check true so strategy/scheduler tests don't flake
     // on real market holidays/weekends (see isTradingDay in src/lib/market-calendar.ts). The override
     // there is additionally gated on process.env.VITEST, so a stray copy of this flag in a dev/prod

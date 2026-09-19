@@ -1,4 +1,4 @@
-import { getInternalSetting, getServiceHealthSummaries, databasePath, resolveApiKeyWithSource, alertStorageWarning } from "@/lib/db";
+import { getInternalSetting, getServiceHealthSummaries, databasePath, resolveApiKeyWithSource, alertStorageWarning, alertLivenessWarning } from "@/lib/db";
 import { isHardStoppedHealthSummary } from "@/lib/db-health";
 import { isIntentionalOffHealthService } from "@/lib/retired-direct-vendors";
 import { activeEmbeddingProvider } from "@/lib/vector-db";
@@ -107,6 +107,15 @@ export async function GET(request: Request) {
     checks.schedulerStale = release.processUptimeSeconds > schedulerStaleMs / 1000;
   }
 
+  if (checks.schedulerStale) {
+    void alertLivenessWarning(
+      "scheduler_stale",
+      lastTick
+        ? `The autonomous scheduler has not ticked in ${checks.schedulerAgeSeconds} seconds (threshold ${Math.round(schedulerStaleMs / 1000)}s).`
+        : `The autonomous scheduler has never ticked, and the process has been up for ${Math.round(release.processUptimeSeconds)} seconds.`
+    );
+  }
+
   // Scheduler lease state (additive; only meaningful when SCHEDULER_SINGLE_LEADER is on).
   // Surfaced here so ops tooling can confirm which process is the current leader and how old
   // the lease is. Never breaks the liveness probe.
@@ -148,6 +157,13 @@ export async function GET(request: Request) {
     // every account is halted.  The boolean sibling is the unique keyword substring.
     checks.tradingLiveness = publicLiveness;
     checks.tradingLivenessDegraded = publicLiveness.degraded > 0;
+    
+    if (checks.tradingLivenessDegraded) {
+      void alertLivenessWarning(
+        "trading_liveness_degraded",
+        `Trading liveness is degraded: ${publicLiveness.degraded} active account(s) have stalled or failed repeatedly.`
+      );
+    }
   } catch {
     checks.tradingLiveness = toPublicTradingLiveness(null);
     checks.tradingLivenessDegraded = false;

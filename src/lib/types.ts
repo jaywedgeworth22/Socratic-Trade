@@ -85,6 +85,7 @@ export const NOTIFICATION_EVENT_TYPES = [
   "proposal_withdrawn",
   "limit_order_stale",
   "provider_degraded",
+  "liveness_warning",
   "budget_alert",
   "learning_review",
   "deterministic_bear_veto",

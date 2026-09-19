@@ -238,16 +238,21 @@ describe("executeProposal — approval-held protective-exit reprice", () => {
       // The phrase below confirms the STORED order (limit 219.67); the fresh quote has fallen ~9.5%
       // through it, so placing the 198.70 reprice under that confirmation would violate the live
       // typed-confirm invariant — defer to the human (precedent: autoRemediateStaleExitOrders).
-      const result = await executeProposal(proposalId, userId, {
+      // #3343: protective-exit material reprice routes back to approval — executeProposal now
+      // throws instead of returning {status:"proposed", reasons:[...]}. The proposal row is
+      // updated to 'proposed' before the throw, so we verify both the throw and the row state.
+      const result: Error = await executeProposal(proposalId, userId, {
         liveConfirmation: {
           proposalId,
           accountNumber: "REPRICE",
           executionMode: "broker/live",
           typedText: liveApprovalText("AAPL")
         }
-      });
-      expect(result.status).toBe("proposed");
-      expect(result.reasons?.[0]).toContain("approve the repriced order again");
+      }).then(
+        (v) => { throw new Error(`expected throw, got ${JSON.stringify(v)}`); },
+        (e) => e
+      );
+      expect(result.message).toContain("approve the repriced order again");
       expect(broker.placed).toHaveLength(0);
       // The card stays pending, updated to the repriced order the next Approve will confirm.
       const persistedRow = getProposal(proposalId, userId);

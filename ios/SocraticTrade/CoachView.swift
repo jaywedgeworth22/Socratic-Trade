@@ -261,7 +261,7 @@ private struct CoachIntroCard: View {
                 Label("Coach", systemImage: "bubble.left.and.text.bubble.right.fill")
                     .font(.appHeadline)
                     .foregroundStyle(AppPalette.accent)
-                Text("Ask about a name, a pending proposal, or the last scan.  Model: \(modelLabel).  Drafts stay proposals until you approve them.")
+                Text("Ask about a name, a pending proposal, or the last scan.  Model: \(modelLabel).")
                     .font(.appSubheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

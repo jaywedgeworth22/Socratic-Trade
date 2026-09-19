@@ -335,7 +335,7 @@ final class MobileStore: ObservableObject {
 
     func isSnapshotStale(at now: Date = Date()) -> Bool {
         guard let lastUpdatedAt else { return snapshot != nil }
-        return snapshotLoadFailed || now.timeIntervalSince(lastUpdatedAt) > 180
+        return now.timeIntervalSince(lastUpdatedAt) > 180
     }
 
     /// Capability discovery from the server-advertised control catalog
@@ -485,6 +485,12 @@ final class MobileStore: ObservableObject {
                     }
                     if self?.isAuthenticated != true { return }
                     retryDelay = min(30.0, retryDelay * 1.5)
+                    
+                    // Polling fallback: if the stream drops, reload the snapshot
+                    // while we wait for the backoff timer to reconnect.
+                    Task { @MainActor [weak self] in
+                        self?.scheduleReload()
+                    }
                 }
 
                 let jitter = Double.random(in: 0.1...0.5)

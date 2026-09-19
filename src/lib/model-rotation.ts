@@ -145,14 +145,14 @@ export function clearOpenRouterModelCooldowns(): void {
 
 /**
  * Catalog ids that exist on public /models but OpenRouter cannot serve as a
- * first Green seat today (live 2026-08-18 Paper: gpt-5.6-terra →
- * openai/gpt-5.6-terra HTTP 400 "Provider returned error", 881ms).  They stay
- * in the rotation pool and implicit failover tail.  They must not win the
- * first pick while Gemini Flash / Mistral Medium class seats remain.
+ * first Green seat today (the original 2026-08-18 entry was gpt-5.6-terra,
+ * removed from the curated catalog on 2026-09-18 in cursor/model-catalog-cleanup
+ * because the same-input-price, cheaper-output gpt-5.6-sol replaced it).
+ * The list is now empty for the curated catalog; keep the export so tests
+ * that pin its shape still resolve, and so a future broken-first-pick has a
+ * clear place to land without re-deriving the data flow.
  */
-export const UNSERVABLE_OPENROUTER_FIRST_PICKS: readonly string[] = [
-  "gpt-5.6-terra"
-];
+export const UNSERVABLE_OPENROUTER_FIRST_PICKS: readonly string[] = [];
 
 /** Seats that completed before the 404 week and that #2829 unblocked. */
 export const PREFERRED_GREEN_FAILOVER_SEATS: readonly string[] = [

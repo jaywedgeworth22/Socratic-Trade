@@ -55,13 +55,22 @@ export function resolveAlpacaTimeInForce(input: {
     return { timeInForce: "day", normalized: false };
   }
 
-  // Whole-share, no notional: leave the caller's request unchanged.
-  if (!isFractionalQty && !isNotional) {
-    return { timeInForce: requestedTimeInForce, normalized: false };
+  // Whole-share, no notional, gtc: pass through unchanged — Alpaca accepts GTC whole-share orders.
+  if (!isFractionalQty && !isNotional && requestedTimeInForce === "gtc") {
+    return { timeInForce: "gtc", normalized: false };
   }
 
-  // Only "gtc" / "gfd" become "day" (other TIFs already conform). "gfd" was never "gtc",
-  // so flagging it "normalized" would be a lie — only flag when the caller asked for "gtc".
+  // Whole-share, no notional, gfd: Alpaca's docs treat gfd equivalent to day for the same trading
+  // session. Sending "gfd" is redundant — the broker normalizes to "day" anyway. We mirror that
+  // locally so the wire field is canonical "day" (matches what the broker will accept).
+  if (!isFractionalQty && !isNotional && requestedTimeInForce === "gfd") {
+    return { timeInForce: "day", normalized: false };
+  }
+
+  // Fractional or notional: only "gtc" is overridden (flag normalized=true so the override is
+  // observable). gfd already resolves to day via Alpaca's own rules; we mirror that and do NOT
+  // claim it was our normalization — the caller never asked for gtc so we shouldn't claim a
+  // gtc->day override.
   if (requestedTimeInForce === "gtc") {
     return {
       timeInForce: "day",
@@ -69,7 +78,6 @@ export function resolveAlpacaTimeInForce(input: {
       reason: isFractionalQty ? "fractional_quantity" : "notional"
     };
   }
-  // "gfd" (or anything else) already resolves to day via Alpaca's own rules; we don't claim it.
   return { timeInForce: "day", normalized: false };
 }
 import { toBrokerSide, isRejectedOrCanceledState } from "./broker-side";

@@ -62,7 +62,10 @@ export { isModelRotationSentinel, LLM_MODEL_ROTATION_SENTINEL };
  *     answers with an empty proposal list every round (model judgment, not a request-shape
  *     bug — see docs/rollouts/2026-07-10-mistral-rebench.md) but its reasoning tier does
  *     propose when explicitly requested at higher cost/latency.
- *   - grok-build-0.1 — coding specialist, soft-timeouts as a Green strategist.
+ *   - grok-build-0.1 — coding specialist, soft-timeouts as a Green strategist. REMOVED FROM
+ *     THE CATALOG ENTIRELY 2026-09-18 (model-catalog cleanup), not just the rotation pool —
+ *     see docs/rollouts/2026-09-18-model-catalog-cleanup.md. This bullet is now historical:
+ *     there is nothing left to exclude, and ROTATION_EXCLUDED_DISPLAY_SLUGS is empty.
  * Order interleaves providers so consecutive runs hit different providers even before the
  * credential filter, and so green/red (offset by the wrap-advance) pair across providers.
  */
@@ -142,14 +145,14 @@ export function clearOpenRouterModelCooldowns(): void {
 
 /**
  * Catalog ids that exist on public /models but OpenRouter cannot serve as a
- * first Green seat today (live 2026-08-18 Paper: gpt-5.6-terra →
- * openai/gpt-5.6-terra HTTP 400 "Provider returned error", 881ms).  They stay
- * in the rotation pool and implicit failover tail.  They must not win the
- * first pick while Gemini Flash / Mistral Medium class seats remain.
+ * first Green seat today (the original 2026-08-18 entry was gpt-5.6-terra,
+ * removed from the curated catalog on 2026-09-18 in cursor/model-catalog-cleanup
+ * because the same-input-price, cheaper-output gpt-5.6-sol replaced it).
+ * The list is now empty for the curated catalog; keep the export so tests
+ * that pin its shape still resolve, and so a future broken-first-pick has a
+ * clear place to land without re-deriving the data flow.
  */
-export const UNSERVABLE_OPENROUTER_FIRST_PICKS: readonly string[] = [
-  "gpt-5.6-terra"
-];
+export const UNSERVABLE_OPENROUTER_FIRST_PICKS: readonly string[] = [];
 
 /** Seats that completed before the 404 week and that #2829 unblocked. */
 export const PREFERRED_GREEN_FAILOVER_SEATS: readonly string[] = [

@@ -20,6 +20,7 @@ import { clearMcpOAuthTokens, getMcpAccessToken } from "./mcp-oauth";
 import { logApiHealth } from "./db-health";
 import { normalizeSymbol } from "./money";
 import { mergeAccountCapabilities } from "./venue-contract";
+import { normalizeVenueOrder } from "./venue-normalization";
 import { isShortIntent } from "./broker-side";
 import { getOpenLots, getPerformanceSummary } from "./performance";
 import { fetchYahooFinanceQuote, fetchYahooFinanceQuotesBatch } from "./yahoo-finance";
@@ -480,7 +481,12 @@ class HttpMcpRobinhoodGateway implements BrokerGateway {
   }
 
   async reviewEquityOrder(input: EquityOrderInput): Promise<ReviewedOrder> {
-    const raw = await this.callTool("review_equity_order", toMcpOrder(input)) as Record<string, unknown>;
+    // Review the SAME order placeEquityOrder will send.  The fractional/extended-hours limit ->
+    // regular-hours market coercion lives in normalizeVenueOrder (not toMcpOrder), so without this
+    // a fractional limit buy is reviewed as a limit (cost estimate and order checks) but placed as
+    // a market order.  audit:false -- placement writes the single normalization receipt.
+    const reviewInput = normalizeVenueOrder(input, "robinhood", this.userId, { audit: false });
+    const raw = await this.callTool("review_equity_order", toMcpOrder(reviewInput)) as Record<string, unknown>;
     // Robinhood's own pre-flight review already tells us when an order is a guaranteed reject (e.g.
     // the sub-$1 minimum) via `order_checks`, not the top-level `alerts` array read below — surface
     // it as a structured signal so callers can skip a doomed order instead of placing (and
@@ -504,7 +510,8 @@ class HttpMcpRobinhoodGateway implements BrokerGateway {
     };
   }
 
-  async placeEquityOrder(input: EquityOrderInput & { refId: string }): Promise<ExecutedOrder> {
+  async placeEquityOrder(rawInput: EquityOrderInput & { refId: string }): Promise<ExecutedOrder> {
+    const input = normalizeVenueOrder(rawInput, "robinhood", this.userId) as typeof rawInput;
     const raw = await this.callTool("place_equity_order", { ...toMcpOrder(input), ref_id: input.refId }) as Record<string, unknown>;
     const orderId = raw.id ?? raw.order_id;
     // A response with no order id can't be tracked or reconciled against Robinhood's real order
@@ -965,15 +972,23 @@ class TestBrokerGateway implements BrokerGateway {
     return { estimatedNotional: input.dollarAmount ?? (input.quantity ?? 0) * estPrice, alerts: [], raw: { test: true } };
   }
 
-  async placeEquityOrder(input: EquityOrderInput & { refId: string }): Promise<ExecutedOrder> {
+  async placeEquityOrder(rawInput: EquityOrderInput & { refId: string }): Promise<ExecutedOrder> {
+    const input = normalizeVenueOrder(rawInput, "robinhood", this.userId) as typeof rawInput;
     const quotes = await this.getEquityQuotes(input.accountNumber, [input.symbol]);
     const price = quotes[normalizeSymbol(input.symbol)]?.price ?? 100;
     const estPrice = input.limitPrice ?? input.stopPrice ?? price;
-    const quantity = input.quantity ?? (input.dollarAmount ? input.dollarAmount / estPrice : undefined);
+    let quantity = input.quantity ?? (input.dollarAmount ? input.dollarAmount / estPrice : undefined);
+    let state = "filled";
+    if (input.symbol === "REJECT") {
+      throw new Error("Simulated rejection for REJECT symbol");
+    } else if (input.symbol === "PARTIAL") {
+      state = "partially_filled";
+      quantity = quantity ? quantity / 2 : undefined;
+    }
     return {
       orderId: `test-${input.refId}`,
       refId: input.refId,
-      state: "filled",
+      state,
       filledQuantity: quantity,
       averagePrice: estPrice,
       raw: { test: true }
@@ -1044,6 +1059,13 @@ export function toMcpOrder(input: EquityOrderInput): Record<string, unknown> {
   //   - EXITS (sell): a limit/take-profit exit must rest at its requested price or be rejected upstream;
   //     silently turning it into market would liquidate immediately.
   //   - Whole-share orders (integer quantity >= 1): preserved as-is so marketable-limit entries work.
+  //
+  // This is the same coercion `normalizeVenueOrder()` performs for the audited
+  // entry-point call in `placeEquityOrder()`; we keep it inline here too so direct
+  // callers (tests, the `reviewEquityOrder()` pre-flight, anything that bypasses
+  // the gateway) get the same shape the broker will eventually receive. The two
+  // paths are idempotent — calling normalizeVenueOrder first and then toMcpOrder
+  // is a no-op the second time.
   const wholeShare = input.quantity != null && Number.isInteger(input.quantity) && input.quantity >= 1;
   const fractional =
     !wholeShare && ((input.dollarAmount != null && input.dollarAmount > 0) || (input.quantity != null && input.quantity > 0));

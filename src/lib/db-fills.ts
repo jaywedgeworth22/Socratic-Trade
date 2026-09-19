@@ -136,6 +136,17 @@ export function insertPortfolioSnapshot(input: {
 }
 
 /**
+ * Removes portfolio_snapshots older than maxAgeDays.
+ * Called automatically by the audit-prune scheduler.
+ */
+export function sweepPortfolioSnapshots(now: Date = new Date(), maxAgeDays: number = 90): number {
+  const db = getDb();
+  const cutoff = new Date(now.getTime() - maxAgeDays * 24 * 3600_000).toISOString();
+  return db
+    .prepare("DELETE FROM portfolio_snapshots WHERE created_at < ?")
+    .run(cutoff).changes;
+}
+/**
  * Symbols with a non-zero position in the LATEST portfolio snapshot of every (user, account)
  * pair, restricted to snapshots recent enough to reflect a live account (default 7 days —
  * snapshots are written every strategy run, so an older latest-snapshot means the account

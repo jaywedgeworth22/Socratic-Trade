@@ -192,7 +192,7 @@ describe("RAG ingest budget Sentry rollup", () => {
   }, 90_000); // 3 sequential storeContexts calls — see timeout note above.
 
   it("resumes emitting once the cooldown window has elapsed", async () => {
-    const { storeContexts } = await import("../src/lib/vector-db");
+    const { storeContexts, __ragIngestBudgetAlertCooldownTestHandle__ } = await import("../src/lib/vector-db");
     const { getInternalSetting, setInternalSetting } = await import("../src/lib/db");
 
     await storeContexts([...context(), ...context()], "local", {});
@@ -211,6 +211,11 @@ describe("RAG ingest budget Sentry rollup", () => {
     // setInternalSetting (vector-db.ts), so this simulates the window having elapsed without
     // needing fake timers around better-sqlite3's synchronous calls.
     setInternalSetting(key, new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString());
+
+    // Rewind the in-memory cooldown too — shouldEmitRagIngestBudgetSentry
+    // short-circuits on the in-memory map BEFORE the persisted key, so a
+    // persisted rewind alone is not enough to make the next call fire.
+    __ragIngestBudgetAlertCooldownTestHandle__.delete("local");
 
     await storeContexts([...context(), ...context()], "local", {});
     await waitForCaptureCount(2);

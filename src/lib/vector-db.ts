@@ -148,6 +148,10 @@ const RAG_INGEST_BUDGET_ALERT_PREFIX = "vectorStore:ingestBudgetAlert";
 // "once per window" for a condition whose window (RAG_INGEST_MAX_TEXTS_PER_DAY) is 24h.
 const RAG_INGEST_BUDGET_ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const inMemoryRagIngestBudgetAlertCooldown = new Map<string, number>();
+/** @internal — exported for the rollup-coverage test in test/rag-ingest-budget-sentry-rollup.test.ts
+ *  to rewind the in-memory cooldown alongside the persisted one when simulating the
+ *  window having elapsed. Do NOT mutate from production code; this is a test seam. */
+export const __ragIngestBudgetAlertCooldownTestHandle__ = inMemoryRagIngestBudgetAlertCooldown;
 
 /**
  * A persistent daily-ingest-budget exhaustion must page ONCE per cooldown window, not once per

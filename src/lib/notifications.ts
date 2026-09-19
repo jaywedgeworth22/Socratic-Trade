@@ -411,6 +411,9 @@ export async function sendNotification(
     userId,
     connectedAccountId
   );
+  if (outcome.status === "failed") {
+    throw new Error(`Notification delivery failed: ${outcome.reason}`);
+  }
   return event;
 }
 

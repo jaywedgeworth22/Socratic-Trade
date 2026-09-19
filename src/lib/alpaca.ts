@@ -188,7 +188,7 @@ export interface AlpacaTimeInForceResolution {
   /** True only when the CALLER asked for "gtc" and this resolved to "day" because of it — the
    *  honest signal for an audit receipt. A caller that already asked for "gfd" isn't "normalized". */
   normalized: boolean;
-  reason?: "fractional_quantity" | "notional";
+  reason?: "fractional_quantity" | "notional" | "bracket" | "extended_hours";
 }
 
 /**
@@ -205,16 +205,19 @@ export function resolveAlpacaTimeInForce(input: {
   isBracket: boolean;
   quantity?: number;
   notional?: number;
+  extendedHours?: boolean;
 }): AlpacaTimeInForceResolution {
   const isFractionalQty = input.quantity != null && !Number.isInteger(input.quantity);
   const isNotional = input.notional != null && input.notional > 0;
-  const requiresDay = input.isBracket || isFractionalQty || isNotional;
+  const isExtendedHours = input.extendedHours === true;
+  const requiresDay = input.isBracket || isFractionalQty || isNotional || isExtendedHours;
   const timeInForce: "day" | "gtc" = requiresDay || input.requestedTimeInForce === "gfd" ? "day" : "gtc";
-  const normalized = input.requestedTimeInForce === "gtc" && (isFractionalQty || isNotional);
+  const normalized = input.requestedTimeInForce === "gtc" && requiresDay;
+  const reason = normalized ? (isExtendedHours ? "extended_hours" : (isFractionalQty ? "fractional_quantity" : (isNotional ? "notional" : "bracket"))) : undefined;
   return {
     timeInForce,
     normalized,
-    reason: normalized ? (isFractionalQty ? "fractional_quantity" : "notional") : undefined
+    reason: reason as AlpacaTimeInForceResolution["reason"]
   };
 }
 
@@ -961,7 +964,8 @@ class AlpacaBrokerGateway implements BrokerGateway {
       requestedTimeInForce: input.timeInForce,
       isBracket,
       quantity: effectiveQty,
-      notional: effectiveNotional
+      notional: effectiveNotional,
+      extendedHours: input.marketHours === "extended_hours"
     });
     if (tif.normalized) {
       audit("alpaca_tif_normalized_to_day", {
@@ -1056,6 +1060,9 @@ class AlpacaBrokerGateway implements BrokerGateway {
     // limit order carrying one).
     if (input.stopPrice && (input.type === "stop_market" || input.type === "stop_limit")) {
       orderArgs.stop_price = String(roundAlpacaPrice(input.stopPrice));
+    }
+    if (input.marketHours === "extended_hours") {
+      orderArgs.extended_hours = true;
     }
 
     if (isBracket) {

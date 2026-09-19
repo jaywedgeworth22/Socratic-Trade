@@ -88,6 +88,28 @@ export async function checkPriceAlerts(userId: string): Promise<PriceAlert[]> {
     const hit = alert.op === "<" ? currentPrice < alert.price : currentPrice > alert.price;
     if (!hit) continue;
 
+    try {
+      const fakeTriggeredAlert = { ...alert, status: "triggered" as const, triggeredPrice: currentPrice, triggeredAt: new Date().toISOString() };
+      await sendNotification(
+        {
+          type: "price_alert",
+          title: `Price alert: ${alert.symbol}`,
+          payload: {
+            alert: fakeTriggeredAlert,
+            currentPrice
+          }
+        },
+        {
+          policy,
+          userId,
+          directBody: `${alert.symbol} ${alert.op} $${alert.price} — now $${currentPrice}.`
+        }
+      );
+    } catch (err) {
+      console.error(`[alerts] notification failed for alert ${alert.id}, skipping trigger:`, err);
+      continue;
+    }
+
     const updated = markPriceAlertTriggered(alert.id, userId, currentPrice);
     if (!updated) continue;
     triggered.push(updated);
@@ -99,21 +121,6 @@ export async function checkPriceAlerts(userId: string): Promise<PriceAlert[]> {
       threshold: alert.price,
       atPrice: currentPrice
     });
-    await sendNotification(
-      {
-        type: "price_alert",
-        title: `Price alert: ${alert.symbol}`,
-        payload: {
-          alert: updated,
-          currentPrice
-        }
-      },
-      {
-        policy,
-        userId,
-        directBody: `${alert.symbol} ${alert.op} $${alert.price} — now $${currentPrice}.`
-      }
-    );
   }
   return triggered;
 }

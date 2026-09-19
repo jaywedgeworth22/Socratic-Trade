@@ -28,6 +28,50 @@ import { OrderValidationError } from "./types";
 import { fromAlpacaSymbol, normalizeSymbol, roundAlpacaPrice, toAlpacaSymbol } from "./money";
 import { mergeAccountCapabilities } from "./venue-contract";
 import { normalizeVenueOrder } from "./venue-normalization";
+
+/**
+ * Pure resolution matrix for Alpaca time-in-force (Codex review, item 10). Alpaca rejects a
+ * GTC order carrying a fractional share quantity OR a notional (dollar) amount — both require
+ * `time_in_force="day"` (docs.alpaca.markets). Bracket orders also require "day" for an
+ * unrelated reason (native OCO leg support), so they always resolve to "day" but are NOT
+ * counted as this item's normalization (bracket is the bracket path's own pre-existing reason).
+ *
+ * The integration side calls this once per order path (REST, MCP, native trailing) so the
+ * three call sites can't disagree, then audits `alpaca_tif_normalized_to_day` when
+ * `normalized === true` (the caller's intent was overridden).
+ */
+export function resolveAlpacaTimeInForce(input: {
+  requestedTimeInForce: TimeInForce;
+  isBracket: boolean;
+  quantity?: number;
+  notional?: number;
+}): { timeInForce: TimeInForce; normalized: boolean; reason?: "fractional_quantity" | "notional" } {
+  const { requestedTimeInForce, isBracket, quantity, notional } = input;
+  const isFractionalQty = quantity != null && !Number.isInteger(quantity);
+  const isNotional = notional != null && notional > 0;
+
+  // Bracket forces day for its own pre-existing reason — don't double-flag as our normalization.
+  if (isBracket) {
+    return { timeInForce: "day", normalized: false };
+  }
+
+  // Whole-share, no notional: leave the caller's request unchanged.
+  if (!isFractionalQty && !isNotional) {
+    return { timeInForce: requestedTimeInForce, normalized: false };
+  }
+
+  // Only "gtc" / "gfd" become "day" (other TIFs already conform). "gfd" was never "gtc",
+  // so flagging it "normalized" would be a lie — only flag when the caller asked for "gtc".
+  if (requestedTimeInForce === "gtc") {
+    return {
+      timeInForce: "day",
+      normalized: true,
+      reason: isFractionalQty ? "fractional_quantity" : "notional"
+    };
+  }
+  // "gfd" (or anything else) already resolves to day via Alpaca's own rules; we don't claim it.
+  return { timeInForce: "day", normalized: false };
+}
 import { toBrokerSide, isRejectedOrCanceledState } from "./broker-side";
 import { audit, getActiveConnectedAccount, getConnectedAccount, resolveApiKey } from "./db";
 import { logApiHealth } from "./db-health";
@@ -865,6 +909,26 @@ class AlpacaBrokerGateway implements BrokerGateway {
     const isBracket = !!(input.bracketTakeProfit || input.bracketStopLoss);
     const isTrailing = input.trailPercent != null && input.trailPercent > 0;
 
+    // Single TIF resolution per order — used by all three submission paths below (native
+    // trailing, REST, MCP) so they can't disagree, and audited once when we override the
+    // caller's intent (Codex review, item 10).
+    const tifResolution = resolveAlpacaTimeInForce({
+      requestedTimeInForce: input.timeInForce,
+      isBracket,
+      quantity: input.quantity,
+      notional: input.dollarAmount
+    });
+    if (tifResolution.normalized) {
+      audit("alpaca_tif_normalized_to_day", {
+        symbol: input.symbol,
+        requestedTimeInForce: input.timeInForce,
+        reason: tifResolution.reason,
+        ...(input.quantity != null ? { quantity: input.quantity } : {}),
+        ...(input.dollarAmount != null ? { dollarAmount: input.dollarAmount } : {})
+      }, this.userId);
+    }
+    const resolvedTimeInForce = tifResolution.timeInForce;
+
     // Native trailing stop: Alpaca's `trailing_stop` order type with `trail_percent` — the broker
     // trails the high-water mark itself. Mutually exclusive with brackets (both would claim the
     // same shares), quantity-based only, and Alpaca rejects limit/stop price params on it, so any
@@ -886,7 +950,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
             type: "trailing_stop",
             trail_percent: String(input.trailPercent),
             qty: input.quantity,
-            time_in_force: input.timeInForce,
+            time_in_force: resolvedTimeInForce,
             client_order_id: input.refId
           }),
           { deadlineMs: ALPACA_BROKER_IO_DEADLINE_MS, retryTransient: false }
@@ -938,7 +1002,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
           symbol: toAlpacaSymbol(input.symbol),
           side: toBrokerSide(input.side), // short→sell, cover→buy; Alpaca infers open/close from position
           type: mapAlpacaOrderTypeWrite(input.type),
-          time_in_force: input.timeInForce,
+          time_in_force: resolvedTimeInForce,
           client_order_id: input.refId
         };
 
@@ -1002,7 +1066,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
       symbol: toAlpacaSymbol(input.symbol),
       side: toBrokerSide(input.side), // short→sell, cover→buy; Alpaca infers open/close from position
       type: mapAlpacaOrderTypeWrite(input.type),
-      time_in_force: input.timeInForce,
+      time_in_force: resolvedTimeInForce,
       client_order_id: input.refId
     };
 

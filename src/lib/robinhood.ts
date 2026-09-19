@@ -1054,22 +1054,31 @@ export function toMcpOrder(input: EquityOrderInput): Record<string, unknown> {
   //   - EXITS (sell): a limit/take-profit exit must rest at its requested price or be rejected upstream;
   //     silently turning it into market would liquidate immediately.
   //   - Whole-share orders (integer quantity >= 1): preserved as-is so marketable-limit entries work.
+  //
+  // This is the same coercion `normalizeVenueOrder()` performs for the audited
+  // entry-point call in `placeEquityOrder()`; we keep it inline here too so direct
+  // callers (tests, the `reviewEquityOrder()` pre-flight, anything that bypasses
+  // the gateway) get the same shape the broker will eventually receive. The two
+  // paths are idempotent — calling normalizeVenueOrder first and then toMcpOrder
+  // is a no-op the second time.
   const wholeShare = input.quantity != null && Number.isInteger(input.quantity) && input.quantity >= 1;
   const fractional =
     !wholeShare && ((input.dollarAmount != null && input.dollarAmount > 0) || (input.quantity != null && input.quantity > 0));
   const isStop = input.type === "stop_market" || input.type === "stop_limit";
   const isOpening = input.side === "buy";
+  const coerceFractional = isOpening && fractional && !isStop;
+
   return {
     account_number: input.accountNumber,
     symbol: normalizeSymbol(input.symbol),
     side: input.side,
-    type: input.type,
+    type: coerceFractional ? "market" : input.type,
     quantity: input.quantity?.toString(),
     dollar_amount: input.dollarAmount?.toFixed(2),
-    limit_price: input.limitPrice?.toFixed(2),
-    stop_price: input.stopPrice?.toFixed(2),
-    time_in_force: input.timeInForce,
-    market_hours: input.marketHours
+    limit_price: coerceFractional ? undefined : input.limitPrice?.toFixed(2),
+    stop_price: coerceFractional ? undefined : input.stopPrice?.toFixed(2),
+    time_in_force: coerceFractional ? "gfd" : input.timeInForce,
+    market_hours: coerceFractional ? "regular_hours" : input.marketHours
   };
 }
 

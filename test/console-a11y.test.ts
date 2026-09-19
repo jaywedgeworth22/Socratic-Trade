@@ -148,6 +148,31 @@ describe("console input border contrast (board 2056ceab — #2561)", () => {
     const ratio = rgbaContrast(border, DARK_SURFACE_2);
     expect(ratio, `dark input border ${border} on ${DARK_SURFACE_2}`).toBeGreaterThanOrEqual(WCAG_AA_NON_TEXT_CONTRAST);
   });
+
+  it("clears WCAG 1.4.11 non-text contrast (>= 3:1) on the system-preference dark input border", () => {
+    // Regression guard for sentry[bot] review on #3417: the media-query block
+    // previously held 0.14 instead of 0.35, dropping the input border to 1.54:1
+    // (FAIL WCAG 1.4.11). The CSS file comment says both dark blocks must be
+    // identical, so this test pins the media-query block to the same value as
+    // the explicit dark block above.
+    const explicit = firstRgbaInBlock(
+      CONSOLE_CSS,
+      '.console-root[data-theme="dark"] {',
+      "/* ── DARK (system preference",
+      "--con-line-strong"
+    );
+    const system = firstRgbaInBlock(
+      CONSOLE_CSS,
+      '.console-root:not([data-theme="light"]) {',
+      "  color-scheme: dark;",
+      "--con-line-strong"
+    );
+    expect(system, "media-query dark block matches explicit dark block").toBe(explicit);
+    const ratio = rgbaContrast(system, DARK_SURFACE_2);
+    expect(ratio, `system-preference dark input border ${system} on ${DARK_SURFACE_2}`).toBeGreaterThanOrEqual(
+      WCAG_AA_NON_TEXT_CONTRAST
+    );
+  });
 });
 
 describe("console LIVE tag (board 2056ceab — #2561)", () => {

@@ -210,8 +210,8 @@
     --con-surface: rgba(22, 22, 22, 0.78);
     --con-surface-2: rgba(30, 30, 30, 0.72);
     --con-surface-3: rgba(42, 42, 42, 0.68);
-    --con-line: rgba(255, 255, 255, 0.08);
-    --con-line-strong: rgba(255, 255, 255, 0.14);
+    --con-line: rgba(255, 255, 255, 0.12);
+    --con-line-strong: rgba(255, 255, 255, 0.35);
 
     --con-fg: #f0f0f0;
     --con-muted: #b0b0b0;

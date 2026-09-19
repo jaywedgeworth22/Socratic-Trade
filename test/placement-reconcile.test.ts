@@ -426,11 +426,12 @@ describe("inline placement-error reconciliation via executeProposal", () => {
     const { getProposal, listFillEventsByProposalId, listNotificationEvents } = await import("../src/lib/db");
 
     // #3343: synchronous decline → throw with brokerState persisted to rejected_by_broker.
+    // The thrown Error message is the human-readable decline text (NOT the notification title).
     const result: Error = await executeProposal(proposalId, userId).then(
       (v) => { throw new Error(`expected throw, got ${JSON.stringify(v)}`); },
       (e) => e
     );
-    expect(result.message).toContain("declined by broker");
+    expect(result.message).toContain("Broker declined the order");
     expect(getProposal(proposalId, userId)?.status).toBe("rejected_by_broker");
     expect(listFillEventsByProposalId(proposalId, userId).length).toBe(0);
 
@@ -453,11 +454,12 @@ describe("inline placement-error reconciliation via executeProposal", () => {
     const { getProposal, listFillEventsByProposalId, listNotificationEvents } = await import("../src/lib/db");
 
     // #3343: order absent (authoritative list) → throw with not_placed persisted.
+    // The thrown Error message is the human-readable 'Order not placed (safe to retry)' text.
     const result: Error = await executeProposal(proposalId, userId).then(
       (v) => { throw new Error(`expected throw, got ${JSON.stringify(v)}`); },
       (e) => e
     );
-    expect(result.message).toContain("was NOT placed");
+    expect(result.message).toContain("Order not placed (safe to retry)");
     expect(getProposal(proposalId, userId)?.status).toBe("not_placed");
     expect(listFillEventsByProposalId(proposalId, userId).length).toBe(0);
 
@@ -485,11 +487,13 @@ describe("inline placement-error reconciliation via executeProposal", () => {
     const { getProposal, listFillEventsByProposalId, listNotificationEvents } = await import("../src/lib/db");
 
     // #3343: broker reachable, conservative-broker guard triggers → throw, row stays 'placing'.
+    // The Error message includes the network/timeout detail — the 'verify with broker' phrasing
+    // lives on the notification title (audit row), not on the thrown message.
     const result: Error = await executeProposal(proposalId, userId).then(
       (v) => { throw new Error(`expected throw, got ${JSON.stringify(v)}`); },
       (e) => e
     );
-    expect(result.message).toContain("verify with broker");
+    expect(result.message).toMatch(/Order placement (failed|uncertain)/);
     // Must stay 'placing' (the ONLY durable-intent state) — never not_placed for a non-authoritative broker.
     expect(getProposal(proposalId, userId)?.status).toBe("placing");
     expect(listFillEventsByProposalId(proposalId, userId).length).toBe(0);
@@ -510,11 +514,13 @@ describe("inline placement-error reconciliation via executeProposal", () => {
     const { getProposal, listFillEventsByProposalId, listNotificationEvents } = await import("../src/lib/db");
 
     // #3343: broker unreachable → throw, row stays 'placing' (regression guard #3).
+    // The Error message includes the network/timeout detail — the 'verify with broker' phrasing
+    // lives on the notification title, not on the thrown message.
     const result: Error = await executeProposal(proposalId, userId).then(
       (v) => { throw new Error(`expected throw, got ${JSON.stringify(v)}`); },
       (e) => e
     );
-    expect(result.message).toContain("verify with broker");
+    expect(result.message).toMatch(/Order placement (failed|uncertain)/);
     // The (3) regression guard: the row must remain 'placing' (NOT 'placing_failed') so the sweep
     // can finish it — this is the ONLY branch that leaves a durable intent.
     expect(getProposal(proposalId, userId)?.status).toBe("placing");

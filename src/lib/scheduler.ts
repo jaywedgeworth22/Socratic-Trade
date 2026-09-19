@@ -15,7 +15,7 @@ import { isEarningsCallsRefreshDue, refreshEarningsCallsTranscriptsIfDue } from 
 import { isRoicTranscriptRefreshDue, refreshRoicTranscriptsIfDue } from "./web-sources/roic-transcripts";
 import { runDailyLearningReviewIfDue } from "./learning-review";
 import { isRunAllowedNow } from "./market-hours";
-import { shouldDeferRagIngestDuringRth } from "./sqlite-event-loop";
+import { shouldDeferRagIngestDuringRth, sqliteYieldRetry } from "./sqlite-event-loop";
 import { runProviderTierCheckIfDue } from "./provider-tier";
 import { refreshLitestreamRemoteInventoryIfDue } from "./litestream-remote-inventory";
 import { runR2UsageCheckIfDue, runR2UsageDailyDigestIfDue } from "./r2-usage";
@@ -134,7 +134,9 @@ export async function reconcileManagedVectorRecordsIfDue(now = Date.now()): Prom
       const lastSuccessAt = getInternalSetting<PersistedTimestamp>(MANAGED_VECTOR_RECONCILE_LAST_SUCCESS_KEY);
       if (!isManagedVectorReconcileDue(now, lastAttemptAt, lastSuccessAt)) return null;
 
-      setInternalSetting(MANAGED_VECTOR_RECONCILE_LAST_ATTEMPT_KEY, new Date(now).toISOString());
+      await sqliteYieldRetry(() =>
+        setInternalSetting(MANAGED_VECTOR_RECONCILE_LAST_ATTEMPT_KEY, new Date(now).toISOString())
+      );
       const { reconcileManagedVectorRecords } = await import("./vector-db");
       // Scheduled maintenance is observation-only. Provider list inventory is eventually
       // consistent, so destructive repair requires an explicit operator invocation after review.
@@ -144,7 +146,9 @@ export async function reconcileManagedVectorRecordsIfDue(now = Date.now()): Prom
         return { status: "busy", result };
       }
 
-      setInternalSetting(MANAGED_VECTOR_RECONCILE_LAST_SUCCESS_KEY, new Date(now).toISOString());
+      await sqliteYieldRetry(() =>
+        setInternalSetting(MANAGED_VECTOR_RECONCILE_LAST_SUCCESS_KEY, new Date(now).toISOString())
+      );
       return { status: "success", result };
     } catch (error) {
       console.error(`[scheduler] managed-vector reconciliation failed: ${safeErrorMessage(error)}`);
@@ -623,8 +627,16 @@ export function reconcileAutonomyOnBoot(): void {
       try {
         const policy = getPolicy(userId, accountId);
         if (policy.systemState === "active") {
-          setPolicy({ ...policy, systemState: "halted" }, userId, accountId);
-          audit("autonomy_halted_on_boot", { from: "active", to: "halted", reason: "autoResumeOnBoot not enabled" }, userId, accountId);
+          // Wrap the policy write and the audit row separately so a contended
+          // write on one cannot take down the other; both used to throw
+          // straight out of the boot reconcile on a SQLITE_BUSY, leaving the
+          // policy halted but the audit row missing.
+          await sqliteYieldRetry(() =>
+            setPolicy({ ...policy, systemState: "halted" }, userId, accountId)
+          );
+          await sqliteYieldRetry(() =>
+            audit("autonomy_halted_on_boot", { from: "active", to: "halted", reason: "autoResumeOnBoot not enabled" }, userId, accountId)
+          );
           console.warn(`[scheduler] autonomy was 'active' for ${userId}/${accountId ?? "(base)"} at boot; reverted to 'halted' (enable autoResumeOnBoot in Settings to auto-resume).`);
           const label = accountId ? (accounts.find((a) => a.id === accountId)?.label ?? accountId) : "(base account)";
           const labels = haltedByUser.get(userId) ?? [];
@@ -1473,7 +1485,9 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
     // never reach this finally. A completed tick (ok or error) proves the loop is alive;
     // the watchdog does not write lastTick on unwedge.
     try {
-      setInternalSetting("scheduler:lastTick", new Date().toISOString());
+      await sqliteYieldRetry(() =>
+        setInternalSetting("scheduler:lastTick", new Date().toISOString())
+      );
       if (getHealthFailures() > 0) resetHealthFailures();
     } catch (err) {
       console.error("[scheduler] heartbeat write error:", err);

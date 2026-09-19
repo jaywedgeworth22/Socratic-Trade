@@ -601,7 +601,7 @@ function startTickWatchdog(): void {
  * The env var is a global override — when set, ALL users resume regardless of their per-user
  * toggle. When not set, each user's `autoResumeOnBoot` setting controls their own accounts.
  */
-export function reconcileAutonomyOnBoot(): void {
+export async function reconcileAutonomyOnBoot(): Promise<void> {
   if (process.env.AUTONOMY_RESUME_ON_BOOT === "1") {
     console.log("[scheduler] AUTONOMY_RESUME_ON_BOOT=1 — persisted 'active' autonomy will resume");
     return;

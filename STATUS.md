@@ -442,6 +442,30 @@ noisy — its remaining events are HTTP 5xx, which stay hard by design.
 
 Rollout: `docs/rollouts/2026-09-08-transient-network-health-classification.md`.
 
+## 2026-09-08 CLAUDE — RAG ingest budget Sentry warning: cooldown raised to 6h, rollup tested
+
+Board `c630ceed` (F04). `SOCRATIC-TRADE-27` (9,502 events) and `SOCRATIC-TRADE-2E` (34
+events, assigned to Jay) both trace to the RAG ingest text budget (`RAG_INGEST_MAX_TEXTS_PER_DAY`,
+default 20,000/24h) being exhausted during ingestion. The "fires on every throttled batch"
+part of this was already fixed by PR #3187 (merged 2026-09-07,
+`shouldEmitRagIngestBudgetSentry`) — `-27` went quiet the moment that landed; `-2E` is the
+same condition continuing under the new (already cooldown-gated) code, at a much lower but
+still non-trivial rate (30-minute cooldown, up to ~48 events/day while a backfill keeps the
+budget pinned at zero).
+
+Two real gaps closed here: (1) raised the cooldown from 30 minutes to 6 hours, matching the
+sibling `PINECONE_WU_BUDGET_SENTRY_COOLDOWN_MS` in the same file, so the warning actually
+approximates "once per budget window" instead of up to 48x/day; (2) added
+`test/rag-ingest-budget-sentry-rollup.test.ts` — the only prior test
+(`rag-ingest-budget-sentry-cooldown.test.ts`) covered just the fail-soft persistence-error
+edge case, not the rollup itself (repeat suppression, count/remaining-budget fields on the
+event, the unthrottled per-batch audit line, resumption after the window). Did NOT touch
+`RAG_INGEST_MAX_TEXTS_PER_DAY` — `.env.example` already documents it as a deliberate,
+operator-adjustable cost/pacing guard (raised to 200k during active backfills, shifted back
+to 20k after), not an arbitrary number.
+
+Branch `claude/sentry-rag-budget-rollup`. Rollout:
+`docs/rollouts/2026-09-08-rag-ingest-budget-sentry-rollup.md`.
 
 ## 2026-09-08 CLAUDE — R2 weekly cold snapshot stalled 9 days, silently
 

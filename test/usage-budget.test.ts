@@ -60,17 +60,21 @@ function status(providers: Array<{
 }
 
 describe("usage-budget: cheaperModel", () => {
+  // 2026-09-18 catalog cleanup: gpt-4o / gpt-mini-latest / gpt-5.4-nano were removed. The OpenAI
+  // downgrade chain now ends at gpt-5.6-luna (the cheapest remaining OpenAI row), so any
+  // premium OpenAI slug — including historical/persisted ones that no longer match the catalog —
+  // downgrades to gpt-5.6-luna instead of falling off into "no cheaper model".
   it("maps known models down a tier and returns undefined when none", () => {
-    expect(budget.cheaperModel("openai/gpt-4o")).toBe("openai/gpt-mini-latest");
+    expect(budget.cheaperModel("openai/gpt-4o")).toBe("openai/gpt-5.6-luna");
     expect(budget.cheaperModel("anthropic/claude-opus-4-8")).toBe("anthropic/claude-sonnet-latest");
     expect(budget.cheaperModel("claude-haiku-4-5-20251001")).toBeUndefined(); // already cheapest (prefix)
-    expect(budget.cheaperModel("openai/gpt-5.4-nano")).toBeUndefined();
-    expect(budget.cheaperModel("gpt-5.5")).toBe("gpt-mini-latest");
+    expect(budget.cheaperModel("openai/gpt-5.4-nano")).toBe("openai/gpt-5.6-luna"); // historical; lands on luna
+    expect(budget.cheaperModel("gpt-5.5")).toBe("gpt-5.6-luna");
     expect(budget.cheaperModel("grok-4.6")).toBe("grok-build-0.1");
     expect(budget.cheaperModel("x-ai/grok-4.6")).toBe("x-ai/grok-build-0.1");
     expect(budget.cheaperModel("muse-spark-1.3")).toBe("muse-glimmer-30b");
     expect(budget.cheaperModel("meta/muse-spark-1.3")).toBe("meta/muse-glimmer-30b");
-    expect(budget.cheaperModel("minimax-m3")).toBeUndefined(); // same catalog price as M2.7
+    expect(budget.cheaperModel("minimax-m3")).toBeUndefined(); // no cheaper row in the catalog
     expect(budget.cheaperModel(undefined)).toBeUndefined();
   });
 });
@@ -95,6 +99,9 @@ describe("usage-budget: evaluateBudgetForRun", () => {
   });
 
   it("downgrades the model when the LLM provider is over budget", async () => {
+    // 2026-09-18: premium OpenAI rows now downgrade all the way to gpt-5.6-luna (the cheapest
+    // remaining OpenAI row in the curated catalog); the chain stops there, so a higher-tier slug
+    // can't be downgraded further and a luna policy itself yields skip=true (see next test).
     const decision = await budget.evaluateBudgetForRun(
       "local",
       { llmModel: "openai/gpt-4o", redTeamLlmModel: "openai/gpt-4o" },
@@ -102,14 +109,15 @@ describe("usage-budget: evaluateBudgetForRun", () => {
     );
     expect(decision.skip).toBe(false);
     expect(decision.downgraded).toBe(true);
-    expect(decision.llmModel).toBe("openai/gpt-mini-latest");
-    expect(decision.redTeamLlmModel).toBe("openai/gpt-mini-latest");
+    expect(decision.llmModel).toBe("openai/gpt-5.6-luna");
+    expect(decision.redTeamLlmModel).toBe("openai/gpt-5.6-luna");
   });
 
   it("skips the cycle when over budget and already on the cheapest tier", async () => {
+    // gpt-5.6-luna is the curated bottom of the OpenAI chain now (gpt-5.4-nano was removed).
     const decision = await budget.evaluateBudgetForRun(
       "local",
-      { llmModel: "openai/gpt-5.4-nano" },
+      { llmModel: "openai/gpt-5.6-luna" },
       { status: status([{ name: "openai", status: "exceeded" }]) }
     );
     expect(decision.skip).toBe(true);
@@ -117,9 +125,11 @@ describe("usage-budget: evaluateBudgetForRun", () => {
   });
 
   it("still skips when green is cheapest even if the red model could be downgraded (F6)", async () => {
+    // The red seat would downgrade (claude-opus-4-8 -> claude-sonnet-latest), but the green seat
+    // is already at luna so the cycle is skipped per the F6 invariant.
     const decision = await budget.evaluateBudgetForRun(
       "local",
-      { llmModel: "openai/gpt-5.4-nano", redTeamLlmModel: "anthropic/claude-opus-4-8" },
+      { llmModel: "openai/gpt-5.6-luna", redTeamLlmModel: "anthropic/claude-opus-4-8" },
       { status: status([{ name: "openai", status: "exceeded" }]) }
     );
     expect(decision.skip).toBe(true);
@@ -193,9 +203,11 @@ describe("usage-budget: evaluateBudgetForRun", () => {
 
   it("enforces on openrouter when spend is booked there (universal routing)", async () => {
     upsertUserApiKey("local", "openrouter", "openrouter-placeholder");
+    // gpt-5.6-luna is the new cheapest OpenAI row — already at the bottom, so over-OpenRouter
+    // spend correctly skips rather than downgrade to a no-longer-existent cheaper tier.
     const decision = await budget.evaluateBudgetForRun(
       "local",
-      { llmModel: "openai/gpt-5.4-nano" },
+      { llmModel: "openai/gpt-5.6-luna" },
       { status: status([{ name: "openrouter", status: "exceeded" }, { name: "openai", status: "ok" }]) }
     );
     expect(decision.skip).toBe(true);
@@ -212,7 +224,8 @@ describe("usage-budget: evaluateBudgetForRun", () => {
     );
     expect(decision.skip).toBe(false);
     expect(decision.downgraded).toBe(true);
-    expect(decision.llmModel).toBe("openai/gpt-mini-latest");
+    // 2026-09-18: OpenAI downgrade chain ends at gpt-5.6-luna.
+    expect(decision.llmModel).toBe("openai/gpt-5.6-luna");
   });
 
   it("downgrades OpenRouter Muse Spark to Muse Glimmer when over budget", async () => {

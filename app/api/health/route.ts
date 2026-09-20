@@ -1,8 +1,10 @@
-import { getInternalSetting, getServiceHealthSummaries, databasePath, resolveApiKeyWithSource, alertStorageWarning } from "@/lib/db";
+import { getInternalSetting, getServiceHealthSummaries, databasePath, resolveApiKeyWithSource, alertStorageWarning, alertLivenessWarning } from "@/lib/db";
 import { isHardStoppedHealthSummary } from "@/lib/db-health";
 import { isIntentionalOffHealthService } from "@/lib/retired-direct-vendors";
 import { activeEmbeddingProvider } from "@/lib/vector-db";
 import type { RagEmbedRerankProvider } from "@/lib/rag-metering";
+import { qdrantConfigured, vectorReadBackend } from "@/lib/vector-store/qdrant-read";
+import { vectorWriteBackend } from "@/lib/vector-store/qdrant-write";
 import { getProviderTierStatus, isDataProvidersDegraded } from "@/lib/provider-tier";
 import { lookupRegisteredPlanTier } from "@/lib/provider-tier-plan";
 import { getLitestreamRemoteInventory } from "@/lib/litestream-remote-inventory";
@@ -105,6 +107,15 @@ export async function GET(request: Request) {
     checks.schedulerStale = release.processUptimeSeconds > schedulerStaleMs / 1000;
   }
 
+  if (checks.schedulerStale) {
+    void alertLivenessWarning(
+      "scheduler_stale",
+      lastTick
+        ? `The autonomous scheduler has not ticked in ${checks.schedulerAgeSeconds} seconds (threshold ${Math.round(schedulerStaleMs / 1000)}s).`
+        : `The autonomous scheduler has never ticked, and the process has been up for ${Math.round(release.processUptimeSeconds)} seconds.`
+    );
+  }
+
   // Scheduler lease state (additive; only meaningful when SCHEDULER_SINGLE_LEADER is on).
   // Surfaced here so ops tooling can confirm which process is the current leader and how old
   // the lease is. Never breaks the liveness probe.
@@ -146,6 +157,13 @@ export async function GET(request: Request) {
     // every account is halted.  The boolean sibling is the unique keyword substring.
     checks.tradingLiveness = publicLiveness;
     checks.tradingLivenessDegraded = publicLiveness.degraded > 0;
+    
+    if (checks.tradingLivenessDegraded) {
+      void alertLivenessWarning(
+        "trading_liveness_degraded",
+        `Trading liveness is degraded: ${publicLiveness.degraded} active account(s) have stalled or failed repeatedly.`
+      );
+    }
   } catch {
     checks.tradingLiveness = toPublicTradingLiveness(null);
     checks.tradingLivenessDegraded = false;
@@ -170,14 +188,18 @@ export async function GET(request: Request) {
     // never let provider-tier reporting break the health probe
   }
 
-  // Surface Pinecone and embed-provider configuration status. Provider-aware
-  // (bge-m3-metering-gate, 2026-07-18): "RAG configured" means Pinecone plus the ACTIVE embed
-  // provider's key — a missing key is irrelevant unless that provider is the active one
-  // (`activeEmbeddingProvider`, honoring a RAG_EMBED_PROVIDER pin).
+  // Surface vector-store and embed-provider configuration status. After the Qdrant
+  // cutover, "RAG configured" means the ACTIVE read backend is reachable plus the
+  // active embed provider's key — a leftover Pinecone key is not required when
+  // Qdrant is serving (PD #116 leftover: public health still advertised pineconeConfigured
+  // and treated a missing Pinecone key as RAG-down).
   let ragEmbedProvider: RagEmbedRerankProvider | null = null;
   try {
     const pineconeKey = resolveApiKeyWithSource("pinecone");
     checks.pineconeConfigured = pineconeKey.source !== "none";
+    checks.qdrantConfigured = qdrantConfigured();
+    checks.ragVectorReadBackend = vectorReadBackend();
+    checks.ragVectorWriteBackend = vectorWriteBackend();
 
     try {
       ragEmbedProvider = activeEmbeddingProvider();
@@ -190,7 +212,11 @@ export async function GET(request: Request) {
     }
     if (ragEmbedProvider) {
       const activeKeyConfigured = resolveApiKeyWithSource(ragEmbedProvider, "local").source !== "none";
-      if (pineconeKey.source === "none" || !activeKeyConfigured) {
+      const vectorStoreConfigured =
+        checks.ragVectorReadBackend === "qdrant"
+          ? checks.qdrantConfigured === true
+          : pineconeKey.source !== "none";
+      if (!vectorStoreConfigured || !activeKeyConfigured) {
         checks.ragConfigured = false;
       }
     }
@@ -207,13 +233,16 @@ export async function GET(request: Request) {
   try {
     const summaries = getServiceHealthSummaries();
     const dependencies: Record<string, { ok: boolean; degraded?: boolean }> = {};
-    // Critical liveness is ONLY Pinecone + Alpaca. A hard-stopped rag-embed/rag-rerank lane used
-    // to 503 this probe (bge-m3-metering-gate, 2026-07-18), which Coolify treats as container
-    // death: restart -> boot interlock re-halts autonomy. A dead embed cannot refill itself via
-    // restart, same as drained OpenRouter credits, so those lanes DEGRADE only (ok=false +
-    // degraded=true). Retrieval already fail-opens; ingest isolates per task. Still excluded
-    // from any 503 when RAG_EMBED_PROVIDER is pinned-but-keyless (`ragEmbedProviderError` set).
-    const criticalServices = new Set(["pinecone", "alpaca-broker"]);
+    // Critical liveness is Alpaca plus the ACTIVE vector store. After the Qdrant
+    // cutover Pinecone is leftover telemetry, not a 503 (PD #116). A hard-stopped
+    // rag-embed/rag-rerank lane used to 503 this probe (bge-m3-metering-gate, 2026-07-18),
+    // which Coolify treats as container death: restart -> boot interlock re-halts autonomy.
+    // A dead embed cannot refill itself via restart, same as drained OpenRouter credits,
+    // so those lanes DEGRADE only (ok=false + degraded=true). Retrieval already fail-opens;
+    // ingest isolates per task. Still excluded from any 503 when RAG_EMBED_PROVIDER is
+    // pinned-but-keyless (`ragEmbedProviderError` set).
+    const criticalServices = new Set(["alpaca-broker"]);
+    if (vectorReadBackend() !== "qdrant") criticalServices.add("pinecone");
     const softDegradeServices = new Set(["rag-embed", "rag-rerank"]);
     // Collapse (service, keySource) lanes to one entry per service. Prefer a CONFIGURED lane
     // (env/user) over a stale keySource:"none" lane so a service that later got a working key isn't

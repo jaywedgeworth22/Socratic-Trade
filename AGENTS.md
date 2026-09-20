@@ -165,7 +165,9 @@ owner 2026-07-09, so per-preview records would need re-creating), the Preview UR
 is a UI-only Coolify field, and
 `socratic-trade-prod` carries a preview-scoped `DB_BOOTSTRAP=fresh` so a PR preview can
 never restore the production DB and trade. To check
-your work: `npm run dev` locally in your own worktree + the verify CI gate.
+your work: `npm run dev:secrets` locally in your own worktree (Infisical runner) +
+the verify CI gate. Plain `npm run dev` no longer reads `.env.local` (2026-09-18
+strict-Infisical cutover, `cursor/strict-infisical-no-env-files`).
 The old preview-provisioning scripts (`setup-agent-previews.sh`, `sync-preview-lanes.sh`,
 `sync-watchdog.sh`) and the CI workflow (`sync-previews.yml`) were deleted 2026-07-09 (all
 dead after the preview retirement; the pre-push hook they used to install is now installed
@@ -217,6 +219,20 @@ current Hetzner host (app env lives in Coolify's DB, not a `/data/coolify` tree)
 **Infisical merge order (fleet, 2026-08-20):** the shared Infisical project loads first; the app project shadows it.  Fleet coordination keys (`AGENT_SYNC_*`, Slack bot token, the shared Coolify read-only stats token) belong ONLY in the shared project.  Do not copy them into the ST / CT / UM app projects — a rotate-in-shared then leftover-in-app leaves the old value winning.  LLM runtime keys are not Infisical at all (see Don't).  Use `scripts/infisical-secrets-safe.sh`.
 
 **Handoff-file grep trap (2026-08-14, binding):** `~/.secrets/global-api-keys` is a multi-secret file.  `grep '^[A-Z0-9_]+='` / `grep '^ADMIN'` / `rg TOKEN file` print **values** (the whole matching line).  Names only: `grep -oE '^[A-Z][A-Z0-9_]*' ~/.secrets/global-api-keys`.  Never `cat` or open that file with a Read tool.  One Grok session leaked the whole store this way.
+
+**Strict Infisical, no `.env` files (owner, 2026-09-18, binding):** Infisical is the sole source
+of truth for every secret. No `.env`, `.env.local`, `.env.*`, `.env.yml`, or `.env.yaml` anywhere
+— the only env-shaped file in the repo is the committed `.env.example`, which is bootstrap-only
+(Infisical machine identity + `ENCRYPTION_KEY` + the optional `REQUIRE_SECRETS_MANAGER` arming
+flag). The dev-only `.env.local` loader in `src/lib/db-api-keys.ts:32-60` is gone (kept the
+`~/.secrets/global-api-keys` handoff paths — that's the documented owner-side identity store,
+NOT an `.env` file). `scripts/cloud-setup.sh` no longer seeds `.env.local`. Prod
+`scripts/coolify-prod-start.sh` phase-2 explicitly exports `REQUIRE_SECRETS_MANAGER=1` so the
+fail-closed boot guard in `src/lib/secrets-source.ts` (called from `instrumentation.ts:51`)
+fires visibly from the boot script. Local dev: use `npm run dev:secrets`. Plain `npm run dev`
+is for tests-only; `predev` prints a one-time notice when no Infisical identity is in scope.
+`test/no-env-loader-or-dotenv-yaml.test.ts` is the regression guard — it grep-asserts no
+production code path reads `.env.local`, imports dotenv, or parses `.env.yml/.yaml/.json`.
 **Build caveats:** the box's `concurrent_builds` is
 pinned to **1** (two parallel `next build`s OOM-wedged the old 4 GB box on 2026-07-07,
 console reboot required; unproven on the 8 GB box — loosen only deliberately), and Docker
@@ -343,8 +359,9 @@ must not silently drift behind beta after work lands.
   `~/apps/trading-codex`, Antigravity → `~/apps/trading-antigravity`, Monet →
   `~/apps/trading-monet`, Cursor (background/agent mode) → `~/apps/trading-cursor`, Kimi →
   `~/apps/trading-kimi` on branch `agent/kimi-lane`). Edit
-  only there, on your `agent/<name>` branch. To see your edits live, run `npm run dev` in
-  your own worktree (localhost; the old always-on PM2/HMR previews are retired).
+  only there, on your `agent/<name>` branch. To see your edits live, run
+  `npm run dev:secrets` in your own worktree (Infisical runner; localhost; the old
+  always-on PM2/HMR previews are retired).
 - **Do not edit in another agent's worktree, nor in the `main` integration worktree.**
 - **Land work via the landing script — never push directly to main:**
   ```bash
@@ -369,7 +386,7 @@ must not silently drift behind beta after work lands.
   - Refuses any push originating from `~/Code/Agentic Trading` (integration worktree).
   - Emergency human override (use sparingly): `HOOKS_ALLOW_MAIN_PUSH=1 git push origin ...`
 - **`npm run build` only affects YOUR worktree.** If a build wipes your `.next` and a local
-  `npm run dev` starts erroring (`ENOENT .next/...`), restart that worktree's dev server.
+`npm run dev:secrets` starts erroring (`ENOENT .next/...`), restart that worktree's dev server.
 - **PM2:** leftover `pm2 restart trading-<you>` / `pm2 list` are fine on the Mac if those
   apps still exist; do **not** `pm2 delete`/rename another agent's app or `trading`; run
   `pm2 save` after intentional changes.  Never run a build/`next dev` *inside*
@@ -385,10 +402,10 @@ called Cursor "not a 4th agent lane" — that's outdated; corrected 2026-07-06, 
 1. **A full peer autonomous lane**, on par with Claude Code, Codex, and Antigravity/Gemini.
    The owner runs Cursor's background/agent mode on **DeepSeek**, producing work in its own
    worktree (`~/apps/trading-cursor`), on its own branch (`agent/cursor`).  Preview
-   hostnames are retired — check work with `npm run dev` locally plus the verify CI gate.
-   Treat it exactly like the Claude/Codex/Antigravity/Monet rows: don't edit in it from
-   another agent, land via `scripts/land.sh`, keep the Pre-Commit/Handoff Protocol current
-   from it like any other lane.
+   hostnames are retired — check work with `npm run dev:secrets` locally (Infisical runner)
+   plus the verify CI gate.  Treat it exactly like the Claude/Codex/Antigravity/Monet rows:
+   don't edit in it from another agent, land via `scripts/land.sh`, keep the Pre-Commit/
+   Handoff Protocol current from it like any other lane.
 2. **The human-in-the-loop review seat.** The owner still also uses Cursor interactively —
    reviewing/merging `agent/*` branches, fast surgical hand-edits, in-editor debugging,
    codebase Q&A — from the existing `main` integration worktree (`~/Code/Agentic Trading`).
@@ -409,7 +426,7 @@ A local `next dev` listening on a port does **not** mean another agent is mid-ta
 infer "someone is working" from an open 3000/3001/3002 (or a leftover 4000/4001/4100-4104).
 Coordinate ONLY via `git status` / `git log` / the branch list and `STATUS.md` — never by
 inspecting ports.  Per-agent PM2 preview lanes and `*.jays.services` preview hostnames are
-retired; use `npm run dev` in your own worktree only.
+retired; use `npm run dev:secrets` (Infisical runner) in your own worktree only.
 
 Host-local deployment details (tunnel, pm2 ecosystem) live in `~/apps/README.md` on the
 deployment machine.
@@ -680,7 +697,13 @@ paternalism that keeps creeping back in from every agent (Claude, Codex, others)
     the runtime names. Prior code-only PRs (#1856 closed; #2210/#2213 then
     *allowed* env to overwrite tombstones) did not remove the Infisical source.
 
-## Cursor Cloud specific instructions
+## - Run the dev server with `npm run dev:secrets` (Infisical runner on port `3000`).
+  Do not use `npm run dev` plain — it no longer reads `.env.local` (2026-09-18
+  strict-Infisical cutover) and will be missing any keys.  Do not use `npm run dev:codex`
+  (port 3001) or `npm run dev:clean` (it kills port 3000). `npm run build` deletes/
+  regenerates `.next/`, so restart `npm run dev:secrets` after a build.
+
+Cursor Cloud specific instructions
 
 These notes apply when running in the Cursor Cloud agent VM. They override the
 host-machine "Hosting & dev servers" section above, which describes the user's

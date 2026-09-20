@@ -634,16 +634,15 @@ export async function reconcileAutonomyOnBoot(): Promise<void> {
       try {
         const policy = getPolicy(userId, accountId);
         if (policy.systemState === "active") {
-          // setPolicy is idempotent; audit is not.  Retry each statement on its own so a
-          // SQLITE_BUSY on audit cannot halt twice into two audit rows.
-          await sqliteYieldRetry(() => setPolicy({ ...policy, systemState: "halted" }, userId, accountId));
+          // Wrap the policy write and the audit row separately so a contended
+          // write on one cannot take down the other; both used to throw
+          // straight out of the boot reconcile on a SQLITE_BUSY, leaving the
+          // policy halted but the audit row missing.
           await sqliteYieldRetry(() =>
-            audit(
-              "autonomy_halted_on_boot",
-              { from: "active", to: "halted", reason: "autoResumeOnBoot not enabled" },
-              userId,
-              accountId
-            )
+            setPolicy({ ...policy, systemState: "halted" }, userId, accountId)
+          );
+          await sqliteYieldRetry(() =>
+            audit("autonomy_halted_on_boot", { from: "active", to: "halted", reason: "autoResumeOnBoot not enabled" }, userId, accountId)
           );
           console.warn(`[scheduler] autonomy was 'active' for ${userId}/${accountId ?? "(base)"} at boot; reverted to 'halted' (enable autoResumeOnBoot in Settings to auto-resume).`);
           const label = accountId ? (accounts.find((a) => a.id === accountId)?.label ?? accountId) : "(base account)";

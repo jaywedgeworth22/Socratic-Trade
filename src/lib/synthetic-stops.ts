@@ -510,8 +510,10 @@ export async function runSyntheticStopMonitor(
   for (const stop of await sqliteYieldRetry(() => listSyntheticStops(accountNumber, userId))) {
     const plan = stopPlanBySymbol[normalizeSymbol(stop.symbol)];
     if (plan === "none") {
-      // delete is idempotent; audit is not.  Separate envelopes so a BUSY on audit
-      // cannot duplicate the delete's audit row.
+      // The delete and the audit are independent retries on purpose: a busy
+      // audit table used to retry the whole pair, so a row that succeeded
+      // its delete was deleted again on the retry.  Audit-after-delete
+      // also means a delete that wins on retry still gets its audit row.
       await sqliteYieldRetry(() => deleteSyntheticStop(stop.id, userId));
       await sqliteYieldRetry(() =>
         audit("synthetic_stop_purged_by_plan", { symbol: stop.symbol, plan: "none", note: "per-position stop plan is 'none' — protection removed" }, userId, policy.connectedAccountId)

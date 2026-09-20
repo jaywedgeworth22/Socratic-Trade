@@ -140,15 +140,29 @@ function shouldEmitPineconeWuBudgetSentry(nowMs: number = Date.now()): boolean {
 }
 const RAG_CONNECTION_ALERT_COOLDOWN_MS = 60 * 60_000;
 const RAG_INGEST_BUDGET_ALERT_PREFIX = "vectorStore:ingestBudgetAlert";
-const RAG_INGEST_BUDGET_ALERT_COOLDOWN_MS = 30 * 60_000;
+// 6h matches PINECONE_WU_BUDGET_SENTRY_COOLDOWN_MS above and DEFAULT_ALERT_COOLDOWN_MS in
+// usage-limit-alerts.ts — one cooldown convention for "a budget/quota condition is still true"
+// warnings across the RAG lane. Raised from 30 minutes (SOCRATIC-TRADE-2E, 2026-09-08 follow-up):
+// the 2026-09-07 P2 fix below stopped the per-batch flood, but 30 minutes still pages up to
+// ~48x/day for as long as a backfill keeps the daily text budget pinned at zero — nowhere near
+// "once per window" for a condition whose window (RAG_INGEST_MAX_TEXTS_PER_DAY) is 24h.
+const RAG_INGEST_BUDGET_ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const inMemoryRagIngestBudgetAlertCooldown = new Map<string, number>();
+/** @internal — exported for the rollup-coverage test in test/rag-ingest-budget-sentry-rollup.test.ts
+ *  to rewind the in-memory cooldown alongside the persisted one when simulating the
+ *  window having elapsed. Do NOT mutate from production code; this is a test seam. */
+export const __ragIngestBudgetAlertCooldownTestHandle__ = inMemoryRagIngestBudgetAlertCooldown;
 
 /**
  * A persistent daily-ingest-budget exhaustion must page ONCE per cooldown window, not once per
  * document/tick. Unlike alertRagConnectionFailure (which has always had a cooldown), this Sentry
  * warning had none: SOCRATIC-TRADE-27 fired 8,036 times over 2 days (roughly every 10-20s,
  * matching the SEC ingest worker's 5s tick x up to 5 tasks/tick claimed against one persistent
- * condition) and buried the handful of real "embed connection failed" events underneath it.
+ * condition) and buried the handful of real "embed connection failed" events underneath it. The
+ * per-batch signal is not lost: storeContextsImpl's `audit("vector_ingest_budget", ...)` call
+ * (below, in the caller) is unconditional and fires every throttled batch regardless of this gate
+ * — this cooldown only throttles the noisy, paging-shaped Sentry captureMessage, not the durable
+ * audit-log line an operator can still replay batch-by-batch.
  */
 function shouldEmitRagIngestBudgetSentry(userId: string, nowMs: number = Date.now()): boolean {
   // Fail-soft: getInternalSetting/setInternalSetting are synchronous SQLite calls and can throw
@@ -8367,12 +8381,16 @@ export async function retrieveContextDetailed(
   } catch (err) {
     console.error("[vector-db] Error retrieving context:", err);
     if (!wasRagSentryCaptured(err)) {
+      // Same leftover as the storeContexts catch (fixed 2026-09-07): a hardcoded
+      // `provider: "pinecone"` folded post-cutover Qdrant retrieve failures into
+      // SOCRATIC-TRADE-1T / PD #116 even when denseTierQuery never touched Pinecone.
       await captureRagSentryMessage("error", "RAG retrieval failed", {
-        provider: "pinecone",
+        provider: readBackend,
         operation: "retrieveContext",
         source: userId === "local" ? "operator" : "user",
         symbol,
-        reason: err instanceof Error ? err.message : String(err)
+        reason: err instanceof Error ? err.message : String(err),
+        ...(isTransientNetworkError(err) ? { isTransient: true } : {})
       });
     }
     reportRetrievalStatus(options, "lookup_failed", { userId, symbol });

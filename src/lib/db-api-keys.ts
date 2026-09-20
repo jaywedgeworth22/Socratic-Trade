@@ -4,7 +4,6 @@
 import "server-only";
 import crypto from "crypto";
 import { existsSync, readFileSync } from "fs";
-import { resolve } from "path";
 import { getDb, audit } from "./db";
 import { normalizeSymbol } from "./money";
 import { registerPlanTierLookup } from "./provider-tier-plan";
@@ -29,10 +28,14 @@ import { invalidateDashboardSnapshotCache } from "./dashboard-snapshot-cache";
 
 // ── Field-Level Encryption ──────────────────────────────────────────────────
 
-// Load .env.local and local development secrets files for local system development (production uses Infisical)
+// Load the bootstrap-identity handoff file (Infisical client credentials + ALIASES only) for
+// local development. Production uses Infisical exclusively — see docs/secrets.md. The chmod-600
+// `~/.secrets/global-api-keys` file is the documented owner-side bootstrap identity store, NOT a
+// `.env` file: a working tree with no local dotenv file is the new contract as of 2026-09-18
+// (PR `cursor/strict-infisical-no-env-files`). For dev/CI/cloud-agent seats, run
+// `npm run dev:secrets` (Infisical runner) instead of `npm run dev` plain.
 if (process.env.NODE_ENV !== "test" && !process.env.VITEST && process.env.NODE_ENV !== "production" && !process.env.COOLIFY_PROD_PHASE2) {
   const envPaths = [
-    resolve(process.cwd(), ".env.local"),
     "/Users/jay/.secrets/global-api-keys.env",
     "/Users/jay/.secrets/global-api-keys"
   ];
@@ -1933,6 +1936,7 @@ interface RawChatTurnRow {
   redacted: number;
   model: string | null;
   client_turn_id: string | null;
+  connected_account_id: string | null;
   created_at: string;
 }
 
@@ -1955,6 +1959,7 @@ function mapChatTurn(row: RawChatTurnRow): ChatTurn {
     redacted: row.redacted === 1,
     model: row.model ?? null,
     clientTurnId: row.client_turn_id ?? null,
+    connectedAccountId: row.connected_account_id ?? null,
     createdAt: row.created_at
   };
 }
@@ -1962,9 +1967,9 @@ function mapChatTurn(row: RawChatTurnRow): ChatTurn {
 export function insertChatTurn(turn: ChatTurn): ChatTurn {
   getDb()
     .prepare(
-      "INSERT INTO chat_turns (id, user_id, role, text, citations, intent, redacted, model, client_turn_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO chat_turns (id, user_id, role, text, citations, intent, redacted, model, client_turn_id, connected_account_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
-    .run(turn.id, turn.userId, turn.role, turn.text, JSON.stringify(turn.citations), turn.intent ?? null, turn.redacted ? 1 : 0, turn.model ?? null, turn.clientTurnId ?? null, turn.createdAt);
+    .run(turn.id, turn.userId, turn.role, turn.text, JSON.stringify(turn.citations), turn.intent ?? null, turn.redacted ? 1 : 0, turn.model ?? null, turn.clientTurnId ?? null, turn.connectedAccountId ?? null, turn.createdAt);
   return turn;
 }
 
@@ -1976,10 +1981,17 @@ export function findChatTurnByClientId(userId: string, clientTurnId: string): Ch
   return row ? mapChatTurn(row) : null;
 }
 
-export function listChatTurns(userId: string, limit: number = 100): ChatTurn[] {
-  const rows = getDb()
-    .prepare("SELECT * FROM chat_turns WHERE user_id = ? ORDER BY created_at ASC, rowid ASC")
-    .all(userId) as RawChatTurnRow[];
+export function listChatTurns(userId: string, limit: number = 100, connectedAccountId?: string | null): ChatTurn[] {
+  let rows: RawChatTurnRow[];
+  if (connectedAccountId !== undefined) {
+    rows = getDb()
+      .prepare("SELECT * FROM chat_turns WHERE user_id = ? AND (connected_account_id = ? OR connected_account_id IS NULL) ORDER BY created_at ASC, rowid ASC")
+      .all(userId, connectedAccountId) as RawChatTurnRow[];
+  } else {
+    rows = getDb()
+      .prepare("SELECT * FROM chat_turns WHERE user_id = ? ORDER BY created_at ASC, rowid ASC")
+      .all(userId) as RawChatTurnRow[];
+  }
   const mapped = rows.map(mapChatTurn);
   return limit > 0 && mapped.length > limit ? mapped.slice(mapped.length - limit) : mapped;
 }

@@ -924,7 +924,7 @@ function operatorAlertEmail(): string | undefined {
  * those channels are not already in prefs — otherwise we double-send.
  */
 async function deliverSystemAlertToAdmins(input: {
-  type: "provider_degraded" | "storage_warning";
+  type: "provider_degraded" | "storage_warning" | "liveness_warning";
   title: string;
   body: string;
   payload: unknown;
@@ -1195,6 +1195,34 @@ export async function alertStorageWarning(warningType: string, message: string):
       body,
       payload,
       kind: "storage_warning"
+    });
+  } catch {
+    // never throw on warnings
+  }
+}
+
+const LIVENESS_ALERT_COOLDOWN_PREFIX = "livenessAlertSent";
+const LIVENESS_ALERT_COOLDOWN_MS = 15 * 60_000; // 15 mins for liveness since it's more critical, or maybe 12 hours? Let's use 1 hour.
+export async function alertLivenessWarning(warningType: string, message: string): Promise<void> {
+  try {
+    const key = `${LIVENESS_ALERT_COOLDOWN_PREFIX}:${warningType}`;
+    const { getInternalSetting, setInternalSetting, audit } = await import("./db");
+    const last = getInternalSetting<string>(key);
+    if (last && Date.now() - Date.parse(last) < LIVENESS_ALERT_COOLDOWN_MS) return;
+    setInternalSetting(key, new Date().toISOString());
+
+    const title = `Liveness Warning: ${warningType.replace(/_/g, " ")}`;
+    const body = message;
+    const payload = { warningType, message };
+
+    audit("liveness_warning_alert", payload, "local");
+
+    await deliverSystemAlertToAdmins({
+      type: "liveness_warning",
+      title,
+      body,
+      payload,
+      kind: "liveness_warning"
     });
   } catch {
     // never throw on warnings

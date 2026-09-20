@@ -43,6 +43,7 @@ import {
   getRegimeScorecard,
   getThesisScorecard,
   returnSinceProposalPct,
+  RED_TEAM_EFFICACY_DEFAULT_AUDIT_LIMIT,
   type PrefetchedFills,
   type PrefetchedPnl
 } from "./performance";
@@ -99,7 +100,10 @@ export {
 } from "./dashboard-snapshot-cache";
 
 const PROPOSAL_PERFORMANCE_MIN_AGE_MS = 15 * 60_000;
-const RED_TEAM_EFFICACY_AUDIT_LIMIT = 500;
+// Shared with getRedTeamEfficacy's own default (src/lib/performance.ts) so the Results-page
+// veto card and the efficacy rollup it calls always scan the same window — see
+// RED_TEAM_EFFICACY_DEFAULT_AUDIT_LIMIT's comment for why this was raised past 500.
+const RED_TEAM_EFFICACY_AUDIT_LIMIT = RED_TEAM_EFFICACY_DEFAULT_AUDIT_LIMIT;
 
 // Same "no data" shape fetchMacroData's own internal failure path returns (BLANK_MACRO in
 // macro.ts, not exported) — used only as the deadline fallback below, since fetchMacroData already

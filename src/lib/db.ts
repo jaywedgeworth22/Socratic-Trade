@@ -7,6 +7,7 @@ import "server-only";
 import Database from "better-sqlite3";
 import { mkdirSync } from "fs";
 import { dirname, resolve } from "path";
+import { resetDrizzleForTesting } from "./db/client";
 import crypto from "crypto";
 import { DEFAULT_POLICY, DEFAULT_SCORING_WEIGHTS, DEFAULT_STRATEGY_PROMPT } from "./defaults";
 import { SQLITE_BUSY_PIN_MS } from "./sqlite-event-loop";
@@ -120,6 +121,12 @@ export function resetDbForTesting(): void {
     } catch {}
     db = undefined;
   }
+  // Drop the cached Drizzle wrapper too — it captures the underlying Database handle
+  // at construction time, so resetting only the raw sqlite connection would leave a
+  // dangling wrapper that throws "The database connection is not open" on the next
+  // query. Test-only helper, no production effect (resetDrizzleForTesting is a no-op
+  // outside the test runtime in practice — getDrizzle is module-private to tests).
+  resetDrizzleForTesting();
 }
 
 // ── Versioned migrations ─────────────────────────────────────────────────────
@@ -3265,6 +3272,16 @@ const MIGRATIONS: Migration[] = [
            ON document_chunks_fts_index (symbol, source, accession)`
       );
     }
+  },
+  {
+    version: 89,
+    name: "chat_turns_connected_account_id",
+    up: (database) => {
+      if (!tableExists(database, "chat_turns")) return;
+      if (!columnExists(database, "chat_turns", "connected_account_id")) {
+        database.exec("ALTER TABLE chat_turns ADD COLUMN connected_account_id TEXT");
+      }
+    }
   }
 ];
 
@@ -3435,7 +3452,7 @@ export function hasEncryptedCredentials(database: Database.Database): boolean {
  * Fail loudly at boot rather than silently decrypting stored creds to '' (which a
  * per-process random ENCRYPTION_KEY fallback does). Triggers only when the key is absent
  * (ephemeral random fallback) AND the DB already holds ciphertext. `ephemeral` is read
- * from process.env at call time so it reflects any .env.local loaded during import.
+ * from process.env at call time so it reflects any local dotenv-style file loaded during import.
  */
 export function assertEncryptionKeyAvailable(
   database: Database.Database,

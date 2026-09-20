@@ -4,6 +4,14 @@
 
 #3383 is live (`2fc699c328`) and dropped serving `busy_timeout` to 100ms.  Three scheduler writes still ran synchronously: `scheduler:lastTick`, managed-vector lastAttempt/lastSuccess, and boot `setPolicy`.  A SQLITE_BUSY on lastTick after the short pin was counted as a health failure and could abdicate a live leader.  Boot halt shared one envelope between idempotent `setPolicy` and non-idempotent `audit`.  Three synthetic-stop plan-purge paths still mixed `deleteSyntheticStop` and `audit` in one `sqliteYieldRetry` callback, so a BUSY on audit could duplicate `synthetic_stop_purged_by_plan`.  Each write now has its own yield-retry envelope.  PR #3408, squash auto-merge armed.  Extra-ship no.  Stay out of `broker-protective-stops.ts`.  No Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-18-3385-sqlite-yield-remainder.md`.
+## 2026-09-18 CLAUDE — Collapsible-card keyboard focus ring made explicit (board bf05f16a)
+
+The collapsible `Card` `<summary>` carried `focus:outline-none`.  On the current build the global
+ring still won (unlayered console.css beats `@layer utilities`), so the defect was latent rather than
+live, but nothing pinned it.  Removed the opt-out, added an explicit inset `:focus-visible` rule and
+two source guards in `test/console-a11y.test.ts`.  The 320px scope-selector collapse is not verified
+and stays open on the row.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-console-card-focus-ring.md`.
 
 ## 2026-09-18 CLAUDE — Post-cancel protective-stop bookkeeping after the #3383 pin (money path)
 
@@ -39,6 +47,29 @@ Rollout: `docs/rollouts/2026-09-18-datadog-free-remaining.md`.
 
 Hosted tsc failed on `@/app/ui/theme` (alias is `src/*`).  Relative import from console chrome/ticker-logo.  Default stays light.  Extra-ship no.  No Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-18-ag-takeover-theme-ci.md`.
+## 2026-09-18 GROK — MM AG takeover #3380 venue CI (board 6aa1e66e)
+
+Hosted eslint failed prefer-const on unused-mutated quantity/dollarAmount.  Destructure them as const.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-ag-takeover-venue-ci.md`.
+## 2026-09-18 GROK — MM AG takeover #3381 test CI (board 6aa1e66e)
+
+Hosted tsc failed on fantasy policy fields and setDbForTesting.  Align route tests with DEFAULT_POLICY; restore maxWorkers 1.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-ag-takeover-tests-ci.md`.
+## 2026-09-18 GROK — MM AG takeover #3382 ops CI (board 6aa1e66e)
+
+Hosted tsc failed because liveness_warning was not in deliverSystemAlertToAdmins.  Add it to the union.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-ag-takeover-ops-ci.md`.
+
+## 2026-09-18 CLAUDE — Restart loops now leave a durable trail and raise an alert (board a9676caf)
+
+Coolify replaces the container on every restart, so a previous container's logs and exit-guard
+receipts vanished and nothing alerted on the loop itself.  New `src/lib/boot-ledger.ts` appends one
+JSON line per boot/exit to `boot-ledger.jsonl` beside the DB on the persistent volume (exit code,
+signal, `process.exit` call site via a new `exit-guard` receipt hook; a boot with no predecessor
+exit line reads as "killed").  3 boots in 45 minutes raises a Sentry `fatal` message plus one admin
+alert per 12h.  Repo code only: the Coolify-side restart-count monitor is still a host task.
+Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-restart-loop-boot-ledger.md`.
 
 ## 2026-09-18 CURSOR — Effort Issues Sync Crons margin (FLEET-INFRA-C0)
 
@@ -68,6 +99,14 @@ Rollout: `docs/rollouts/2026-09-17-post-claim-sqlite-busy-fire.md`.
 
 Hosted `verify` on #3383 timed out (`test/synthetic-stops.test.ts` and sibling reprice files at 60s/30s).  Cause: `runSyntheticStopMonitor` now `await yieldEventLoop()` (`setImmediate`), and those tests used full `vi.useFakeTimers()` which never flushes it.  Tests now fake `Date` only; `isSqliteBusy` does not retry a stamped non-BUSY sqlite code.  Pin+yield production behavior unchanged.  Extra-ship no.  No Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-17-sqlite-busy-event-loop-pin.md`.
+
+## 2026-09-18 FIXER — RAG retrieval no longer pages as Pinecone (PD #116 leftover)
+
+`retrieveContextDetailed` catch hardcoded `provider: "pinecone"` after Qdrant cutover, so
+Qdrant `fetch failed` kept fingerprinting as SOCRATIC-TRADE-1T.  Catch uses `readBackend`;
+Qdrant search retries transients; `/api/health` reports the active vector backend and does
+not 503 on leftover Pinecone while Qdrant is serving.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-rag-retrieval-qdrant-mislabel.md`.
 
 ## 2026-09-17 GROK — SQLITE_BUSY event-loop pin+yield (board e7b49943)
 
@@ -106,6 +145,27 @@ Merged PR #3230 to address Issue #3220:
 4. Audited Alpaca MCP bracket sibling cancellations when REST credentials are not provided.
 5. Triggered teardown of sibling bracket legs upon manual cancellation.
 Rollout: \`docs/rollouts/2026-09-12-issue-3220-tradier-broker-fixes.md\`.
+## 2026-09-18 CURSOR — Strict Infisical, no `.env.local` files (IN PR — verification deferred to CI `verify` ruleset)
+
+Owner directive 2026-09-18: Infisical is the sole source of truth for every secret.  This PR
+deletes the dev-only `.env.local` loader path in `src/lib/db-api-keys.ts:32-60` (keeping the
+`~/.secrets/global-api-keys` handoff paths, since that's the documented owner-side identity
+store, not an `.env` file); stops seeding `.env.local` from `.env.example` in
+`scripts/cloud-setup.sh:47-50`; shrinks `.env.example` to bootstrap-only (Infisical client
+identity + `ENCRYPTION_KEY` + `REQUIRE_SECRETS_MANAGER` arming comment); exports
+`REQUIRE_SECRETS_MANAGER=1` in `scripts/coolify-prod-start.sh` phase-2 re-exec so prod
+visibly arms the fail-closed boot guard (`src/lib/secrets-source.ts` + `instrumentation.ts:51`);
+makes `npm run dev:secrets` the canonical local start path with a one-time `predev` notice
+on plain `npm run dev`; updates AGENTS.md + docs/secrets.md + adds
+`test/no-env-loader-or-dotenv-yaml.test.ts` as a regression guard.  Branch
+`cursor/strict-infisical-no-env-files` from `origin/main`.  11 file changes (+new).  Local
+`npm install` wedged against peer-agent concurrent installs (multiple lanes competing for
+the npm registry on this machine; documented in rollout note); `node --check` passes on the
+new `predev-check.mjs`.  **Verification gate is the ruleset `verify` workflow on GitHub
+hosted runners** — that path runs `tsc --noEmit` + `vitest` + `next build` without peer
+contention.  Local first-party install deferred.  No merge from this lane.
+Rollout: `docs/rollouts/2026-09-18-strict-infisical-no-env-files.md`.
+
 ## 2026-09-15 GROK — PR #3296 401 JSON still redirects
 
 Sentry thread on `use-live-scan.ts`: `readErrorMessage` parsed JSON before the 401 check, so a JSON 401 body would skip `redirectToLogin()`.  Status is checked first now.  Merge is live — no Coolify Deploy.
@@ -131,6 +191,11 @@ Rollout: `docs/rollouts/2026-09-13-issue-3223-qdrant-fuses-fts-optimization.md`.
 
 Executed an exhaustive, multi-subagent audit across the entire codebase covering Trading Execution & Persistence, Security & API Routes, AI Strategy & Vector Retrieval, and Web Console & iOS Client.  Identified 3 Critical trading bugs (Tradier bracket entry dropping in `equityRowsFromTradierOrder`, missing `ordersListIncludesTerminal` on Tradier, and HTTP 200 rejection envelope misclassification), 2 Critical console bugs (duplicate strategy runs from mounted desktop/mobile `RunOnceButton` listeners and an un-backed-off deadline retry spin loop), 2 Critical AI engine bugs (`withDatadogLlmObs` duplicate execution on failure, and Red Team unhandled JSON parse failure aborting fallback models), plus over 15 High/Medium vulnerabilities, storage bloat drivers, and event-loop stall sources.  Logged and triaged all findings into 8 dedicated GitHub issues (#3220–#3227) with detailed reproduction mechanics and remediation steps.  Effort logs updated on both branch-neutral live board (`/Users/jay/apps/TRADING-EFFORT-LOG.md`) and repo mirror (`docs/EFFORT-LOG.md`).
 Rollout: `docs/rollouts/2026-09-12-codebase-full-audit.md`.
+
+## 2026-09-18 CURSOR — CI Crons margin (FLEET-INFRA-DB)
+
+Sentry `ci-socratic-trade-ci` false-paged at 08:02Z (first miss on the #3302 slug).  Scheduled `ci.yml` itself succeeds; GitHub starts the nightly `47 7 * * *` canary 5-6.5h late (typical ~12:46-14:24Z, worst retained 2026-09-14 14:24Z) and today's 07:47Z tick had no `schedule` run because main-push CI held `ci-CI-refs/heads/main`.  Same class as #3194 / FLEET-INFRA-C1, #3387 / C3, #3389 / BY, and #3390 / C0.  Raise `CHECKIN_MARGIN_OVERRIDES["CI"]` to 600.  Cron and verify suite unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` CI.  Do not close DB on merge.
+Rollout: `docs/rollouts/2026-09-18-ci-monitor-margin.md`.
 
 ## 2026-09-10 GROK — PR #3208 fixer tip (tini PID1 / HEALTHCHECK curl self-timeout)
 
@@ -232,6 +297,11 @@ events during the measured stall burst; 09-07 had *more* lock events than 09-08 
 less pinning; and a busy-wait sleeps rather than burning the 107% CPU observed).  No timeout
 widened — that shipped separately in PR #3201.  Rollout:
 `docs/rollouts/2026-09-09-fts-mirror-nonconvergence.md`.
+## 2026-09-18 GROK — AG entry-path remainder (board 6aa1e66e)
+
+MM takeover of `ag/620ef423` was empty.  Land iOS first-run copy + Auth.js error=/login, with the login page now explaining `?error=` codes.  The header-based already-signed-in redirect was dropped (dead code on a public path; Sentry finding on #3396).  Do not rename callbackUrl to next.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-ag-entry-paths.md`.
+
 ## 2026-09-09 GROK — PR #3204 fixer tip (multipart retry, drill cleanup, fail-closed counts)
 
 Codex P1+P2 on `claude/backup-methodology`.  CompleteMultipartUpload 200+`<Error>` bodies now
@@ -388,6 +458,30 @@ noisy — its remaining events are HTTP 5xx, which stay hard by design.
 
 Rollout: `docs/rollouts/2026-09-08-transient-network-health-classification.md`.
 
+## 2026-09-08 CLAUDE — RAG ingest budget Sentry warning: cooldown raised to 6h, rollup tested
+
+Board `c630ceed` (F04). `SOCRATIC-TRADE-27` (9,502 events) and `SOCRATIC-TRADE-2E` (34
+events, assigned to Jay) both trace to the RAG ingest text budget (`RAG_INGEST_MAX_TEXTS_PER_DAY`,
+default 20,000/24h) being exhausted during ingestion. The "fires on every throttled batch"
+part of this was already fixed by PR #3187 (merged 2026-09-07,
+`shouldEmitRagIngestBudgetSentry`) — `-27` went quiet the moment that landed; `-2E` is the
+same condition continuing under the new (already cooldown-gated) code, at a much lower but
+still non-trivial rate (30-minute cooldown, up to ~48 events/day while a backfill keeps the
+budget pinned at zero).
+
+Two real gaps closed here: (1) raised the cooldown from 30 minutes to 6 hours, matching the
+sibling `PINECONE_WU_BUDGET_SENTRY_COOLDOWN_MS` in the same file, so the warning actually
+approximates "once per budget window" instead of up to 48x/day; (2) added
+`test/rag-ingest-budget-sentry-rollup.test.ts` — the only prior test
+(`rag-ingest-budget-sentry-cooldown.test.ts`) covered just the fail-soft persistence-error
+edge case, not the rollup itself (repeat suppression, count/remaining-budget fields on the
+event, the unthrottled per-batch audit line, resumption after the window). Did NOT touch
+`RAG_INGEST_MAX_TEXTS_PER_DAY` — `.env.example` already documents it as a deliberate,
+operator-adjustable cost/pacing guard (raised to 200k during active backfills, shifted back
+to 20k after), not an arbitrary number.
+
+Branch `claude/sentry-rag-budget-rollup`. Rollout:
+`docs/rollouts/2026-09-08-rag-ingest-budget-sentry-rollup.md`.
 
 ## 2026-09-08 CLAUDE — R2 weekly cold snapshot stalled 9 days, silently
 

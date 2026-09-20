@@ -8,6 +8,7 @@
     "dev:secrets": "node scripts/infisical-run.mjs -- npm run dev",
     "dev:codex": "node scripts/codex-dev-server.mjs",
     "dev:clean": "lsof -ti:3000 | xargs kill -9 2>/dev/null || true && next dev",
+    "predev": "node scripts/predev-check.mjs",
     "build": "next build --webpack",
     "build:secrets": "node scripts/infisical-run.mjs -- npm run build",
     "start": "next start",

@@ -85,6 +85,7 @@ export const NOTIFICATION_EVENT_TYPES = [
   "proposal_withdrawn",
   "limit_order_stale",
   "provider_degraded",
+  "liveness_warning",
   "budget_alert",
   "learning_review",
   "deterministic_bear_veto",
@@ -3109,6 +3110,8 @@ export interface ChatTurn {
   model?: string | null;
   /** Client-generated idempotency key (user turns only): reused on Retry so a retried send doesn't duplicate the turn. */
   clientTurnId?: string | null;
+  /** The account context active when this turn occurred (NULL for legacy unattributed turns). */
+  connectedAccountId?: string | null;
   createdAt: string;
 }
 

@@ -190,7 +190,7 @@ final class MobileStore: ObservableObject {
     /// proposalId → submit-time failure shown on the card itself.
     @Published private(set) var proposalNotices: [String: (message: String, action: ProposalActionFeedback.ProposalAction)] = [:]
 
-    private let client: MobileAPIClient
+    let client: MobileAPIClient
     private var eventTask: Task<Void, Never>?
     private var reloadInFlight = false
     private var reloadPending = false

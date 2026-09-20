@@ -115,8 +115,11 @@ describe("push deep links: the URLs the server emits are the ones the iOS router
 
   it("pins the deep-link origin to the single host the app claims", () => {
     // DeepLink.universalLinkHost is an exact-match check — `www.`, a subdomain, or http all mean
-    // no routing at all, so the default origin is not a cosmetic choice.
-    expect(read(SWIFT_ROUTER)).toContain('universalLinkHost = "socratictrade.com"');
+    // no routing at all, so the default origin is not a cosmetic choice. The router derives it
+    // from the single production base URL so the origin can't drift from the API client; pin
+    // both halves of that chain.
+    expect(read(SWIFT_ROUTER)).toContain("universalLinkHost = MobileAPIClient.productionBaseURL.host!");
+    expect(read(SWIFT_CLIENT)).toContain('productionBaseURL = URL(string: "https://socratictrade.com")!');
     expect(pushDeepLink("run_failed", {})).toBe("https://socratictrade.com/console/activity?tab=alerts");
   });
 

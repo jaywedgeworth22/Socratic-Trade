@@ -15,6 +15,33 @@ import Sentry
 /// - Session Replay with aggressive masking (all text, all images, no screenshots)
 /// - Release health via CFBundleShortVersionString / CFBundleVersion
 enum SentryTelemetry {
+    /// Resolves the Sentry environment string for this build.  Hardcoding `production` here
+    /// used to make every simulator debug run, every TestFlight internal beta, and every
+    /// ad-hoc local build pollute the production issue stream — a 2026-09-20 MM audit
+    /// (#3226 #2) finding.  The fix: DEBUG builds always report `development`, App Store
+    /// installs always report `production`, and anything in between (TestFlight, ad-hoc)
+    /// reports `testflight`.  Receipt detection covers both the App Store and the
+    /// TestFlight sandbox; receipt absence covers simulator / dev builds.
+    static func resolvedEnvironment() -> String {
+        #if DEBUG
+        return "development"
+        #else
+        guard let receiptURL = Bundle.main.appStoreReceiptURL else {
+            return "development"
+        }
+        // Receipt present means the install went through App Store OR TestFlight.
+        // Receipt URL is `.appStoreReceipt` for App Store and a sandbox URL for TestFlight,
+        // but both are "real" receipts — the file's existence is the signal, not the path.
+        // A missing receipt file in Release means an unsigned sideload / `xcodebuild`
+        // simulator archive — surface those as `development` so they never pollute prod.
+        if FileManager.default.fileExists(atPath: receiptURL.path) {
+            // TestFlight receipts live at `.../sandboxReceipt`; App Store at `.../receipt`.
+            return receiptURL.lastPathComponent == "sandboxReceipt" ? "testflight" : "production"
+        }
+        return "development"
+        #endif
+    }
+
     static func start() {
         guard !SocraticTradeApp.isScreenshotMode else { return }
 
@@ -25,7 +52,7 @@ enum SentryTelemetry {
 
         SentrySDK.start { options in
             options.dsn = dsn
-            options.environment = "production"
+            options.environment = resolvedEnvironment()
             if let releaseName, !releaseName.isEmpty {
                 options.releaseName = releaseName
             }

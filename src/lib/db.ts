@@ -3282,6 +3282,22 @@ const MIGRATIONS: Migration[] = [
         database.exec("ALTER TABLE chat_turns ADD COLUMN connected_account_id TEXT");
       }
     }
+  },
+  {
+    // 2026-09-20 MM comprehensive review: the audit-prune observability+default DELETE does
+    // NOT constrain user_id (audit-prune.ts:115-132) but the only existing kind-prefixed
+    // index is (kind, user_id, created_at DESC) — without a user_id bound, SQLite scans
+    // kind-ranges across every user. Add a tighter (kind, created_at) compound so the prune
+    // path can range-scan created_at inside a single kind without dragging user_id through
+    // the sorter. Idempotent via IF NOT EXISTS.
+    version: 90,
+    name: "audit_events_kind_created_index",
+    up: (database) => {
+      if (!tableExists(database, "audit_events")) return;
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_audit_events_kind_created ON audit_events (kind, created_at)"
+      );
+    }
   }
 ];
 

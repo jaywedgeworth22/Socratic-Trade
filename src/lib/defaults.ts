@@ -83,12 +83,12 @@ export const DEFAULT_POLICY: TradingPolicy = {
   // Daily LLM learning review — default OFF (nothing runs until enabled). When enabled the
   // default mode is "decide" (apply verdicts — remove/expire facts, resolve pending items,
   // each audited; owner-chosen 2026-07-09); "annotate" (audit + notify only, no mutation) is
-  // the opt-out. The reviewer model defaults to a real, explicit "claude-fable-5" value —
+  // the opt-out. The reviewer model defaults to a real, explicit "claude-fable-latest" value —
   // never a blank that silently means Fable (owner: no hidden model defaults; require a chosen
   // model). User-level (see USER_LEVEL_POLICY_FIELDS): one config for the whole login.
   learningReviewEnabled: false,
   learningReviewMode: "decide",
-  learningReviewModel: "claude-fable-5",
+  learningReviewModel: "claude-fable-latest",
   // Trigger: run when >= 5 new lessons pile up, OR the oldest un-reviewed one is >= 7 days old.
   learningReviewMinNewLessons: 5,
   learningReviewMaxWaitDays: 7,

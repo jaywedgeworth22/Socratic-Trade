@@ -457,11 +457,11 @@ export const ApprovalCard = memo(function ApprovalCard({
   const priceStrip = (
     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[length:var(--con-fs-xs)] sm:grid-cols-4">
       <div>
-        <div className="con-card-title mb-0.5">Proposed</div>
+        <h3 className="con-card-title mb-0.5">Proposed</h3>
         <p className="con-num">{referencePrice != null ? fmtMoney(referencePrice) : EM_DASH}</p>
       </div>
       <div>
-        <div className="con-card-title mb-0.5">Now</div>
+        <h3 className="con-card-title mb-0.5">Now</h3>
         <p className="con-num">
           {livePrice != null ? fmtMoney(livePrice) : EM_DASH}
           {currentDrift != null && (
@@ -473,11 +473,11 @@ export const ApprovalCard = memo(function ApprovalCard({
         </p>
       </div>
       <div>
-        <div className="con-card-title mb-0.5">Target</div>
+        <h3 className="con-card-title mb-0.5">Target</h3>
         <p className="con-num">{targetPrice != null ? fmtMoney(targetPrice) : "none"}</p>
       </div>
       <div>
-        <div className="con-card-title mb-0.5">Delay</div>
+        <h3 className="con-card-title mb-0.5">Delay</h3>
         <p>
           {delayUsd == null
             ? EM_DASH
@@ -613,9 +613,9 @@ export const ApprovalCard = memo(function ApprovalCard({
             className="rounded-control border border-[color:var(--con-line)] p-3"
             title="Estimated at approval-card render time: shares this order would close × (current price − average cost), sign-flipped for a short cover.  The server re-prices at the moment you actually approve."
           >
-            <div className="con-card-title mb-1 flex items-center gap-1.5">
+            <h3 className="con-card-title mb-1 flex items-center gap-1.5">
               <TrendingUp size={12} /> Est. P/L if filled
-            </div>
+            </h3>
             <p className="text-[color:var(--con-muted)]">
               {fmtQty(estPnl.shares)} sh @ {fmtMoney(estPnl.currentPrice)} vs basis {fmtMoney(estPnl.basisPrice)} —{" "}
               <SignedText value={estPnl.pnl}>
@@ -629,12 +629,12 @@ export const ApprovalCard = memo(function ApprovalCard({
         <div className="con-team con-team-green">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div
+              <h3
                 className="con-card-title mb-1.5"
                 title="Green team = the proposer (bull): the model that generated this trade idea and argues for it."
               >
                 Proposed by (green team)
-              </div>
+              </h3>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <ModelBadge modelId={greenModel} size="md" title="The model that generated this proposal" />
                 {!greenModelPersisted && !greenModelConfigured && (
@@ -658,7 +658,7 @@ export const ApprovalCard = memo(function ApprovalCard({
               >
                 <span className="con-confidence-num">{p.confidenceScore}</span>
                 <span className="con-num text-[length:var(--con-fs-sm)] font-semibold text-[color:var(--con-faint)]">/100</span>
-                <div className="con-card-title">confidence</div>
+                <h3 className="con-card-title">confidence</h3>
               </div>
             )}
           </div>
@@ -689,12 +689,12 @@ export const ApprovalCard = memo(function ApprovalCard({
         {redCard === "verdict-panel" && p.redTeamVerdict && (
           <div className="con-team con-team-red">
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-              <div
+              <h3
                 className="con-card-title flex items-center gap-1.5"
                 title="Red team = the single adversarial reviewer: a model tasked with fact-checking and attacking the finalized trade before you see it."
               >
                 <Swords size={12} /> Devil&apos;s advocate (red team)
-              </div>
+              </h3>
               {p.redTeamVerdict.available ? (
                 <ModelBadge modelId={redModel} title="The adversarial reviewer model that critiqued this proposal" />
               ) : redFailureModel ? (
@@ -757,9 +757,9 @@ export const ApprovalCard = memo(function ApprovalCard({
             className="rounded-control border border-[color:var(--con-warn-border)] bg-[color:var(--con-warn-soft)] p-3"
             title="The adversarial (red team) review was required but could not run, so this trade was routed to you unreviewed — you are the only reviewer it will get."
           >
-            <div className="con-card-title flex items-center gap-1.5" style={{ color: "var(--con-warn)" }}>
+            <h3 className="con-card-title flex items-center gap-1.5" style={{ color: "var(--con-warn)" }}>
               <Swords size={12} /> Red Team review unavailable
-            </div>
+            </h3>
             <p className="mt-1.5 leading-relaxed text-[color:var(--con-muted)]">
               {pending.decision.adversaryUnavailableReason ?? "The adversarial review could not run for this proposal."}
               {" "}No model critiqued this trade — review it as the sole adversary.
@@ -769,9 +769,9 @@ export const ApprovalCard = memo(function ApprovalCard({
 
         {humanReviewReasons.length > 0 && (
           <div className="rounded-control border border-[color:var(--con-warn-border)] bg-[color:var(--con-warn-soft)] p-3">
-            <div className="con-card-title flex items-center gap-1.5" style={{ color: "var(--con-warn)" }}>
+            <h3 className="con-card-title flex items-center gap-1.5" style={{ color: "var(--con-warn)" }}>
               <CircleAlert size={12} /> Why your approval is required
-            </div>
+            </h3>
             <div className="mt-2 space-y-2">
               {humanReviewReasons.map((reason) => (
                 <div key={reason.code}>
@@ -786,9 +786,9 @@ export const ApprovalCard = memo(function ApprovalCard({
         {/* Provenance + sizing receipt */}
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1.05fr)_minmax(260px,0.95fr)]">
           <div className="rounded-control border border-[color:var(--con-line)] p-3">
-            <div className="con-card-title mb-2 flex items-center gap-1.5" title="Sizing inputs already available on the approval snapshot; missing values stay blank instead of being inferred.">
+            <h3 className="con-card-title mb-2 flex items-center gap-1.5" title="Sizing inputs already available on the approval snapshot; missing values stay blank instead of being inferred.">
               <Ruler size={12} /> Sizing provenance
-            </div>
+            </h3>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[length:var(--con-fs-xs)]">
               <dt className="text-[color:var(--con-faint)]">advised size</dt>
               <dd className="con-num text-right text-[color:var(--con-fg)]">{sizeText}</dd>
@@ -826,9 +826,9 @@ export const ApprovalCard = memo(function ApprovalCard({
           </div>
 
           <div className="rounded-control border border-[color:var(--con-line)] p-3">
-            <div className="con-card-title mb-2 flex items-center gap-1.5" title="Bracket reward:risk geometry from the persisted entry anchor, stop, and take-profit.">
+            <h3 className="con-card-title mb-2 flex items-center gap-1.5" title="Bracket reward:risk geometry from the persisted entry anchor, stop, and take-profit.">
               <TrendingUp size={12} /> Reward:risk geometry
-            </div>
+            </h3>
             {rewardRisk ? (
               <>
                 <div className="mb-2 flex h-2 overflow-hidden rounded-full bg-[color:var(--con-line)]" aria-hidden>
@@ -863,9 +863,9 @@ export const ApprovalCard = memo(function ApprovalCard({
         </div>
 
         <div className="rounded-control border border-[color:var(--con-line)] p-3">
-          <div className="con-card-title mb-2 flex items-center gap-1.5" title="Decision-case evidence linked by proposal id.">
+          <h3 className="con-card-title mb-2 flex items-center gap-1.5" title="Decision-case evidence linked by proposal id.">
             <Database size={12} /> Evidence citations
-          </div>
+          </h3>
           {decisionCase?.ragAttributions?.length ? (
             <div className="flex flex-col gap-2">
               {decisionCase.ragAttributions.slice(0, 3).map((item, i) => (
@@ -897,9 +897,9 @@ export const ApprovalCard = memo(function ApprovalCard({
         {/* Since proposed + revalidation */}
         <div className="grid gap-2 sm:grid-cols-2">
           <div>
-            <div className="con-card-title mb-1" title="Raw side-adjusted move since the proposal's reference price, not benchmark-relative.  Positive means the idea has moved in the proposed direction.">
+            <h3 className="con-card-title mb-1" title="Raw side-adjusted move since the proposal's reference price, not benchmark-relative.  Positive means the idea has moved in the proposed direction.">
               Since proposed
-            </div>
+            </h3>
             {typeof pending.performanceSinceProposalPct === "number" ? (
               <p title="Raw proposal return since the decision-time reference price.  It is not adjusted for SPY; benchmark-relative learning is handled separately in Results.">
                 <SignedText value={pending.performanceSinceProposalPct}>{fmtPct(pending.performanceSinceProposalPct, 2, true)}</SignedText>{" "}
@@ -916,7 +916,7 @@ export const ApprovalCard = memo(function ApprovalCard({
             )}
           </div>
           <div>
-            <div className="con-card-title mb-1">Last re-check</div>
+            <h3 className="con-card-title mb-1">Last re-check</h3>
             {pending.revalidationNote ? (
               <p className="text-[color:var(--con-muted)]">
                 &ldquo;{pending.revalidationNote}&rdquo;{" "}
@@ -932,7 +932,7 @@ export const ApprovalCard = memo(function ApprovalCard({
 
         {/* Gate status */}
         <div>
-          <div className="con-card-title mb-1">Policy gate</div>
+          <h3 className="con-card-title mb-1">Policy gate</h3>
           {pending.decision.reasons.length > 0 ? (
             <ul className="list-disc pl-4 text-[color:var(--con-muted)]">
               {pending.decision.reasons.map((r, i) => (
@@ -963,12 +963,12 @@ export const ApprovalCard = memo(function ApprovalCard({
             visible by design — never silent edits (TradeProposal.dataAdjustments). */}
         {Array.isArray(p.dataAdjustments) && p.dataAdjustments.length > 0 && (
           <div>
-            <div
+            <h3
               className="con-card-title mb-1"
               title="Deterministic consistency checks run after the model produced this proposal.  Each entry names a correction or fallback the app applied — recorded as a receipt, never a silent edit, and never a block."
             >
               Data adjustments
-            </div>
+            </h3>
             <ul className="list-disc pl-4 text-[length:var(--con-fs-xs)] text-[color:var(--con-muted)]">
               {p.dataAdjustments.map((receipt, i) => (
                 <li key={i}>{receipt}</li>

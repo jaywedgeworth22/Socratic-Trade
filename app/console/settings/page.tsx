@@ -87,6 +87,7 @@ const EVENT_HINT: Record<NotificationEventType, string> = {
   proposal_withdrawn: "the strategist took an idea back",
   limit_order_stale: "a limit order has been working too long",
   provider_degraded: "a data provider is failing",
+  liveness_warning: "the trading liveness check degraded",
   budget_alert: "a usage budget threshold was crossed",
   learning_review: "the daily learning review posted its findings",
   deterministic_bear_veto: "the rule-based bear check vetoed a trade idea",

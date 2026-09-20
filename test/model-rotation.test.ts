@@ -158,7 +158,8 @@ describe("MODEL_ROTATION_POOL (curated catalog minus exclusions)", () => {
     for (const model of excluded) expect(MODEL_ROTATION_POOL).not.toContain(model);
     // Keep-in-sync check: the pool is exactly the curated catalog minus the exclusions.
     expect(new Set(MODEL_ROTATION_POOL)).toEqual(new Set(CURATED_LLM_MODEL_IDS.filter((id) => !excluded.includes(id))));
-    expect(MODEL_ROTATION_POOL).toContain("gpt-mini-latest");
+    expect(MODEL_ROTATION_POOL).toContain("gpt-6-astra");
+    expect(MODEL_ROTATION_POOL).toContain("gpt-5.6-sol");
     expect(MODEL_ROTATION_POOL).toContain("claude-fable-latest");
     expect(MODEL_ROTATION_POOL).toContain("grok-latest");
     expect(MODEL_ROTATION_POOL).toContain("mistral-small-latest");
@@ -180,7 +181,8 @@ describe("MODEL_ROTATION_POOL (curated catalog minus exclusions)", () => {
     const safe = applyRotationAvailabilityFailOpen(MODEL_ROTATION_POOL);
     expect(safe).toContain("kimi-latest");
     expect(safe).toContain("claude-fable-latest");
-    expect(safe).toContain("gpt-mini-latest");
+    expect(safe).toContain("gpt-6-astra");
+    expect(safe).toContain("gpt-5.6-sol");
     expect(safe).toContain("gemini-flash-latest");
     expect(safe.length).toBe(MODEL_ROTATION_POOL.length);
   });
@@ -188,7 +190,7 @@ describe("MODEL_ROTATION_POOL (curated catalog minus exclusions)", () => {
   it("keeps the pool when /models/user lists versioned ids but omits *-latest aliases", async () => {
     const { applyRotationUserModelAllowlist, MODEL_ROTATION_POOL } = await import("../src/lib/model-rotation");
     const versionedOnly = new Set([
-      "openai/gpt-5.6-terra",
+      "openai/gpt-6-astra",
       "anthropic/claude-haiku-4.5",
       "google/gemini-3.7-flash",
       "deepseek/deepseek-v4-flash-0731",
@@ -197,15 +199,11 @@ describe("MODEL_ROTATION_POOL (curated catalog minus exclusions)", () => {
       "anthropic/claude-sonnet-4.6",
       "google/gemini-3.5-flash-lite",
       "x-ai/grok-4.5",
-      "openai/gpt-5.4-mini",
+      "openai/gpt-5.6-sol",
       "anthropic/claude-opus-4.6",
       "google/gemini-3.1-pro-preview",
       "deepseek/deepseek-v4-pro-0813",
       "mistralai/mistral-medium-3-5",
-      "openai/gpt-5.6-sol",
-      "openai/gpt-5.4-nano",
-      "openai/gpt-4o",
-      "meta-llama/llama-3.3-70b-instruct",
       "deepseek/deepseek-reasoner"
     ]);
     const result = applyRotationUserModelAllowlist(MODEL_ROTATION_POOL, versionedOnly);
@@ -215,7 +213,8 @@ describe("MODEL_ROTATION_POOL (curated catalog minus exclusions)", () => {
     expect(result.pool).toContain("gemini-flash-latest");
     expect(result.pool).toContain("mistral-small-latest");
     expect(result.pool).toContain("grok-latest");
-    expect(result.pool).toContain("gpt-mini-latest");
+    expect(result.pool).toContain("gpt-6-astra");
+    expect(result.pool).toContain("gpt-5.6-sol");
     expect(result.pool).not.toContain("kimi-latest");
     expect(result.pool).not.toContain("claude-fable-latest");
   });
@@ -231,7 +230,8 @@ describe("MODEL_ROTATION_POOL (curated catalog minus exclusions)", () => {
     const result = applyRotationUserModelAllowlist(MODEL_ROTATION_POOL, new Set(["acme/not-a-catalog-model"]));
     expect(result.emptiedByAllowlist).toBe(true);
     expect(result.pool.length).toBe(MODEL_ROTATION_POOL.length);
-    expect(result.pool).toContain("gpt-5.6-terra");
+    expect(result.pool).toContain("gpt-6-astra");
+    expect(result.pool).toContain("gpt-5.6-sol");
     expect(result.pool).toContain("kimi-latest");
     expect(result.pool).toContain("claude-fable-latest");
   });
@@ -249,7 +249,8 @@ describe("eligibleRotationPool (credential-missing skip)", () => {
     expect(pool.length).toBeGreaterThan(0);
     
     // GPT and Claude models should be kept (in pool) since openai/anthropic keys are active
-    expect(pool).toContain("gpt-mini-latest");
+    expect(pool).toContain("gpt-6-astra");
+    expect(pool).toContain("gpt-5.6-sol");
     expect(pool).toContain("claude-opus-latest");
     
     // Gemini and DeepSeek models should be skipped since gemini/deepseek keys are missing
@@ -269,7 +270,8 @@ describe("eligibleRotationPool (credential-missing skip)", () => {
     expect(result.availability).toBe("unavailable");
     expect(result.availabilityError).toBe("http_429");
     expect(result.pool.length).toBeGreaterThan(0);
-    expect(result.pool).toContain("gpt-5.6-terra");
+    expect(result.pool).toContain("gpt-6-astra");
+    expect(result.pool).toContain("gpt-5.6-sol");
   });
 
   it("keeps a non-empty pool when a live /models/user list has versioned ids and no *-latest aliases", async () => {
@@ -290,8 +292,8 @@ describe("eligibleRotationPool (credential-missing skip)", () => {
               { id: "google/gemini-3.7-flash" },
               { id: "mistralai/mistral-small-2603" },
               { id: "x-ai/grok-4.5" },
-              { id: "openai/gpt-5.4-mini" },
-              { id: "openai/gpt-5.6-terra" }
+              { id: "openai/gpt-6-astra" },
+              { id: "openai/gpt-5.6-sol" }
             ]
           }),
           { status: 200, headers: { "content-type": "application/json" } }
@@ -321,7 +323,7 @@ describe("resolveModelRotationForRun", () => {
       userId: `rot-none-${randomUUID()}`,
       accountId: "acct-1",
       runId: randomUUID(),
-      policy: { llmModel: "gpt-5.4-mini", redTeamLlmModel: "claude-haiku-4.5" }
+      policy: { llmModel: "gpt-6-astra", redTeamLlmModel: "claude-haiku-4.5" }
     });
     expect(override).toEqual({});
     expect(typeof commit).toBe("function");
@@ -348,7 +350,6 @@ describe("resolveModelRotationForRun", () => {
       });
       expect(out.llmModel).toBeTruthy();
       expect(out.llmModel).not.toBe(LLM_MODEL_ROTATION_SENTINEL);
-      expect(out.llmModel).not.toBe("gpt-5.6-terra");
       expect(pool).toContain(out.llmModel!); // always a concrete eligible model
       expect(out.redTeamLlmModel).toBeUndefined(); // red seat not rotating
       expect(out.redTeamReasoningEffort).toBeUndefined(); // ...so its effort is untouched too
@@ -371,7 +372,7 @@ describe("resolveModelRotationForRun", () => {
     const firstPick = greenFirstPickPool(pool);
     const n = firstPick.length;
     expect(n).toBeGreaterThanOrEqual(3);
-    expect(firstPick[0]).not.toBe("gpt-5.6-terra");
+    expect(firstPick[0]).not.toBe("gpt-5.6-sol");
     // An r on the uniform/weighted boundary: with all-zero stats (uniform weight 2, total 2n) it
     // lands in firstPick[0]'s slice (r * 2n < 2 for n >= 3); once firstPick[0] carries the only
     // committed pick (weight 1, total 2n - 1) the same r clears that halved slice
@@ -553,9 +554,12 @@ describe("recommendedReasoningEffortForModel (curated rotation efforts)", () => 
     const { recommendedReasoningEffortForModel, reasoningAdviceForModel } = await import("../src/lib/model-reasoning-recommendations");
     expect(recommendedReasoningEffortForModel("deepseek-v4-flash")).toBe("none");
     expect(recommendedReasoningEffortForModel("deepseek-v4-pro")).toBe("none");
-    expect(recommendedReasoningEffortForModel("gpt-5.4-mini", "chat")).toBe("low");
-    expect(recommendedReasoningEffortForModel("gpt-5.4-mini", "red")).toBe("high");
-    expect(recommendedReasoningEffortForModel("claude-fable-5")).toBe("medium");
+    // 2026-09-18 catalog cleanup: gpt-5.4-mini / gpt-5.6-terra removed. The remaining curated
+    // GPT rows (gpt-6-astra, gpt-6-astra-pro, gpt-5.6-sol, gpt-5.6-luna) carry the same role-aware
+    // recommendation contract.
+    expect(recommendedReasoningEffortForModel("gpt-5.6-luna", "chat")).toBe("low");
+    expect(recommendedReasoningEffortForModel("gpt-5.6-sol", "red")).toBe("high");
+    expect(recommendedReasoningEffortForModel("claude-fable-latest")).toBe("medium");
     expect(recommendedReasoningEffortForModel("some-custom-model")).toBe("medium");
     expect(recommendedReasoningEffortForModel(undefined)).toBe("medium");
     // mistral-medium-latest's advice carries the 2026-07-10 benchmark tradeoff: None is fast/cheap
@@ -588,29 +592,25 @@ describe("implicitGreenRotationFallbacks", () => {
     expect(implicitGreenRotationFallbacks(["a"], "a")).toEqual([]);
   });
 
-  it("does not pick terra first when Gemini Flash / Mistral Medium seats remain", async () => {
+  it("greenFirstPickPool returns the full pool now that UNSERVABLE_OPENROUTER_FIRST_PICKS is empty", async () => {
+    // 2026-09-18: gpt-5.6-terra (the only historical unservable-first-pick) was removed from the
+    // curated catalog and the unservable list is empty. greenFirstPickPool therefore returns the
+    // pool unchanged. The implicit-fallback invariant still binds the rotation to
+    // gemini-flash-latest + mistral-medium-latest as the two seats below claude-haiku.
     const {
       greenFirstPickPool,
       implicitGreenRotationFallbacks,
       MODEL_ROTATION_POOL,
-      weightedRotationPick
+      UNSERVABLE_OPENROUTER_FIRST_PICKS
     } = await import("../src/lib/model-rotation");
+    expect(UNSERVABLE_OPENROUTER_FIRST_PICKS).toEqual([]);
     const firstPick = greenFirstPickPool(MODEL_ROTATION_POOL);
-    expect(firstPick).not.toContain("gpt-5.6-terra");
+    expect(new Set(firstPick)).toEqual(new Set(MODEL_ROTATION_POOL));
     expect(firstPick).toContain("gemini-flash-latest");
     expect(firstPick).toContain("mistral-medium-latest");
-    const counts = new Map(firstPick.map((model) => [model, 0]));
-    for (let i = 0; i < 40; i++) {
-      const pick = weightedRotationPick({ pool: firstPick, counts, random: () => i / 40 });
-      expect(pick?.model).not.toBe("gpt-5.6-terra");
-    }
-    expect(greenFirstPickPool(["gpt-5.6-terra"])).toEqual(["gpt-5.6-terra"]);
     const fallbacks = implicitGreenRotationFallbacks(MODEL_ROTATION_POOL, "claude-haiku-latest");
     expect(fallbacks).toEqual(["gemini-flash-latest", "mistral-medium-latest"]);
-    expect(fallbacks).not.toContain("gpt-5.6-terra");
-    const afterTerra = implicitGreenRotationFallbacks(MODEL_ROTATION_POOL, "gpt-5.6-terra");
-    expect(afterTerra[0]).toBe("gemini-flash-latest");
-    expect(afterTerra[1]).toBe("mistral-medium-latest");
+    expect(fallbacks).not.toContain("gpt-5.6-sol");
   });
 });
 
@@ -620,7 +620,7 @@ describe("sentinel handling at the edges", () => {
     const { resolveOpenAiModel, LLM_MODEL_ROTATION_SENTINEL } = await import("../src/lib/llm-request");
     // No-defaults: the sentinel (like any unset model) resolves to "" — fail closed, never a default.
     expect(resolveOpenAiModel({ llmModel: LLM_MODEL_ROTATION_SENTINEL })).toBe("");
-    expect(resolveOpenAiModel({ llmModel: "gpt-5.4-mini" })).toBe("gpt-5.4-mini");
+    expect(resolveOpenAiModel({ llmModel: "gpt-6-astra" })).toBe("gpt-6-astra");
   });
 
   it("PUT /api/policy accepts and persists the sentinel for both seats", async () => {

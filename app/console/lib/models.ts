@@ -80,19 +80,13 @@ export const PROVIDER_META: Record<ConsoleProviderId, { initial: string; color: 
  *  missing here still renders (as its raw id) via modelDisplayName. */
 const MODEL_DISPLAY_NAME: Record<string, string> = {
   // OpenAI (display slugs + historical aliases)
-  "gpt-5.4-nano": "GPT-5.4 nano",
-  "gpt-mini-latest": "GPT Mini",
-  "gpt-5.4-mini": "GPT Mini",
   "gpt-5.6-luna": "GPT-5.6 Luna",
-  "gpt-5.6-terra": "GPT-5.6 Terra",
   "gpt-5.6-sol": "GPT-5.6 Sol",
   "gpt-6-astra-pro": "GPT-6 Astra Pro",
   "gpt-6-astra": "GPT-6 Astra",
-  "gpt-4o": "GPT-4o",
   "gpt-5.4": "GPT-5.4",
   "gpt-5.5": "GPT-5.5",
   "gpt-5.6": "GPT-5.6 Sol",
-  "gpt-4o-mini": "GPT-4o mini",
   // Anthropic
   "claude-haiku-latest": "Claude Haiku",
   "claude-sonnet-latest": "Claude Sonnet",
@@ -107,9 +101,7 @@ const MODEL_DISPLAY_NAME: Record<string, string> = {
   "claude-opus-4-8": "Claude Opus",
   // xAI
   "grok-latest": "Grok",
-  "grok-build-latest": "Grok Build",
   "grok-4.5": "Grok",
-  "grok-build-0.1": "Grok Build 0.1",
   "grok-4.3": "Grok",
   // Google (Gemini)
   "gemini-flash-lite-latest": "Gemini Flash Lite",
@@ -136,8 +128,6 @@ const MODEL_DISPLAY_NAME: Record<string, string> = {
   "deepseek-pro-latest": "DeepSeek Pro",
   "deepseek-v4-flash": "DeepSeek Flash",
   "deepseek-v4-pro": "DeepSeek Pro",
-  "deepseek-reasoner": "DeepSeek R1",
-  "deepseek-r1": "DeepSeek R1",
   "deepseek-chat": "DeepSeek Flash",
   // Moonshot AI
   "kimi-latest": "Kimi k3",
@@ -145,15 +135,9 @@ const MODEL_DISPLAY_NAME: Record<string, string> = {
   // MiniMax
   "minimax-m3": "MiniMax M3",
   "MiniMax-M3": "MiniMax M3",
-  "minimax-m2.7": "MiniMax M2.7",
-  "MiniMax-M2.7": "MiniMax M2.7",
   // Meta
   "muse-spark-1.3": "Muse Spark 1.3",
-  "muse-glimmer-30b": "Muse Glimmer 30B",
-  "llama-4-scout": "Llama 4 Scout",
-  "llama-4-maverick": "Llama 4 Maverick",
-  "llama-70b-latest": "Llama 70B",
-  "llama-3.3-70b-instruct": "Llama 3.3 70B"
+  "muse-glimmer-30b": "Muse Glimmer 30B"
 };
 
 /** Human display name for a model id; falls back to the bare id (OpenRouter vendor-routing

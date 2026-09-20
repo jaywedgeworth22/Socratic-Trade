@@ -151,7 +151,7 @@ export function ScopeSelector({ snapshot }: { snapshot: DashboardSnapshot; compa
       <button
         key={account.id}
         type="button"
-        role="menuitemradio"
+        role="radio"
         aria-checked={isActive}
         disabled={isActive || busyId !== null}
         onClick={() => guardAction(() => void switchTo(account.id))}
@@ -213,7 +213,7 @@ export function ScopeSelector({ snapshot }: { snapshot: DashboardSnapshot; compa
         ref={triggerRef}
         type="button"
         onClick={() => (open ? close() : setOpen(true))}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-expanded={open}
         className="flex w-full items-center gap-2 overflow-hidden rounded-control border border-[color:var(--con-line-strong)] bg-[color:var(--con-surface-2)] px-2.5 py-1.5 text-left transition-colors hover:border-[color:var(--con-accent)] sm:px-3 con-bar-ctl con-bar-ctl-scope"
         title="Switch which account this console shows"
@@ -236,11 +236,12 @@ export function ScopeSelector({ snapshot }: { snapshot: DashboardSnapshot; compa
           <button
             type="button"
             aria-label="Close account menu"
+            tabIndex={-1}
             className="fixed inset-0 z-40 h-full w-full cursor-default border-0 bg-transparent opacity-0"
             onClick={close}
           />
           <div
-            role="menu"
+            role="dialog"
             aria-label="Account scope"
             className="con-menu-drop absolute left-0 top-[calc(100%+4px)] z-50 flex max-h-[min(70vh,480px)] w-[min(calc(100vw-48px),360px)] max-w-[calc(100vw-48px)] sm:w-[360px] sm:max-w-[360px] flex-col gap-2 overflow-y-auto rounded-card border border-[color:var(--con-line-strong)] bg-[color:var(--con-surface)] p-3 shadow-xl"
           >
@@ -259,12 +260,11 @@ export function ScopeSelector({ snapshot }: { snapshot: DashboardSnapshot; compa
                 </p>
               </div>
             ) : (
-              <div className="flex flex-col gap-1.5">{ordered.map(renderRow)}</div>
+              <div role="radiogroup" aria-label="Select active account" className="flex flex-col gap-1.5">{ordered.map(renderRow)}</div>
             )}
             <div className="my-0.5 h-px bg-[color:var(--con-line)]" />
             <Link
               href="/console/connections#brokers"
-              role="menuitem"
               onClick={close}
               className="con-scope-row flex w-full items-center gap-2 rounded-control border border-[color:var(--con-line)] px-3 py-2 text-[length:var(--con-fs-sm)] font-medium"
               title="Add, remove, or reconnect broker accounts"

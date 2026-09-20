@@ -43,6 +43,18 @@ Rollout: `docs/rollouts/2026-09-18-datadog-free-remaining.md`.
 
 Hosted tsc failed on `@/app/ui/theme` (alias is `src/*`).  Relative import from console chrome/ticker-logo.  Default stays light.  Extra-ship no.  No Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-18-ag-takeover-theme-ci.md`.
+## 2026-09-18 GROK — MM AG takeover #3380 venue CI (board 6aa1e66e)
+
+Hosted eslint failed prefer-const on unused-mutated quantity/dollarAmount.  Destructure them as const.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-ag-takeover-venue-ci.md`.
+## 2026-09-18 GROK — MM AG takeover #3381 test CI (board 6aa1e66e)
+
+Hosted tsc failed on fantasy policy fields and setDbForTesting.  Align route tests with DEFAULT_POLICY; restore maxWorkers 1.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-ag-takeover-tests-ci.md`.
+## 2026-09-18 GROK — MM AG takeover #3382 ops CI (board 6aa1e66e)
+
+Hosted tsc failed because liveness_warning was not in deliverSystemAlertToAdmins.  Add it to the union.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-ag-takeover-ops-ci.md`.
 
 ## 2026-09-18 CLAUDE — Restart loops now leave a durable trail and raise an alert (board a9676caf)
 

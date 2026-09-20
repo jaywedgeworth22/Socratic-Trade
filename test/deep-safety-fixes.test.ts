@@ -231,24 +231,24 @@ describe("reconcileAutonomyOnBoot — boot-time autonomy interlock", () => {
     delete process.env.AUTONOMY_RESUME_ON_BOOT;
   });
 
-  it("reverts a persisted 'active' systemState to 'halted' when not opted in", () => {
+  it("reverts a persisted 'active' systemState to 'halted' when not opted in", async () => {
     delete process.env.AUTONOMY_RESUME_ON_BOOT;
     setPolicy({ ...DEFAULT_POLICY, accountNumber: "ACC1", systemState: "active" }, userId);
-    reconcileAutonomyOnBoot();
+    await reconcileAutonomyOnBoot();
     expect(getPolicy(userId).systemState).toBe("halted");
   });
 
-  it("leaves 'active' alone when AUTONOMY_RESUME_ON_BOOT=1", () => {
+  it("leaves 'active' alone when AUTONOMY_RESUME_ON_BOOT=1", async () => {
     process.env.AUTONOMY_RESUME_ON_BOOT = "1";
     setPolicy({ ...DEFAULT_POLICY, accountNumber: "ACC1", systemState: "active" }, userId);
-    reconcileAutonomyOnBoot();
+    await reconcileAutonomyOnBoot();
     expect(getPolicy(userId).systemState).toBe("active");
   });
 
-  it("does not touch non-'active' safe states (e.g. close_only)", () => {
+  it("does not touch non-'active' safe states (e.g. close_only)", async () => {
     delete process.env.AUTONOMY_RESUME_ON_BOOT;
     setPolicy({ ...DEFAULT_POLICY, accountNumber: "ACC1", systemState: "close_only" }, userId);
-    reconcileAutonomyOnBoot();
+    await reconcileAutonomyOnBoot();
     expect(getPolicy(userId).systemState).toBe("close_only");
   });
 });

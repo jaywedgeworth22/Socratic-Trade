@@ -26,7 +26,7 @@ describe("reconcileAutonomyOnBoot — boot-halt notification", () => {
     setAutoResumeOnBoot(userId, false);
     setPolicy({ ...DEFAULT_POLICY, accountNumber: "ACC1", systemState: "active" }, userId);
 
-    reconcileAutonomyOnBoot();
+    await reconcileAutonomyOnBoot();
     await flushMicrotasks();
 
     expect(getPolicy(userId).systemState).toBe("halted");
@@ -42,7 +42,7 @@ describe("reconcileAutonomyOnBoot — boot-halt notification", () => {
     setAutoResumeOnBoot(userId, true);
     setPolicy({ ...DEFAULT_POLICY, accountNumber: "ACC1", systemState: "active" }, userId);
 
-    reconcileAutonomyOnBoot();
+    await reconcileAutonomyOnBoot();
     await flushMicrotasks();
 
     expect(getPolicy(userId).systemState).toBe("active");
@@ -58,7 +58,7 @@ describe("reconcileAutonomyOnBoot — boot-halt notification", () => {
     setPolicy({ ...DEFAULT_POLICY, accountNumber: "ACC1", systemState: "active" }, userId);
     process.env.AUTONOMY_RESUME_ON_BOOT = "1";
 
-    reconcileAutonomyOnBoot();
+    await reconcileAutonomyOnBoot();
     await flushMicrotasks();
 
     expect(getPolicy(userId).systemState).toBe("active");

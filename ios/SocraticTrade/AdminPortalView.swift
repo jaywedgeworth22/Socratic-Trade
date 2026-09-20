@@ -230,14 +230,14 @@ enum AdminPortalPage: String, CaseIterable, Identifiable, Hashable {
     }
 
     var pageURL: URL {
-        URL(string: "https://socratictrade.com\(path)")!
+        MobileAPIClient.productionBaseURL.appending(path: path)
     }
 }
 
 // Internal (not private) so the unit suite can pin the navigation fence.
 struct AdminPortalWebView: UIViewRepresentable {
-    static let portalURL = URL(string: "https://socratictrade.com/admin")!
-    static let allowedHost = "socratictrade.com"
+    static let portalURL = MobileAPIClient.productionBaseURL.appending(path: "/admin")
+    static let allowedHost = MobileAPIClient.productionBaseURL.host!
     static let nativeMessageName = "socraticNative"
 
     var pageURL: URL

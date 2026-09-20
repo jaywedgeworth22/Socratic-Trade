@@ -388,7 +388,12 @@ struct MobileAPIClient {
                 req.timeoutInterval = timeout
                 return try await send(req)
             } catch let error as MobileAPIError {
-                if case .network = error, attempt < retries {
+                let shouldRetry = {
+                    if case .network = error { return true }
+                    if case .serverError(let statusCode, _) = error, statusCode >= 500 { return true }
+                    return false
+                }()
+                if shouldRetry, attempt < retries {
                     attempt += 1
                     let delayMs = UInt64(150_000_000 * (1 << attempt)) // 300ms, 600ms backoff
                     try await Task.sleep(nanoseconds: delayMs)

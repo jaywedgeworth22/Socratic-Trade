@@ -106,8 +106,8 @@ describe("resolveAlpacaTimeInForce (pure resolution matrix)", () => {
     expect(r.reason).toBe("extended_hours");
   });
 
-  it("an extended-hours order that already asked for day is not flagged normalized", () => {
-    const r = resolveAlpacaTimeInForce({ requestedTimeInForce: "day", isBracket: false, quantity: 10, extendedHours: true });
+  it("an extended-hours gfd order resolves to day but is not flagged normalized (nothing was overridden)", () => {
+    const r = resolveAlpacaTimeInForce({ requestedTimeInForce: "gfd", isBracket: false, quantity: 10, extendedHours: true });
     expect(r.timeInForce).toBe("day");
     expect(r.normalized).toBe(false);
   });

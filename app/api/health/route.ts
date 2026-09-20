@@ -100,11 +100,17 @@ export async function GET(request: Request) {
     // Always emit the boolean so keyword/JSON monitors can key on `"schedulerStale":true`.
     // Never 503s — a restart cannot write a fresher tick if the scheduler is the thing that died.
     checks.schedulerStale = ageMs > schedulerStaleMs;
+    if (checks.schedulerStale) {
+      void alertStorageWarning("scheduler_stale", `Scheduler heartbeat is stale by ${Math.round(ageMs / 1000)} seconds.`);
+    }
   } else {
     checks.schedulerLastTick = null;
     checks.schedulerAgeSeconds = null;
     // No heartbeat after the process has been up long enough to have ticked once.
     checks.schedulerStale = release.processUptimeSeconds > schedulerStaleMs / 1000;
+    if (checks.schedulerStale) {
+      void alertStorageWarning("scheduler_stale_boot", `Scheduler heartbeat is missing after ${release.processUptimeSeconds} seconds of uptime.`);
+    }
   }
 
   if (checks.schedulerStale) {

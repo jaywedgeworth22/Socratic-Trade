@@ -27,6 +27,62 @@ import {
 import { OrderValidationError } from "./types";
 import { fromAlpacaSymbol, normalizeSymbol, roundAlpacaPrice, toAlpacaSymbol } from "./money";
 import { mergeAccountCapabilities } from "./venue-contract";
+import { normalizeVenueOrder } from "./venue-normalization";
+
+/**
+ * Pure resolution matrix for Alpaca time-in-force (Codex review, item 10). Alpaca rejects a
+ * GTC order carrying a fractional share quantity, a notional (dollar) amount, or placed in the
+ * extended-hours session — all require `time_in_force="day"` (docs.alpaca.markets). Bracket orders also require "day" for an
+ * unrelated reason (native OCO leg support), so they always resolve to "day" but are NOT
+ * counted as this item's normalization (bracket is the bracket path's own pre-existing reason).
+ *
+ * The integration side calls this once per order path (REST, MCP, native trailing) so the
+ * three call sites can't disagree, then audits `alpaca_tif_normalized_to_day` when
+ * `normalized === true` (the caller's intent was overridden).
+ */
+export function resolveAlpacaTimeInForce(input: {
+  requestedTimeInForce: TimeInForce;
+  isBracket: boolean;
+  quantity?: number;
+  notional?: number;
+  extendedHours?: boolean;
+}): { timeInForce: TimeInForce | "day"; normalized: boolean; reason?: "fractional_quantity" | "notional" | "extended_hours" } {
+  const { requestedTimeInForce, isBracket, quantity, notional, extendedHours } = input;
+  const isFractionalQty = quantity != null && !Number.isInteger(quantity);
+  const isNotional = notional != null && notional > 0;
+  // Extended-hours orders are day-only on Alpaca, like fractional/notional — a "gtc" would 422.
+  const isExtendedHours = extendedHours === true;
+
+  // Bracket forces day for its own pre-existing reason — don't double-flag as our normalization.
+  if (isBracket) {
+    return { timeInForce: "day", normalized: false };
+  }
+
+  // Whole-share, no notional, regular-hours, gtc: pass through unchanged — Alpaca accepts GTC whole-share orders.
+  if (!isFractionalQty && !isNotional && !isExtendedHours && requestedTimeInForce === "gtc") {
+    return { timeInForce: "gtc", normalized: false };
+  }
+
+  // Whole-share, no notional, regular-hours, gfd: Alpaca's docs treat gfd equivalent to day for the same trading
+  // session. Sending "gfd" is redundant — the broker normalizes to "day" anyway. We mirror that
+  // locally so the wire field is canonical "day" (matches what the broker will accept).
+  if (!isFractionalQty && !isNotional && !isExtendedHours && requestedTimeInForce === "gfd") {
+    return { timeInForce: "day", normalized: false };
+  }
+
+  // Fractional, notional, or extended-hours: only "gtc" is overridden (flag normalized=true
+  // so the override is observable). gfd already resolves to day via Alpaca's own rules; we mirror
+  // that and do NOT claim it was our normalization — the caller never asked for gtc so we
+  // shouldn't claim a gtc->day override.
+  if (requestedTimeInForce === "gtc") {
+    return {
+      timeInForce: "day",
+      normalized: true,
+      reason: isExtendedHours ? "extended_hours" : (isFractionalQty ? "fractional_quantity" : "notional")
+    };
+  }
+  return { timeInForce: "day", normalized: false };
+}
 import { toBrokerSide, isRejectedOrCanceledState } from "./broker-side";
 import { audit, getActiveConnectedAccount, getConnectedAccount, resolveApiKey } from "./db";
 import { logApiHealth } from "./db-health";
@@ -183,43 +239,7 @@ export function estimateReviewNotional(
   };
 }
 
-export interface AlpacaTimeInForceResolution {
-  timeInForce: "day" | "gtc";
-  /** True only when the CALLER asked for "gtc" and this resolved to "day" because of it — the
-   *  honest signal for an audit receipt. A caller that already asked for "gfd" isn't "normalized". */
-  normalized: boolean;
-  reason?: "fractional_quantity" | "notional" | "bracket" | "extended_hours";
-}
 
-/**
- * Alpaca requires time_in_force="day" for any order carrying a fractional share quantity or a
- * notional (dollar) amount — fractional-share trading is day-only regardless of order type
- * (docs.alpaca.markets); a "gtc" on either is a guaranteed 422. Bracket orders already require
- * "day" for an unrelated reason (native OCO leg support). Resolves against the quantity/notional
- * actually being submitted (the caller must resolve any bracket-floor qty first), never the raw
- * proposal, so this can't drift from what really gets sent to the broker. Exported (and called from
- * a single place per order path below) so REST, MCP, and the native-trailing path can't disagree.
- */
-export function resolveAlpacaTimeInForce(input: {
-  requestedTimeInForce: TimeInForce;
-  isBracket: boolean;
-  quantity?: number;
-  notional?: number;
-  extendedHours?: boolean;
-}): AlpacaTimeInForceResolution {
-  const isFractionalQty = input.quantity != null && !Number.isInteger(input.quantity);
-  const isNotional = input.notional != null && input.notional > 0;
-  const isExtendedHours = input.extendedHours === true;
-  const requiresDay = input.isBracket || isFractionalQty || isNotional || isExtendedHours;
-  const timeInForce: "day" | "gtc" = requiresDay || input.requestedTimeInForce === "gfd" ? "day" : "gtc";
-  const normalized = input.requestedTimeInForce === "gtc" && (isFractionalQty || isNotional || isExtendedHours);
-  const reason = normalized ? (isExtendedHours ? "extended_hours" : (isFractionalQty ? "fractional_quantity" : "notional")) : undefined;
-  return {
-    timeInForce,
-    normalized,
-    reason: reason as AlpacaTimeInForceResolution["reason"]
-  };
-}
 
 /** Alpaca's wire word for a stop-market is `stop`.  Keep `stop_limit` and everything else as-is. */
 export function mapAlpacaOrderTypeWrite(type: OrderType | string): string {
@@ -878,7 +898,19 @@ class AlpacaBrokerGateway implements BrokerGateway {
   }
 
   async getEquityTradability(accountNumber: string, symbols: string[]) {
-    return Object.fromEntries(symbols.map((symbol) => [normalizeSymbol(symbol), { tradable: true, fractional: true }]));
+    const results: Record<string, { tradable: boolean; fractional: boolean }> = {};
+    for (const symbol of symbols) {
+      try {
+        const asset = await this.trackHealth(() => this.alpaca.getAsset(toAlpacaSymbol(symbol)));
+        results[normalizeSymbol(symbol)] = {
+          tradable: asset.tradable === true,
+          fractional: asset.fractionable === true
+        };
+      } catch (error) {
+        results[normalizeSymbol(symbol)] = { tradable: false, fractional: false };
+      }
+    }
+    return results;
   }
 
   async reviewEquityOrder(input: EquityOrderInput): Promise<ReviewedOrder> {
@@ -888,9 +920,37 @@ class AlpacaBrokerGateway implements BrokerGateway {
     return { estimatedNotional, alerts, raw: { alpaca: true } };
   }
 
-  async placeEquityOrder(input: EquityOrderInput & { refId: string }): Promise<ExecutedOrder> {
+  async placeEquityOrder(rawInput: EquityOrderInput & { refId: string }): Promise<ExecutedOrder> {
+    const input = normalizeVenueOrder(rawInput, "alpaca", this.userId) as typeof rawInput;
     const isBracket = !!(input.bracketTakeProfit || input.bracketStopLoss);
     const isTrailing = input.trailPercent != null && input.trailPercent > 0;
+
+    // Single TIF resolution per order — used by all three submission paths below (native
+    // trailing, REST, MCP) so they can't disagree, and audited once when we override the
+    // caller's intent (Codex review, item 10).
+    //
+    // Use the ORIGINAL rawInput.timeInForce (the caller's expressed intent) — normalizeVenueOrder
+    // already coerced fractional/notional gtc -> day, so by the time we reach this line the
+    // request looks like a 'day' request and we couldn't tell what the caller actually asked
+    // for. The audit payload's requestedTimeInForce field must reflect the original 'gtc'/'gfd'
+    // so the override is observable downstream.
+    const tifResolution = resolveAlpacaTimeInForce({
+      requestedTimeInForce: rawInput.timeInForce,
+      isBracket,
+      quantity: input.quantity,
+      notional: input.dollarAmount,
+      extendedHours: input.marketHours === "extended_hours"
+    });
+    if (tifResolution.normalized) {
+      audit("alpaca_tif_normalized_to_day", {
+        symbol: input.symbol,
+        requestedTimeInForce: rawInput.timeInForce,
+        reason: tifResolution.reason,
+        ...(input.quantity != null ? { quantity: input.quantity } : {}),
+        ...(input.dollarAmount != null ? { dollarAmount: input.dollarAmount } : {})
+      }, this.userId);
+    }
+    const resolvedTimeInForce = tifResolution.timeInForce;
 
     // Native trailing stop: Alpaca's `trailing_stop` order type with `trail_percent` — the broker
     // trails the high-water mark itself. Mutually exclusive with brackets (both would claim the
@@ -904,10 +964,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
       if (!input.quantity || !(input.quantity > 0)) {
         throw new OrderValidationError("Alpaca trailing stop requires a positive share quantity (no notional trailing stops).");
       }
-      const trailingTif = resolveAlpacaTimeInForce({ requestedTimeInForce: input.timeInForce, isBracket: false, quantity: input.quantity });
-      if (trailingTif.normalized) {
-        audit("alpaca_tif_normalized_to_day", { symbol: input.symbol, side: input.side, requestedTimeInForce: input.timeInForce, reason: trailingTif.reason, quantity: input.quantity }, this.userId);
-      }
+      
       try {
         const raw = await this.trackHealth(
           () => this.alpaca.createOrder({
@@ -916,7 +973,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
             type: "trailing_stop",
             trail_percent: String(input.trailPercent),
             qty: input.quantity,
-            time_in_force: trailingTif.timeInForce,
+            time_in_force: resolvedTimeInForce,
             client_order_id: input.refId
           }),
           { deadlineMs: ALPACA_BROKER_IO_DEADLINE_MS, retryTransient: false }
@@ -960,23 +1017,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
     // is day-only (docs.alpaca.markets). A caller-requested "gtc" (an LLM proposal, or any
     // dollar-routed entry) that would otherwise 422 gets normalized instead of reaching the broker;
     // the original intent is preserved via an audit receipt (Codex review, item 10).
-    const tif = resolveAlpacaTimeInForce({
-      requestedTimeInForce: input.timeInForce,
-      isBracket,
-      quantity: effectiveQty,
-      notional: effectiveNotional,
-      extendedHours: input.marketHours === "extended_hours"
-    });
-    if (tif.normalized) {
-      audit("alpaca_tif_normalized_to_day", {
-        symbol: input.symbol,
-        side: input.side,
-        requestedTimeInForce: input.timeInForce,
-        reason: tif.reason,
-        quantity: effectiveQty,
-        dollarAmount: effectiveNotional
-      }, this.userId);
-    }
+
 
     const fallbackFn = async () => {
       try {
@@ -984,7 +1025,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
           symbol: toAlpacaSymbol(input.symbol),
           side: toBrokerSide(input.side), // short→sell, cover→buy; Alpaca infers open/close from position
           type: mapAlpacaOrderTypeWrite(input.type),
-          time_in_force: tif.timeInForce,
+          time_in_force: resolvedTimeInForce,
           client_order_id: input.refId
         };
 
@@ -1048,7 +1089,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
       symbol: toAlpacaSymbol(input.symbol),
       side: toBrokerSide(input.side), // short→sell, cover→buy; Alpaca infers open/close from position
       type: mapAlpacaOrderTypeWrite(input.type),
-      time_in_force: tif.timeInForce,
+      time_in_force: resolvedTimeInForce,
       client_order_id: input.refId
     };
 

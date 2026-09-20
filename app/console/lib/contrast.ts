@@ -41,3 +41,47 @@ export function compositeOver(hex: string, alpha: number, background: string): s
 }
 
 export const WCAG_AA_SMALL_TEXT = 4.5;
+export const WCAG_AA_LARGE_TEXT = 3.0;
+export const WCAG_AA_NON_TEXT_CONTRAST = 3.0;
+
+/** Parse `rgba(r, g, b, a)` (commas or spaces, 0-255 channels, 0-1 alpha). */
+export function parseRgba(value: string): { r: number; g: number; b: number; a: number } {
+  const m = value.trim().match(/^rgba?\(([^)]+)\)$/i);
+  if (!m) throw new Error(`expected rgba(...), got ${value}`);
+  const parts = m[1].split(/[\s,]+/).filter(Boolean);
+  if (parts.length < 3 || parts.length > 4) throw new Error(`bad rgba tuple: ${value}`);
+  const r = parseInt(parts[0], 10);
+  const g = parseInt(parts[1], 10);
+  const b = parseInt(parts[2], 10);
+  const a = parts[3] !== undefined ? parseFloat(parts[3]) : 1;
+  return { r, g, b, a };
+}
+
+/** sRGB alpha-composite `rgba(r,g,b,a)` over an opaque hex background. */
+export function compositeRgbaOver(rgba: string, background: string): string {
+  const { r, g, b, a } = parseRgba(rgba);
+  const bg = background.replace("#", "");
+  const mix = (from: number, to: number) => Math.round(from * a + to * (1 - a));
+  const channels = [0, 2, 4].map((offset) => {
+    const to = parseInt(bg.slice(offset, offset + 2), 16);
+    const mixed = mix(offset === 0 ? r : offset === 2 ? g : b, to);
+    return mixed.toString(16).padStart(2, "0");
+  });
+  return `#${channels.join("")}`;
+}
+
+/** Contrast of an rgba border against an opaque hex background.
+ *  Used for non-text UI components (WCAG 1.4.11), which require >= 3:1. */
+export function rgbaContrast(rgba: string, background: string): number {
+  return contrastRatio(compositeRgbaOver(rgba, background), background);
+}
+
+/** Parse `1px solid var(--con-foo)` (and variants) into the rgba value if it is one. */
+export function tokenRgba(css: string, name: string): string | undefined {
+  const re = new RegExp(`${name}:\\s*(rgba?\\([^)]+\\)|#[0-9a-fA-F]{3,8})`, "i");
+  const m = css.match(re);
+  if (!m) return undefined;
+  const v = m[1];
+  if (v.startsWith("#")) return v.toLowerCase();
+  return v.replace(/\s+/g, "").toLowerCase();
+}

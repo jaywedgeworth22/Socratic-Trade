@@ -173,12 +173,14 @@ enum CoachModelCatalog {
 
     static let storageKey = "console.assistant.model"
 
+    // gpt-mini-latest and gpt-5.6-terra were removed 2026-09-18 (model-catalog cleanup —
+    // both were strictly dominated by same-provider siblings; see
+    // docs/rollouts/2026-09-18-model-catalog-cleanup.md) rather than relabeled, so this list
+    // currently has no OpenAI-family entry.
     static let options: [Option] = [
-        .init(id: "gpt-mini-latest", label: "GPT Mini (5.4)", provider: "openai", detail: "low-cost OpenAI"),
-        .init(id: "gpt-5.6-terra", label: "GPT Terra", provider: "openai", detail: "balanced OpenAI"),
         .init(id: "claude-haiku-latest", label: "Claude Haiku (4.5)", provider: "anthropic", detail: "fast Claude"),
         .init(id: "claude-sonnet-latest", label: "Claude Sonnet (5)", provider: "anthropic", detail: "balanced Claude"),
-        .init(id: "grok-latest", label: "Grok (4.5)", provider: "xai", detail: "default Grok"),
+        .init(id: "grok-latest", label: "Grok (4.6)", provider: "xai", detail: "default Grok"),
         .init(id: "gemini-flash-latest", label: "Gemini Flash", provider: "gemini", detail: "stable Flash")
     ]
 

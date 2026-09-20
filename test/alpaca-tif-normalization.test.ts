@@ -98,6 +98,19 @@ describe("resolveAlpacaTimeInForce (pure resolution matrix)", () => {
     expect(r.timeInForce).toBe("gtc");
     expect(r.normalized).toBe(false);
   });
+
+  it("an extended-hours GTC order normalizes to day (Alpaca extended-hours is day-only)", () => {
+    const r = resolveAlpacaTimeInForce({ requestedTimeInForce: "gtc", isBracket: false, quantity: 10, extendedHours: true });
+    expect(r.timeInForce).toBe("day");
+    expect(r.normalized).toBe(true);
+    expect(r.reason).toBe("extended_hours");
+  });
+
+  it("an extended-hours order that already asked for day is not flagged normalized", () => {
+    const r = resolveAlpacaTimeInForce({ requestedTimeInForce: "day", isBracket: false, quantity: 10, extendedHours: true });
+    expect(r.timeInForce).toBe("day");
+    expect(r.normalized).toBe(false);
+  });
 });
 
 describe("Alpaca placeEquityOrder — tif normalization end-to-end", () => {

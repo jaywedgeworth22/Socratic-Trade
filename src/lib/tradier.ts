@@ -25,6 +25,7 @@ import { isAbortOrTimeoutError, isTransientNetworkError } from "./network-errors
 // they are broker-agnostic helpers exported from ./alpaca (no Alpaca SDK behavior involved).
 import { fillMissingQuotesWithClose, estimateReviewNotional } from "./alpaca";
 import { mergeAccountCapabilities } from "./venue-contract";
+import { normalizeVenueOrder } from "./venue-normalization";
 import { TRADIER_BROKER_IO_DEADLINE_MS, equityOrdersDefaultSinceIso, withDeadline } from "./inflight-deadline";
 
 /**
@@ -795,7 +796,8 @@ class TradierBrokerGateway implements BrokerGateway {
     return { estimatedNotional, alerts, raw: { tradier: true } };
   }
 
-  async placeEquityOrder(input: EquityOrderInput & { refId: string }): Promise<ExecutedOrder> {
+  async placeEquityOrder(rawInput: EquityOrderInput & { refId: string }): Promise<ExecutedOrder> {
+    const input = normalizeVenueOrder(rawInput, "tradier", this.userId) as typeof rawInput;
     // WHOLE-SHARE resolution: Tradier has no notional field AND no broker-side notional cap, so WE
     // size a dollar order into shares at an anchor price and must not overspend the budget. Never
     // default to 1 — a $500 order must not become 500 shares.

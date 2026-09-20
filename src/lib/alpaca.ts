@@ -31,8 +31,8 @@ import { normalizeVenueOrder } from "./venue-normalization";
 
 /**
  * Pure resolution matrix for Alpaca time-in-force (Codex review, item 10). Alpaca rejects a
- * GTC order carrying a fractional share quantity OR a notional (dollar) amount — both require
- * `time_in_force="day"` (docs.alpaca.markets). Bracket orders also require "day" for an
+ * GTC order carrying a fractional share quantity, a notional (dollar) amount, or placed in the
+ * extended-hours session — all require `time_in_force="day"` (docs.alpaca.markets). Bracket orders also require "day" for an
  * unrelated reason (native OCO leg support), so they always resolve to "day" but are NOT
  * counted as this item's normalization (bracket is the bracket path's own pre-existing reason).
  *
@@ -45,37 +45,40 @@ export function resolveAlpacaTimeInForce(input: {
   isBracket: boolean;
   quantity?: number;
   notional?: number;
-}): { timeInForce: TimeInForce | "day"; normalized: boolean; reason?: "fractional_quantity" | "notional" } {
-  const { requestedTimeInForce, isBracket, quantity, notional } = input;
+  extendedHours?: boolean;
+}): { timeInForce: TimeInForce | "day"; normalized: boolean; reason?: "fractional_quantity" | "notional" | "extended_hours" } {
+  const { requestedTimeInForce, isBracket, quantity, notional, extendedHours } = input;
   const isFractionalQty = quantity != null && !Number.isInteger(quantity);
   const isNotional = notional != null && notional > 0;
+  // Extended-hours orders are day-only on Alpaca, like fractional/notional — a "gtc" would 422.
+  const isExtendedHours = extendedHours === true;
 
   // Bracket forces day for its own pre-existing reason — don't double-flag as our normalization.
   if (isBracket) {
     return { timeInForce: "day", normalized: false };
   }
 
-  // Whole-share, no notional, gtc: pass through unchanged — Alpaca accepts GTC whole-share orders.
-  if (!isFractionalQty && !isNotional && requestedTimeInForce === "gtc") {
+  // Whole-share, no notional, regular-hours, gtc: pass through unchanged — Alpaca accepts GTC whole-share orders.
+  if (!isFractionalQty && !isNotional && !isExtendedHours && requestedTimeInForce === "gtc") {
     return { timeInForce: "gtc", normalized: false };
   }
 
-  // Whole-share, no notional, gfd: Alpaca's docs treat gfd equivalent to day for the same trading
+  // Whole-share, no notional, regular-hours, gfd: Alpaca's docs treat gfd equivalent to day for the same trading
   // session. Sending "gfd" is redundant — the broker normalizes to "day" anyway. We mirror that
   // locally so the wire field is canonical "day" (matches what the broker will accept).
-  if (!isFractionalQty && !isNotional && requestedTimeInForce === "gfd") {
+  if (!isFractionalQty && !isNotional && !isExtendedHours && requestedTimeInForce === "gfd") {
     return { timeInForce: "day", normalized: false };
   }
 
-  // Fractional or notional: only "gtc" is overridden (flag normalized=true so the override is
-  // observable). gfd already resolves to day via Alpaca's own rules; we mirror that and do NOT
-  // claim it was our normalization — the caller never asked for gtc so we shouldn't claim a
-  // gtc->day override.
+  // Fractional, notional, or extended-hours: only "gtc" is overridden (flag normalized=true
+  // so the override is observable). gfd already resolves to day via Alpaca's own rules; we mirror
+  // that and do NOT claim it was our normalization — the caller never asked for gtc so we
+  // shouldn't claim a gtc->day override.
   if (requestedTimeInForce === "gtc") {
     return {
       timeInForce: "day",
       normalized: true,
-      reason: isFractionalQty ? "fractional_quantity" : "notional"
+      reason: isExtendedHours ? "extended_hours" : (isFractionalQty ? "fractional_quantity" : "notional")
     };
   }
   return { timeInForce: "day", normalized: false };
@@ -237,15 +240,6 @@ export function estimateReviewNotional(
 }
 
 
-/**
- * Alpaca requires time_in_force="day" for any order carrying a fractional share quantity or a
- * notional (dollar) amount — fractional-share trading is day-only regardless of order type
- * (docs.alpaca.markets); a "gtc" on either is a guaranteed 422. Bracket orders already require
- * "day" for an unrelated reason (native OCO leg support). Resolves against the quantity/notional
- * actually being submitted (the caller must resolve any bracket-floor qty first), never the raw
- * proposal, so this can't drift from what really gets sent to the broker. Exported (and called from
- * a single place per order path below) so REST, MCP, and the native-trailing path can't disagree.
- */
 
 /** Alpaca's wire word for a stop-market is `stop`.  Keep `stop_limit` and everything else as-is. */
 export function mapAlpacaOrderTypeWrite(type: OrderType | string): string {
@@ -944,7 +938,8 @@ class AlpacaBrokerGateway implements BrokerGateway {
       requestedTimeInForce: rawInput.timeInForce,
       isBracket,
       quantity: input.quantity,
-      notional: input.dollarAmount
+      notional: input.dollarAmount,
+      extendedHours: input.marketHours === "extended_hours"
     });
     if (tifResolution.normalized) {
       audit("alpaca_tif_normalized_to_day", {
@@ -1022,7 +1017,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
     // is day-only (docs.alpaca.markets). A caller-requested "gtc" (an LLM proposal, or any
     // dollar-routed entry) that would otherwise 422 gets normalized instead of reaching the broker;
     // the original intent is preserved via an audit receipt (Codex review, item 10).
-    
+
 
     const fallbackFn = async () => {
       try {
@@ -1106,6 +1101,9 @@ class AlpacaBrokerGateway implements BrokerGateway {
     // limit order carrying one).
     if (input.stopPrice && (input.type === "stop_market" || input.type === "stop_limit")) {
       orderArgs.stop_price = String(roundAlpacaPrice(input.stopPrice));
+    }
+    if (input.marketHours === "extended_hours") {
+      orderArgs.extended_hours = true;
     }
 
     if (isBracket) {

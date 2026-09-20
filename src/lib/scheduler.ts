@@ -130,10 +130,16 @@ export async function reconcileManagedVectorRecordsIfDue(now = Date.now()): Prom
         return { status: "busy", result: { skipped: true } };
       }
 
-      const lastAttemptAt = getInternalSetting<PersistedTimestamp>(MANAGED_VECTOR_RECONCILE_LAST_ATTEMPT_KEY);
-      const lastSuccessAt = getInternalSetting<PersistedTimestamp>(MANAGED_VECTOR_RECONCILE_LAST_SUCCESS_KEY);
+      const lastAttemptAt = await sqliteYieldRetry(() =>
+        getInternalSetting<PersistedTimestamp>(MANAGED_VECTOR_RECONCILE_LAST_ATTEMPT_KEY)
+      );
+      const lastSuccessAt = await sqliteYieldRetry(() =>
+        getInternalSetting<PersistedTimestamp>(MANAGED_VECTOR_RECONCILE_LAST_SUCCESS_KEY)
+      );
       if (!isManagedVectorReconcileDue(now, lastAttemptAt, lastSuccessAt)) return null;
 
+      // Timestamp writes are each their own retry envelope so a BUSY on lastSuccess
+      // cannot re-stamp lastAttempt (or re-run the provider pass).
       await sqliteYieldRetry(() =>
         setInternalSetting(MANAGED_VECTOR_RECONCILE_LAST_ATTEMPT_KEY, new Date(now).toISOString())
       );
@@ -308,6 +314,7 @@ export async function sendSentrySchedulerCheckIn(
 }
 
 let timer: NodeJS.Timeout | null = null;
+const schedulerStartHost = globalThis as unknown as { __schedulerStartInFlight?: boolean };
 // Schedule state is per (userId, connectedAccountId): each connected account runs autonomously on
 // its own cadence/state, so two accounts of the same user neither share a cadence clock nor block
 // each other. Keyed by scheduleKey(userId, accountId).
@@ -704,7 +711,8 @@ export function getSchedulerState(userId: string = "local", connectedAccountId?:
 }
 
 export function startScheduler(): void {
-  if (timer) return; // guard against double-start
+  if (timer || schedulerStartHost.__schedulerStartInFlight) return; // guard against double-start
+  schedulerStartHost.__schedulerStartInFlight = true;
 
   // Release only after the event loop drains. SIGTERM/SIGINT intentionally retain the lease until
   // its TTL: signal shutdown can kill detached synthetic-stop/broker work, and immediate release
@@ -719,17 +727,23 @@ export function startScheduler(): void {
     for (const event of SCHEDULER_LEASE_RELEASE_EVENTS) process.on(event, release);
   }
 
-  // Boot interlock runs once, before any tick, so a restored/copied DB cannot resume live
-  // execution unattended.
-  reconcileAutonomyOnBoot();
-
-  // Run a tick immediately on start to schedule Next Run right away
-  void tick();
-
-  timer = setInterval(tick, TICK_MS);
-  timer.unref(); // don't hold the process open in dev
-  startTickWatchdog();
-  console.log("[scheduler] started (tick every 60s; watchdog every 15s)");
+  // Boot interlock must finish before the first tick so a restored/copied DB cannot resume
+  // live execution unattended.  Halt writes go through sqliteYieldRetry (async), so the
+  // interval is armed only after they settle.  A throw here must not start ticks — failing
+  // to halt and then running would resume persisted 'active' accounts.
+  void (async () => {
+    try {
+      await reconcileAutonomyOnBoot();
+      void tick();
+      timer = setInterval(tick, TICK_MS);
+      timer.unref(); // don't hold the process open in dev
+      startTickWatchdog();
+      console.log("[scheduler] started (tick every 60s; watchdog every 15s)");
+    } catch (err) {
+      schedulerStartHost.__schedulerStartInFlight = false;
+      console.error("[scheduler] boot autonomy reconcile failed; scheduler not started:", err);
+    }
+  })();
 }
 
 async function tickInner(signal?: AbortSignal): Promise<void> {
@@ -1485,9 +1499,9 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
     // never reach this finally. A completed tick (ok or error) proves the loop is alive;
     // the watchdog does not write lastTick on unwedge.
     try {
-      await sqliteYieldRetry(() =>
-        setInternalSetting("scheduler:lastTick", new Date().toISOString())
-      );
+      // SQLITE_BUSY after the 100ms pin must yield and retry.  A later success is a live
+      // leader — it must not incrementHealthFailures or releaseLease.
+      await sqliteYieldRetry(() => setInternalSetting("scheduler:lastTick", new Date().toISOString()));
       if (getHealthFailures() > 0) resetHealthFailures();
     } catch (err) {
       console.error("[scheduler] heartbeat write error:", err);

@@ -78,7 +78,7 @@ describe("sentry integration is inert without env vars", () => {
     const scheduler = await import("../src/lib/scheduler");
     expect(scheduler.getSchedulerState("local")).toEqual({ lastRunAt: null, nextRunAt: null });
     // Boot interlock is DB-only and must work with zero Sentry configuration.
-    expect(() => scheduler.reconcileAutonomyOnBoot()).not.toThrow();
+    await expect(scheduler.reconcileAutonomyOnBoot()).resolves.toBeUndefined();
     expect(sentryMock.imported).toBe(false);
   });
 

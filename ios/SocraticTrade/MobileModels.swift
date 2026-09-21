@@ -75,9 +75,10 @@ struct MobileSnapshot: Decodable {
         marketSession = try values.decodeIfPresent(String.self, forKey: .marketSession) ?? "unknown"
         scheduler = try values.decodeIfPresent(SchedulerSummary.self, forKey: .scheduler) ?? .empty
         portfolio = try values.decodeIfPresent(PortfolioSummary.self, forKey: .portfolio)
-        positions = try values.decodeIfPresent([Position].self, forKey: .positions) ?? []
-        orders = try values.decodeIfPresent([EquityOrder].self, forKey: .orders) ?? []
-        pendingProposals = try values.decodeIfPresent([PendingProposal].self, forKey: .pendingProposals) ?? []
+        // Lossy decoding for arrays that can tolerate missing/malformed individual items
+        positions = Self.decodeLossyArray(from: values, forKey: .positions)
+        orders = Self.decodeLossyArray(from: values, forKey: .orders)
+        pendingProposals = Self.decodeLossyArray(from: values, forKey: .pendingProposals)
         dailyStats = try values.decodeIfPresent(DailyStats.self, forKey: .dailyStats) ?? .empty
         // try?: performance is display-only enrichment — a malformed sub-field (this is
         // exactly where the equity-curve date/timestamp mismatch lived) must degrade to
@@ -106,6 +107,32 @@ struct MobileSnapshot: Decodable {
             return accountId == activeAccountId
         }
     }
+
+    private static func decodeLossyArray<T: Decodable>(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) -> [T] {
+        guard var arrayContainer = try? container.nestedUnkeyedContainer(forKey: key) else {
+            return []
+        }
+        var elements = [T]()
+        while !arrayContainer.isAtEnd {
+            do {
+                let item = try arrayContainer.decode(T.self)
+                elements.append(item)
+            } catch {
+                #if DEBUG
+                print("Lossy decode dropped an item of type \(T.self) at key \(key.stringValue): \(error)")
+                #endif
+                _ = try? arrayContainer.decode(AnyDecodable.self)
+            }
+        }
+        return elements
+    }
+}
+
+private struct AnyDecodable: Decodable {
+    init(from decoder: Decoder) throws {}
 }
 
 /// The server's own description of what this deployment's mobile control plane offers —

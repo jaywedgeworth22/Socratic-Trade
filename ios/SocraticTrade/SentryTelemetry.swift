@@ -25,7 +25,16 @@ enum SentryTelemetry {
 
         SentrySDK.start { options in
             options.dsn = dsn
-            options.environment = "production"
+            #if DEBUG
+            options.environment = "development"
+            #else
+            if Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt" {
+                options.environment = "testflight"
+            } else {
+                options.environment = "production"
+            }
+            #endif
+            
             if let releaseName, !releaseName.isEmpty {
                 options.releaseName = releaseName
             }

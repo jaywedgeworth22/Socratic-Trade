@@ -1,5 +1,20 @@
 # Current Status
 
+## 2026-09-21 CLAUDE — next 16.3.5 bump, round-3 autofix (rollout-note accuracy: file inventory + CI gate)
+
+Codex's round-3 pair of P1s on PR #3442 was again against
+`docs/rollouts/2026-09-21-next-16.3.5-bump.md`, not against code: (a) the touched-file inventory
+listed only the three documentation files while the PR diff also carries `package.json` and
+`package-lock.json`, and (b) the authoritative-gate sentence described the required `verify`
+check as `tsc` -> `test` -> `build`, omitting `npm run lint` — which `.github/workflows/ci.yml:311-314`
+runs first.  Both findings were correct.  Fixed in place: the inventory now lists all five PR
+paths with the commit that introduced each (and explains that the "documentation only" line
+describes the autofix rounds, not the dependency files that are the PR's subject), and the gate
+sentence now names all four commands in the mandated order.  Documentation only — no source,
+dependency, or lockfile change.  Round 3 of the codex-autofix loop (2 commits authored on this
+branch vs the cap of 10).  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-21-next-16.3.5-bump.md`.
+
 ## 2026-09-21 CLAUDE — next 16.3.5 bump, round-2 autofix (verification-order fix in the rollout note)
 
 Codex's round-2 P1 on PR #3442 was against `docs/rollouts/2026-09-21-next-16.3.5-bump.md`, not

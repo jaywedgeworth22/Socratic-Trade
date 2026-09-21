@@ -403,7 +403,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
   private async readAccount(): Promise<any> {
     const { firstMs, retryMs } = alpacaAccountReadBudgetMs();
     return awaitWithFirstCallRetry(
-      ({ signal }) => this.trackHealth(() => this.alpaca.getAccount(), { signal }),
+      ({ signal }) => this.trackHealth(() => this.alpaca.trading.account.getAccount(), { signal }),
       {
         firstMs,
         retryMs,
@@ -543,7 +543,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
   private async reconcileCanceledOrder(orderId: string): Promise<ExecutedOrder | undefined> {
     try {
       const raw = await this.trackHealth(
-        () => this.alpaca.getOrder(orderId),
+        () => this.alpaca.trading.orders.getOrderByOrderID({ orderId }),
         { deadlineMs: ALPACA_BROKER_IO_DEADLINE_MS, retryTransient: true }
       );
       const state = String(raw?.status ?? "");
@@ -573,11 +573,11 @@ class AlpacaBrokerGateway implements BrokerGateway {
     }
     try {
       const account = await this.getAccountCached();
-      if (account && String(account.account_number ?? "") && accountNumber) {
-        const live = String(account.account_number).trim().toLowerCase();
+      if (account && String((account.account_number ?? account.accountNumber) ?? "") && accountNumber) {
+        const live = String((account.account_number ?? account.accountNumber)).trim().toLowerCase();
         const want = String(accountNumber).trim().toLowerCase();
         if (live && want && live !== want) {
-          const reason = `Alpaca credentials are for account ${account.account_number}, not ${accountNumber}`;
+          const reason = `Alpaca credentials are for account ${(account.account_number ?? account.accountNumber)}, not ${accountNumber}`;
           alpacaProbeCache.set(key, { at: Date.now(), ok: false, reason });
           return { ok: false, reason };
         }
@@ -626,17 +626,17 @@ class AlpacaBrokerGateway implements BrokerGateway {
       const account = await this.getAccountCached();
       return [
         {
-          accountNumber: account.account_number,
+          accountNumber: (account.account_number ?? account.accountNumber),
           label: this.label,
           agenticAllowed: true,
           capabilities: getCapabilities(account)
         }
       ];
     }).then((res: any) => {
-      if (res && res.account_number) {
+      if (res && (res.account_number ?? res.accountNumber)) {
         return [
           {
-            accountNumber: res.account_number,
+            accountNumber: (res.account_number ?? res.accountNumber),
             label: this.label,
             agenticAllowed: true,
             capabilities: getCapabilities(res)
@@ -655,7 +655,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
       // and actually different, ignoring case/whitespace) — a blank configured number or a mere
       // formatting difference must never block a run. The message is actionable so the operator can
       // correct the stored number in Connections.
-      const liveNum = String(account.account_number ?? "").trim();
+      const liveNum = String((account.account_number ?? account.accountNumber) ?? "").trim();
       const wantNum = String(accountNumber ?? "").trim();
       if (wantNum && liveNum && liveNum.toLowerCase() !== wantNum.toLowerCase()) {
         throw new Error(
@@ -664,15 +664,15 @@ class AlpacaBrokerGateway implements BrokerGateway {
       }
       return {
         accountNumber,
-        totalMarketValue: number(account.portfolio_value),
-        buyingPower: number(account.buying_power),
-        equityMarketValue: number(account.equity) - number(account.cash),
+        totalMarketValue: number((account.portfolio_value ?? account.portfolioValue)),
+        buyingPower: number((account.buying_power ?? account.buyingPower)),
+        equityMarketValue: number(account.equity) - number((account.cash)),
         optionMarketValue: 0,
-        cash: number(account.cash)
+        cash: number((account.cash))
       };
     }).then((res: any) => {
       let result: Portfolio;
-      if (res && res.account_number) {
+      if (res && (res.account_number ?? res.accountNumber)) {
         result = {
           accountNumber,
           totalMarketValue: number(res.portfolio_value),
@@ -692,7 +692,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
     return this.callMcp<any>("get_positions", {}, async () => {
       const { firstMs, retryMs } = alpacaAccountReadBudgetMs();
       const positions = await awaitWithFirstCallRetry(
-        ({ signal }) => this.trackHealth(() => this.alpaca.getPositions(), { signal }),
+        ({ signal }) => this.trackHealth(() => this.alpaca.trading.positions.getAllOpenPositions(), { signal }),
         {
           firstMs,
           retryMs,
@@ -755,7 +755,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
     for (let guard = 0; guard < 50; guard++) {
       const { firstMs, retryMs } = alpacaAccountReadBudgetMs();
       const page = (await awaitWithFirstCallRetry(
-        ({ signal }) => this.trackHealth(() => this.alpaca.getOrders({
+        ({ signal }) => this.trackHealth(() => this.alpaca.trading.orders.getAllOrders({
           status: params.status,
           limit: PAGE,
           direction: "desc",
@@ -776,7 +776,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
       let oldestMs = Number.POSITIVE_INFINITY;
       for (const o of page) {
         const id = String(o.id);
-        const createdAt = String(o.created_at);
+        const createdAt = String(o.created_at ?? o.createdAt);
         const createdMs = Date.parse(createdAt);
         if (!seen.has(id)) {
           seen.add(id);
@@ -811,7 +811,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
       const { firstMs, retryMs } = alpacaAccountReadBudgetMs();
       const response = await awaitWithFirstCallRetry(
         ({ signal }) => this.trackHealth(
-          () => this.alpaca.getLatestQuotes(normalizedSymbols.map(toAlpacaSymbol)),
+          () => this.alpaca.marketData.stocks.stockLatestQuotes({ symbols: normalizedSymbols.map(toAlpacaSymbol.join(",") }).then(res => res.quotes)),
           { deadlineMs: ALPACA_BROKER_IO_DEADLINE_MS, signal }
         ),
         {
@@ -893,23 +893,23 @@ class AlpacaBrokerGateway implements BrokerGateway {
       }
       try {
         const raw = await this.trackHealth(
-          () => this.alpaca.createOrder({
+          () => this.alpaca.trading.orders.postOrder({ postOrderRequest: {
             symbol: toAlpacaSymbol(input.symbol),
             side: toBrokerSide(input.side),
             type: "trailing_stop",
-            trail_percent: String(input.trailPercent),
+            trailPercent: String(input.trailPercent),
             qty: input.quantity,
-            time_in_force: trailingTif.timeInForce,
-            client_order_id: input.refId
-          }),
+            timeInForce: trailingTif.timeInForce,
+            clientOrderId: input.refId
+          } }),
           { deadlineMs: ALPACA_BROKER_IO_DEADLINE_MS, retryTransient: false }
         );
         return {
           orderId: raw.id,
           refId: input.refId,
           state: raw.status,
-          filledQuantity: optionalNumber(raw.filled_qty),
-          averagePrice: optionalNumber(raw.filled_avg_price),
+          filledQuantity: optionalNumber(raw.filled_qty ?? (raw as any).filledQty ?? (raw as any).filledQty),
+          averagePrice: optionalNumber(raw.filled_avg_price ?? (raw as any).filledAvgPrice ?? (raw as any).filledAvgPrice),
           raw
         };
       } catch (error: unknown) {
@@ -966,8 +966,8 @@ class AlpacaBrokerGateway implements BrokerGateway {
           symbol: toAlpacaSymbol(input.symbol),
           side: toBrokerSide(input.side), // short→sell, cover→buy; Alpaca infers open/close from position
           type: mapAlpacaOrderTypeWrite(input.type),
-          time_in_force: tif.timeInForce,
-          client_order_id: input.refId
+          timeInForce: tif.timeInForce,
+          clientOrderId: input.refId
         };
 
         if (effectiveQty != null) {
@@ -976,39 +976,39 @@ class AlpacaBrokerGateway implements BrokerGateway {
           orderOptions.notional = effectiveNotional;
         }
 
-        if (input.limitPrice) orderOptions.limit_price = roundAlpacaPrice(input.limitPrice);
+        if (input.limitPrice) orderOptions.limitPrice = roundAlpacaPrice(input.limitPrice);
         // stop_price is only legal on stop-family order types — Alpaca rejects a limit order that
         // carries one with HTTP 422 40010001 "limit orders require no stop price" (proposals may
         // carry a protective stopPrice idea; that intent rides the bracket stop_loss /
         // protective-stop systems, never this field).
         if (input.stopPrice && (input.type === "stop_market" || input.type === "stop_limit")) {
-          orderOptions.stop_price = roundAlpacaPrice(input.stopPrice);
+          orderOptions.stopPrice = roundAlpacaPrice(input.stopPrice);
         }
-        if (input.marketHours === "extended_hours") orderOptions.extended_hours = true;
+        if (input.marketHours === "extended_hours") orderOptions.extendedHours = true;
 
         if (isBracket) {
-          orderOptions.order_class = "bracket";
+          orderOptions.orderClass = "bracket";
           if (input.bracketTakeProfit != null) {
-            orderOptions.take_profit = { limit_price: roundAlpacaPrice(input.bracketTakeProfit) };
+            orderOptions.takeProfit = { limitPrice: roundAlpacaPrice(input.bracketTakeProfit) };
           }
           if (input.bracketStopLoss != null) {
-            orderOptions.stop_loss = {
-              stop_price: roundAlpacaPrice(input.bracketStopLoss),
-              ...(input.bracketStopLimit != null ? { limit_price: roundAlpacaPrice(input.bracketStopLimit) } : {})
+            orderOptions.stopLoss = {
+              stopPrice: roundAlpacaPrice(input.bracketStopLoss),
+              ...(input.bracketStopLimit != null ? { limitPrice: roundAlpacaPrice(input.bracketStopLimit) } : {})
             };
           }
         }
 
         const raw = await this.trackHealth(
-          () => this.alpaca.createOrder(orderOptions),
+          () => this.alpaca.trading.orders.postOrder({ postOrderRequest: orderOptions }),
           { deadlineMs: ALPACA_BROKER_IO_DEADLINE_MS, retryTransient: false }
         );
         return {
           orderId: raw.id,
           refId: input.refId,
           state: raw.status,
-          filledQuantity: optionalNumber(raw.filled_qty),
-          averagePrice: optionalNumber(raw.filled_avg_price),
+          filledQuantity: optionalNumber(raw.filled_qty ?? (raw as any).filledQty ?? (raw as any).filledQty),
+          averagePrice: optionalNumber(raw.filled_avg_price ?? (raw as any).filledAvgPrice ?? (raw as any).filledAvgPrice),
           raw
         };
       } catch (error: unknown) {
@@ -1030,8 +1030,8 @@ class AlpacaBrokerGateway implements BrokerGateway {
       symbol: toAlpacaSymbol(input.symbol),
       side: toBrokerSide(input.side), // short→sell, cover→buy; Alpaca infers open/close from position
       type: mapAlpacaOrderTypeWrite(input.type),
-      time_in_force: tif.timeInForce,
-      client_order_id: input.refId
+      timeInForce: tif.timeInForce,
+      clientOrderId: input.refId
     };
 
     if (effectiveQty != null) orderArgs.qty = String(effectiveQty);
@@ -1047,12 +1047,12 @@ class AlpacaBrokerGateway implements BrokerGateway {
     if (isBracket) {
       orderArgs.order_class = "bracket";
       if (input.bracketTakeProfit != null) {
-        orderArgs.take_profit = { limit_price: roundAlpacaPrice(input.bracketTakeProfit) };
+        orderArgs.take_profit = { limitPrice: roundAlpacaPrice(input.bracketTakeProfit) };
       }
       if (input.bracketStopLoss != null) {
         orderArgs.stop_loss = {
-          stop_price: roundAlpacaPrice(input.bracketStopLoss),
-          ...(input.bracketStopLimit != null ? { limit_price: roundAlpacaPrice(input.bracketStopLimit) } : {})
+          stopPrice: roundAlpacaPrice(input.bracketStopLoss),
+          ...(input.bracketStopLimit != null ? { limitPrice: roundAlpacaPrice(input.bracketStopLimit) } : {})
         };
       }
     }
@@ -1076,23 +1076,23 @@ class AlpacaBrokerGateway implements BrokerGateway {
     const symbol = input.occSymbol.trim().toUpperCase().replace(/\s+/g, "");
     try {
       const raw = await this.trackHealth(
-        () => this.alpaca.createOrder({
+        () => this.alpaca.trading.orders.postOrder({ postOrderRequest: {
           symbol,
           qty: String(input.quantity),
           side: optionIntentToBrokerSide(input.intent),
           type: input.type,
-          time_in_force: "day",
-          limit_price: input.type === "limit" && input.limitPrice != null ? String(roundAlpacaPrice(input.limitPrice)) : undefined,
-          client_order_id: input.refId
-        }),
+          timeInForce: "day",
+          limitPrice: input.type === "limit" && input.limitPrice != null ? String(roundAlpacaPrice(input.limitPrice)) : undefined,
+          clientOrderId: input.refId
+        } }),
         { deadlineMs: ALPACA_BROKER_IO_DEADLINE_MS, retryTransient: false }
       );
       return {
         orderId: raw.id,
         refId: input.refId,
         state: raw.status,
-        filledQuantity: optionalNumber(raw.filled_qty),
-        averagePrice: optionalNumber(raw.filled_avg_price),
+        filledQuantity: optionalNumber(raw.filled_qty ?? (raw as any).filledQty ?? (raw as any).filledQty),
+        averagePrice: optionalNumber(raw.filled_avg_price ?? (raw as any).filledAvgPrice ?? (raw as any).filledAvgPrice),
         raw
       };
     } catch (error: unknown) {
@@ -1126,7 +1126,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
 
   async cancelEquityOrder(accountNumber: string, orderId: string): Promise<ExecutedOrder> {
     const restCancel = async (): Promise<ExecutedOrder> => {
-      await this.trackHealth(() => this.alpaca.cancelOrder(orderId), { deadlineMs: ALPACA_BROKER_IO_DEADLINE_MS });
+      await this.trackHealth(() => this.alpaca.trading.orders.deleteOrderByOrderID({ orderId }), { deadlineMs: ALPACA_BROKER_IO_DEADLINE_MS });
       return { orderId, refId: crypto.randomUUID(), state: "cancel_requested", raw: {} };
     };
     return this.callMcp<any>("cancel_order", { order_id: orderId }, restCancel, {
@@ -1157,7 +1157,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
     let raw: any;
     try {
       raw = await this.trackHealth(
-        () => this.alpaca.sendRequest(`/orders/${originalOrderId}`, { nested: true }, null, "GET"),
+        () => this.alpaca.trading.orders.getOrderByOrderID({ orderId: originalOrderId, nested: true }),
         { deadlineMs: ALPACA_BROKER_IO_DEADLINE_MS }
       );
     } catch (error) {
@@ -1179,7 +1179,7 @@ class AlpacaBrokerGateway implements BrokerGateway {
       const legState = String(leg?.status ?? "");
       if (isRejectedOrCanceledState(legState) || legState.toLowerCase() === "filled") continue;
       try {
-        await this.trackHealth(() => this.alpaca.cancelOrder(legId), { deadlineMs: ALPACA_BROKER_IO_DEADLINE_MS });
+        await this.trackHealth(() => this.alpaca.trading.orders.deleteOrderByOrderID({ orderId: legId }), { deadlineMs: ALPACA_BROKER_IO_DEADLINE_MS });
         cancelledOrderIds.push(legId);
       } catch {
         // best-effort — a leg that filled/cancelled between the fetch above and this cancel is fine
@@ -1196,13 +1196,13 @@ function optionalNumber(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function executedOrderFromRaw(raw: { id?: unknown; status?: unknown; filled_qty?: unknown; filled_avg_price?: unknown }, refId: string): ExecutedOrder {
+function executedOrderFromRaw(raw: { id?: unknown; status?: unknown; filled_qty?: unknown; filledQty?: unknown; filled_avg_price?: unknown; filledAvgPrice?: unknown }, refId: string): ExecutedOrder {
   return {
     orderId: String(raw.id),
     refId,
     state: raw.status != null ? String(raw.status) : "accepted",
-    filledQuantity: optionalNumber(raw.filled_qty),
-    averagePrice: optionalNumber(raw.filled_avg_price),
+    filledQuantity: optionalNumber(raw.filled_qty ?? (raw as any).filledQty ?? (raw as any).filledQty),
+    averagePrice: optionalNumber(raw.filled_avg_price ?? (raw as any).filledAvgPrice ?? (raw as any).filledAvgPrice),
     raw
   };
 }
@@ -1240,15 +1240,15 @@ export function mapAlpacaOrder(o: Record<string, unknown>): EquityOrder {
     state: String(o.status),
     quantity: optionalNumber(o.qty),
     dollarAmount: optionalNumber(o.notional),
-    filledQuantity: optionalNumber(o.filled_qty),
-    averagePrice: optionalNumber(o.filled_avg_price),
-    limitPrice: optionalNumber(o.limit_price),
-    stopPrice: optionalNumber(o.stop_price),
-    timeInForce: o.time_in_force ? String(o.time_in_force) : undefined,
-    createdAt: String(o.created_at),
-    updatedAt: o.updated_at ? String(o.updated_at) : undefined,
-    clientOrderId: o.client_order_id ? String(o.client_order_id) : undefined,
-    orderClass: o.order_class ? String(o.order_class) : undefined,
+    filledQuantity: optionalNumber(o.filled_qty ?? o.filledQty),
+    averagePrice: optionalNumber(o.filled_avg_price ?? o.filledAvgPrice),
+    limitPrice: optionalNumber(o.limit_price ?? o.limitPrice),
+    stopPrice: optionalNumber(o.stop_price ?? o.stopPrice),
+    timeInForce: o.time_in_force || o.timeInForce ? String(o.time_in_force ?? o.timeInForce) : undefined,
+    createdAt: String(o.created_at ?? o.createdAt),
+    updatedAt: o.updated_at || o.updatedAt ? String(o.updated_at ?? o.updatedAt) : undefined,
+    clientOrderId: o.client_order_id || o.clientOrderId ? String(o.client_order_id ?? o.clientOrderId) : undefined,
+    orderClass: o.order_class || o.orderClass ? String(o.order_class ?? o.orderClass) : undefined,
     placedAgent: "alpaca"
   };
 }
@@ -1257,7 +1257,7 @@ export function parseAlpacaPosition(p: Record<string, unknown>): EquityPosition 
   return {
     symbol: fromAlpacaSymbol(String(p.symbol)),
     quantity: number(p.qty ?? p.quantity),
-    averageCost: number(p.avg_entry_price ?? p.average_entry_price ?? p.averageCost),
+    averageCost: number(p.avg_entry_price ?? p.avgEntryPrice ?? p.average_entry_price ?? p.averageCost),
     marketValue: number(p.market_value ?? p.marketValue),
     sector: undefined,
     industry: undefined

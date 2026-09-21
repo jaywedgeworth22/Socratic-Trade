@@ -36,7 +36,7 @@ import { currentMarketSession } from "./market-hours";
 import { isUnusableEmptyMarketScan } from "./scan-singleflight";
 import { normalizeSymbol } from "./money";
 import { isDelayedYahooFallbackQuote } from "./quote-delayed-fallback";
-import { fetchFreshQuotesCascade } from "./quotes-cascade";
+import { fetchFreshQuotesCascade, isQuoteFresh } from "./quotes-cascade";
 import {
   calculatePnl,
   getPerformanceSummary,
@@ -568,13 +568,21 @@ async function computeDashboardSnapshot(userId: string = "local", currentUser?: 
                 timedOutSections
               )
             : {};
-          const missingPriceSymbols = priceSymbols.filter(
-            (s) => !quotes[s] || typeof quotes[s]?.price !== "number" || quotes[s]!.price! <= 0
-          );
+          // A stale broker quote (e.g. a positive "session-close" fill) is not a usable
+          // price — fall back to the cascade instead of sizing at yesterday's close.
+          const missingPriceSymbols = priceSymbols.filter((s) => {
+            const q = quotes[s];
+            return !q || typeof q.price !== "number" || q.price <= 0 || !isQuoteFresh(q, Date.now());
+          });
           if (missingPriceSymbols.length > 0) {
             try {
+              // skipActiveBroker: the direct gateway call above already timed out against
+              // this broker — do not issue a duplicate call to the same degraded broker
+              // from cascade Level 1a (Codex P1 review).
               const fallbackQuotes: Record<string, BrokerQuote> = await withDeadline<Record<string, BrokerQuote>>(
-                fetchFreshQuotesCascade(missingPriceSymbols, userId, targetAccountNumber),
+                fetchFreshQuotesCascade(missingPriceSymbols, userId, targetAccountNumber, undefined, {
+                  skipActiveBroker: true
+                }),
                 EQUITY_QUOTES_MS,
                 () => ({}),
                 "fetchFreshQuotesCascade",

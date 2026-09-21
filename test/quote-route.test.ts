@@ -8,7 +8,12 @@ vi.mock("@/lib/rate-limit", async (importActual) => {
   const actual = await importActual<typeof import("../src/lib/rate-limit")>();
   return { ...actual, enforceRateLimit: vi.fn(() => null) };
 });
-vi.mock("@/lib/quotes-cascade", () => ({ fetchFreshQuotesCascade: vi.fn(async () => ({})) }));
+// The route now imports isQuoteFresh from "@/lib/quotes-cascade" to validate the live
+// overlay — keep the real implementation and mock only the network-touching cascade.
+vi.mock("@/lib/quotes-cascade", async (importActual) => {
+  const actual = await importActual<typeof import("../src/lib/quotes-cascade")>();
+  return { ...actual, fetchFreshQuotesCascade: vi.fn(async () => ({})) };
+});
 vi.mock("@/lib/yahoo-finance", () => ({ fetchYahooFinanceQuote: vi.fn() }));
 vi.mock("@/lib/on-demand-quote", async (importActual) => {
   const actual = await importActual<typeof import("../src/lib/on-demand-quote")>();
@@ -394,13 +399,16 @@ describe("/api/quote", () => {
   });
 
   it("overlays real-time quote from quotes-cascade when available", async () => {
+    // A real cascade quote always carries fetchedAt (stamped at ingest completion);
+    // the route validates the overlay with isQuoteFresh, so the fixture must too.
     vi.mocked(fetchFreshQuotesCascade).mockResolvedValue({
       LRCX: {
         symbol: "LRCX",
         price: 82.5,
         bid: 82.4,
         ask: 82.6,
-        asOf: "2026-09-21T16:00:00.000Z",
+        asOf: new Date(Date.now() - 30_000).toISOString(),
+        fetchedAt: new Date().toISOString(),
         provider: "alpaca"
       }
     });

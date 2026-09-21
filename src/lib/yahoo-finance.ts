@@ -4,7 +4,9 @@ export interface YahooFinanceQuote {
   price: number;
   bid: number;
   ask: number;
-  prevClose: number;
+  /** Previous regular-session close.  Undefined when Yahoo does not report one — never
+   *  defaulted to the current price (that fabricates a 0% intraday change). */
+  prevClose?: number;
   volume: number;
   /** ISO timestamp of the quote (from meta.regularMarketTime) — the real "as of", not a daily-bar date. */
   asOf?: string;
@@ -71,7 +73,11 @@ export function yahooQuoteFromChartMeta(
   const companyName = [meta.longName, meta.shortName]
     .find((value): value is string => typeof value === "string" && value.trim().length > 0)
     ?.trim();
-  const prevClose = meta.chartPreviousClose ? Number(meta.chartPreviousClose) : price;
+  // Sentry review: when Yahoo omits chartPreviousClose, fall back to undefined — NOT the
+  // current price.  Falling back to price fabricates intradayChangePct ≈ 0% and hides the
+  // real "previous close unknown" state from the quote route's fallback chain.
+  const prevCloseRaw = meta.chartPreviousClose ? Number(meta.chartPreviousClose) : NaN;
+  const prevClose = Number.isFinite(prevCloseRaw) && prevCloseRaw > 0 ? prevCloseRaw : undefined;
   const volume = Number(meta.regularMarketVolume ?? volumeHint ?? 0);
   const t = Number(meta.regularMarketTime);
   const asOf = Number.isFinite(t) && t > 0 ? new Date(t * 1000).toISOString() : undefined;
@@ -80,7 +86,7 @@ export function yahooQuoteFromChartMeta(
     price,
     bid: price * 0.999,
     ask: price * 1.001,
-    prevClose,
+    ...(prevClose !== undefined ? { prevClose } : {}),
     volume,
     asOf,
     syntheticBid: true,

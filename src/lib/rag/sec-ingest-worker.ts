@@ -159,6 +159,14 @@ export class SecIngestWorker {
         // Each task chains synchronous extract/chunk/persist segments; yield between tasks so
         // queued HTTP requests get served (2026-08-10 event-loop stall incident).
         await yieldEventLoop();
+        // RTH re-admission check (Codex P1 review): a tick admitted just before 09:30 ET
+        // must not keep claiming/processing long tasks into regular hours.  Stop at the
+        // task boundary — unprocessed tasks keep their durable state and are picked up by
+        // a later non-RTH tick; claimed-but-unprocessed tasks expire via their lease.
+        if (process.env.NODE_ENV !== "test" && shouldDeferRagIngestDuringRth()) {
+          console.log("[SecIngestWorker] RTH began mid-tick — deferring remaining tasks to a non-RTH tick.");
+          return;
+        }
         try {
           await this.processTask(task);
         } catch (err: any) {
@@ -287,6 +295,13 @@ export class SecIngestWorker {
       } else {
         // Yield before and after heavy Cheerio parsing so I/O, health checks, and timers can breathe
         await yieldEventLoop();
+        // Do not ENTER the synchronous multi-second parse once RTH has begun — the
+        // task stays at its checkpoint and its lease expiry re-queues it for a later
+        // non-RTH tick (Codex P1 review).
+        if (process.env.NODE_ENV !== "test" && shouldDeferRagIngestDuringRth()) {
+          console.log(`[SecIngestWorker] RTH began before parse of task ${task.id} — deferring to a non-RTH tick.`);
+          return;
+        }
         // Form-aware title canonicalization: only a proven 10-K gets the 10-K
         // Item-code -> title map; other forms keep raw parsed titles.
         const parsed = parseFilingHtml(content, {

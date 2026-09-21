@@ -1571,7 +1571,8 @@ async function fetchQuoteOnlyMarketQuotes(symbols: string[], positions: EquityPo
 }
 
 function toQuoteOnlyMarketQuote(symbol: string, quote: YahooFinanceQuote, positions: EquityPosition[]): MarketQuote {
-  const prevClose = quote.prevClose > 0 ? quote.prevClose : quote.price;
+  const yahooPrevClose = quote.prevClose;
+  const prevClose = typeof yahooPrevClose === "number" && yahooPrevClose > 0 ? yahooPrevClose : quote.price;
   const netChange = quote.price - prevClose;
   const intradayChangePct = prevClose > 0 ? Math.round((netChange / prevClose) * 10_000) / 100 : 0;
   const position = positions.find((p) => normalizeSymbol(p.symbol) === symbol);

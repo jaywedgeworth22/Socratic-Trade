@@ -3,7 +3,7 @@ import { getPolicy } from "@/lib/db";
 import { normalizeSymbol } from "@/lib/money";
 import { resolveRequestUserId } from "@/lib/request-user";
 import { addToWatchlist, listWatchlist, removeFromWatchlist } from "@/lib/watchlist";
-import { fetchFreshQuotesCascade } from "@/lib/quotes-cascade";
+import { fetchFreshQuotesCascade, isQuoteFresh } from "@/lib/quotes-cascade";
 import type { BrokerQuote } from "@/lib/types";
 import { NextResponse } from "next/server";
 
@@ -29,9 +29,13 @@ export async function GET(request: Request) {
     }
   }
 
-  const missing = symbols.filter(
-    (s) => !quotes[s] || typeof quotes[s]?.price !== "number" || quotes[s]!.price! <= 0
-  );
+  // A stale broker quote (e.g. a positive "session-close" fill from the gateway) is
+  // not a usable price — fall back to the cascade instead of showing yesterday's
+  // close during RTH (Codex P1 review).
+  const missing = symbols.filter((s) => {
+    const q = quotes[s];
+    return !q || typeof q.price !== "number" || q.price <= 0 || !isQuoteFresh(q, Date.now());
+  });
   if (missing.length > 0) {
     try {
       const fallback = await fetchFreshQuotesCascade(missing, userId, accountNumber ?? undefined);

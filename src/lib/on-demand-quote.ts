@@ -16,9 +16,10 @@ const CURRENT_FIELDS = ["price", "volume", "intradayChangePct", "asOf"] as const
 /** The keyless chart quote is the bounded floor for a valid ticker. */
 export function fastQuoteEnrichment(quote: YahooFinanceQuote | undefined): SymbolEnrichment {
   if (!quote) return {};
+  const yahooPrevClose = quote.prevClose;
   const intradayChangePct =
-    quote.prevClose > 0
-      ? Math.round(((quote.price - quote.prevClose) / quote.prevClose) * 10_000) / 100
+    typeof yahooPrevClose === "number" && yahooPrevClose > 0
+      ? Math.round(((quote.price - yahooPrevClose) / yahooPrevClose) * 10_000) / 100
       : undefined;
   const fundamentals: SymbolEnrichment = {
     ...(quote.peRatio !== undefined ? { peRatio: quote.peRatio } : {}),

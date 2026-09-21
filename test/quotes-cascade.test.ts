@@ -106,6 +106,45 @@ describe("isQuoteFresh / cascadeFreshMaxAgeMs", () => {
   it("never treats missing asOf as fresh (unless venue-authoritative)", () => {
     expect(isQuoteFresh({}, Date.now(), cascadeFreshMaxAgeMs(120))).toBe(false);
   });
+
+  it("ages delayed tapes by market time — a fresh fetch stamp cannot promote Yahoo delay to live", () => {
+    const now = Date.now();
+    const delayedYahoo = {
+      bid: 10.1,
+      ask: 10.2,
+      asOf: new Date(now - 15 * 60 * 1000).toISOString(),
+      fetchedAt: new Date(now - 5_000).toISOString(),
+      provider: "yahoo-finance"
+    };
+    // Before the fix this returned true: the fresh local fetchedAt masked the stale
+    // market timestamp and the delayed Yahoo quote was treated as live.
+    expect(isQuoteFresh(delayedYahoo, now, cascadeFreshMaxAgeMs(120))).toBe(false);
+  });
+
+  it("ages secondary delayed-tape books (Tradier paper) by market time", () => {
+    const now = Date.now();
+    const tradierPaper = {
+      bid: 10.1,
+      ask: 10.2,
+      asOf: new Date(now - 15 * 60 * 1000).toISOString(),
+      fetchedAt: new Date(now - 5_000).toISOString(),
+      provider: "tradier-connected",
+      venueDelayedTape: true as const
+    };
+    expect(isQuoteFresh(tradierPaper, now, cascadeFreshMaxAgeMs(120))).toBe(false);
+  });
+
+  it("still ages verified real-time broker books by fetch time", () => {
+    const now = Date.now();
+    const alpaca = {
+      bid: 10.1,
+      ask: 10.2,
+      asOf: new Date(now - 30 * 60 * 1000).toISOString(),
+      fetchedAt: new Date(now - 5_000).toISOString(),
+      provider: "alpaca-snapshot"
+    };
+    expect(isQuoteFresh(alpaca, now, cascadeFreshMaxAgeMs(120))).toBe(true);
+  });
 });
 
 describe("quoteAgeSecForStalenessGate", () => {
@@ -204,6 +243,10 @@ describe("isTwoSidedLiveNbbo", () => {
     expect(isTwoSidedLiveNbbo({ bid: 100 })).toBe(false);
     expect(isTwoSidedLiveNbbo({ ask: 100 })).toBe(false);
   });
+
+  it("returns false for a crossed book (bid > ask) — malformed NBBO is never live", () => {
+    expect(isTwoSidedLiveNbbo({ bid: 100.05, ask: 100 })).toBe(false);
+  });
 });
 
 describe("resolveVenueQuoteMode", () => {
@@ -288,7 +331,7 @@ describe("fetchFreshQuotesCascade", () => {
 
     const result = await fetchFreshQuotesCascade(["AAPL"], "local", "ACC123");
 
-    expect(mockGetEquityQuotes).toHaveBeenCalledWith("ACC123", ["AAPL"]);
+    expect(mockGetEquityQuotes).toHaveBeenCalledWith("ACC123", ["AAPL"], { signal: undefined });
     expect(mockEnrich).not.toHaveBeenCalled();
     expect(mockFetchYahooFinanceQuotesBatch).not.toHaveBeenCalled();
     expect(mockFetchYahooFinanceQuote).not.toHaveBeenCalled();
@@ -307,7 +350,7 @@ describe("fetchFreshQuotesCascade", () => {
 
     const result = await fetchFreshQuotesCascade(["MSFT"], "local", "ACC123");
 
-    expect(mockGetEquityQuotes).toHaveBeenCalledWith("ACC123", ["MSFT"]);
+    expect(mockGetEquityQuotes).toHaveBeenCalledWith("ACC123", ["MSFT"], { signal: undefined });
     expect(mockEnrich).not.toHaveBeenCalled();
     expect(mockFetchYahooFinanceQuotesBatch).not.toHaveBeenCalled();
     expect(result.MSFT?.symbol).toBe("MSFT");
@@ -390,7 +433,7 @@ describe("fetchFreshQuotesCascade", () => {
 
     const result = await fetchFreshQuotesCascade(["MSFT"], "local", "VA00000000", "tr-sand");
 
-    expect(mockGetEquityQuotes).toHaveBeenCalledWith("VA00000000", ["MSFT"]);
+    expect(mockGetEquityQuotes).toHaveBeenCalledWith("VA00000000", ["MSFT"], { signal: undefined });
     // Must not chase a fresher external print — sandbox fills against delayed tape.
     expect(mockEnrich).not.toHaveBeenCalled();
     expect(mockFetchYahooFinanceQuotesBatch).not.toHaveBeenCalled();
@@ -419,7 +462,7 @@ describe("fetchFreshQuotesCascade", () => {
 
     const result = await fetchFreshQuotesCascade(["MSFT"], "local", "ACC123");
 
-    expect(mockGetEquityQuotes).toHaveBeenCalledWith("ACC123", ["MSFT"]);
+    expect(mockGetEquityQuotes).toHaveBeenCalledWith("ACC123", ["MSFT"], { signal: undefined });
     expect(mockEnrich).toHaveBeenCalledWith(["MSFT"]);
     expect(mockFetchYahooFinanceQuotesBatch).not.toHaveBeenCalled();
 

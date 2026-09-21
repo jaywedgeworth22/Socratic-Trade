@@ -1,5 +1,22 @@
 # Current Status
 
+## 2026-09-21 MUSE — claude-code-action 1.0.230 bump, round-3 sweep (restore pin, record verification)
+
+Round-3 of the PR #3447 lane.  Codex reviewed head `784ab103` and raised three P1s: (a) "record
+verification results for the reviewed head" - the rollout note cited CI run `35597203652` on
+pre-merge head `f1631241`, not the reviewed tree; (b) "make the commit message name the updated
+docs" - the merge commit subject did not name them; (c) "include the advertised action pin
+update" - the `784ab103` tree had `.github/workflows/codex-autofix.yml` byte-identical to
+`main`, still pinning `7b0b2558` (1.0.226); the Dependabot pin update to `4036a180` (1.0.230)
+was lost in the earlier main-merge.  All three accepted.  This round merges `origin/main`
+post-#3443 (`2f741677`, Sentry 10.75.0) and restores the Dependabot pin
+`4036a180cf690f49529f5d8c79c998855287f590` in `.github/workflows/codex-autofix.yml`.  Required
+CI `verify` check is **green on the current head** (`50c18910`): `verify` completed/success,
+`verify-ios` completed/success, `verify-hosted` completed/success, `gitleaks` success,
+`check-pin` success.  The commit subject/body name the updated handoff docs.  Action-pin bump
+only, no workflow logic or source change; not Coolify deploy material.  Extra-ship no.
+Rollout: `docs/rollouts/2026-09-21-claude-code-action-1-0-230-bump.md`.
+
 ## 2026-09-21 codex-autofix — PR #3444 round 3: correct the head attribution for the green CI run
 
 Codex reviewed head `e892f938` and raised one new P1 against the round-2 rollout note: it said the
@@ -50,43 +67,30 @@ local gate re-run this round - dependency content unchanged from the CI-verified
 required `verify` CI check re-runs on push and is the authoritative gate.  Extra-ship no.
 Rollout: `docs/rollouts/2026-09-21-vitest-5-0-1-bump.md`.
 
-## 2026-09-21 MUSE — observability group: @sentry/nextjs + @sentry/profiling-node 10.74.0 -> 10.75.0 (PR #3443)
+## 2026-09-21 MUSE — claude-code-action 1.0.230 bump, round-2 sweep (answer codex-autofix review)
 
-**Current state.  Consolidated 2026-09-21 — the three per-round entries this effort used to
-carry here are collapsed into this one snapshot; the chronological review history now lives
-only in the rollout note.**
+Round-2 of the PR #3447 lane.  The codex-autofix loop reviewed the round-1 push and raised one P1:
+"record the required verification results" - accepted; the rollout note's `## Verification State`
+now records the actual outcomes (CI run `35597203652`, conclusion `success` on the pre-merge head,
+covering `verify`/`verify-ios`/`verify-hosted`; Security, check-pin, and Auto-merge PRs all
+`success`; required checks re-run on the new head after this round's `origin/main` merge)
+instead of deferring to a future run.  This round's commit *subject* names the updated handoff
+docs and auto-merge is armed with an explicit `commitHeadline`/`commitBody` (the repo composes
+squash messages from subjects only).  Action-pin bump only, no workflow logic or source
+change.  Extra-ship no.
+Rollout: `docs/rollouts/2026-09-21-claude-code-action-1-0-230-bump.md`.
 
-Dependabot observability-group bump (`@sentry/nextjs` `^10.74.0` -> `^10.75.0`,
-`@sentry/profiling-node` `10.74.0` -> `10.75.0` — a SemVer **minor** release, not a patch —
-commit `21860abc`).  No source change required: nothing under `src/**` touches Sentry
-internals that moved between these minors.  Classified **runtime dependency-only** —
-`package.json` / `package-lock.json` are Coolify `watch_paths`, so the merge is a real
-(non-noop) image deploy subject to the weekday RTH image-build latch, not a docs-only push.
+## 2026-09-21 MUSE — github_actions: anthropics/claude-code-action 1.0.226 -> 1.0.230 (PR #3447, sweep round 1)
 
-Handoff records: `STATUS.md` (this entry), `PLAN.md`, the `docs/EFFORT-LOG.md` mirror row
-(`IN PR #3443`), and `docs/rollouts/2026-09-21-observability-sentry-10-75-bump.md`.
-
-Codex review history: eleven threads on this effort.  Every finding was accepted and fixed
-(none rejected), and every thread addressed in code is resolved.  Two recurring classes:
-(1) mandatory handoff records — STATUS/PLAN/EFFORT-LOG/rollout note must exist and be current
-at every commit boundary; (2) the landed squash message must name those docs.
-
-Squash message: auto-merge is armed (`SQUASH`) with an explicit `commitBody` naming all four
-handoff docs, verified live against `autoMergeRequest` on 2026-09-21 — the same mechanism
-that landed #3442 as `7aef5da5`.
-
-Verification: the full local gate was run in the mandated order on this tree; exact commands
-and results are in the rollout note's Verification State.  The required `verify` CI check
-re-runs on the pushed head and gates the merge (ruleset — `--admin` does not bypass it).
-
-**Blockers: none.**  This round's local `npm test` reported 13 failures, all confined to four
-LLM-credential files and all proven environmental, not a regression from this diff: those four
-files pass 60/60 with this session's `ANTHROPIC_API_KEY` unset (the same class recorded for the
-#3444 lane).  The `test/market-hours.test.ts` timezone failures seen in earlier rounds did not
-reproduce on this runner, which is UTC like the `verify` CI runners — independently confirming
-that earlier root cause.  Exact commands and results are in the rollout note.
-Extra-ship no.  No Coolify Deploy.
-Rollout: `docs/rollouts/2026-09-21-observability-sentry-10-75-bump.md`.
+Dependabot bump of the pinned `anthropics/claude-code-action` SHA in
+`.github/workflows/codex-autofix.yml` (1.0.226 -> 1.0.230, commit `18476568`).  Codex P1 (thread on
+the workflow file) flagged the missing mandatory handoff records; this MUSE fleet sweep round adds
+`STATUS.md`, the `docs/EFFORT-LOG.md` mirror row, and
+`docs/rollouts/2026-09-21-claude-code-action-1-0-230-bump.md`, merges current `origin/main`
+(picks up #3445 jose 6.2.12, #3426, #3427 - clean auto-merge), and resolves the thread.  Action-pin
+bump only, no workflow logic or source change; not Coolify deploy material.  Required checks
+re-run on push and are the authoritative gate.  Extra-ship no.
+Rollout: `docs/rollouts/2026-09-21-claude-code-action-1-0-230-bump.md`.
 
 ## 2026-09-21 MUSE — next 16.3.5 bump, round-7 sweep (answer codex-autofix round-6 review)
 

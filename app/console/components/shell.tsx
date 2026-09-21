@@ -14,7 +14,7 @@ import { usePathname } from "next/navigation";
 import { Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import { useMutationBusy } from "../lib/useMutationBusy";
 import type { DashboardSnapshot } from "../../dashboard-types";
-import { ConsoleDataProvider, useConsoleData } from "../lib/useConsoleData";
+import { ConsoleDataProvider, useConsoleData, useConsoleTransport } from "../lib/useConsoleData";
 import { SENTENCE_GAP } from "../lib/format";
 import { useConsoleFont } from "../lib/useConsoleFont";
 import { useConsoleTextBoxFont } from "../lib/useConsoleTextBoxFont";
@@ -84,8 +84,9 @@ const SNAPSHOT_INDEPENDENT_ROUTES = new Set(["/console/usage"]);
 const SELF_SKELETON_ROUTES = new Set(["/console/connections"]);
 
 function ShellFrame({ children }: { children: ReactNode }) {
-  const { snapshot, fetchedAt, loading, slowFirstLoad, error, sessionExpired, stream, refresh, online } =
+  const { snapshot, fetchedAt, loading, slowFirstLoad, error, sessionExpired, refresh } =
     useConsoleData();
+  const { stream, online } = useConsoleTransport();
   const { theme, dataTheme, set: setTheme } = useConsoleTheme();
   const { dataTextBoxFont } = useConsoleTextBoxFont();
   const { dataConsoleFont } = useConsoleFont();

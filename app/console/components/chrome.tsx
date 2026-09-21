@@ -38,7 +38,7 @@ import {
 import { cx, fmtClock, fmtMoney, fmtMoneyWhole, timeAgo, timeUntil, EM_DASH, fmtExact, SENTENCE_GAP } from "../lib/format";
 import { loginProviderLabel } from "../lib/labels";
 import type { ConsoleStreamHealth } from "../lib/useConsoleData";
-import { useConsoleData } from "../lib/useConsoleData";
+import { useConsoleData, useConsoleTransport } from "../lib/useConsoleData";
 import { useDirtyActionGuard, useNextUnloadBypass } from "../lib/useDirtyGuard";
 import type { ConsoleTheme } from "../lib/useConsoleTheme";
 import { useToast } from "../ui/toast";

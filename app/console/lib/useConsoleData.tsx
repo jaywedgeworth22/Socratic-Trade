@@ -101,15 +101,17 @@ export interface ConsoleData {
    *  whatever brief window the navigation takes, instead of leaving it looking merely "delayed".
    *  Once true it never goes back to false: the page is leaving. */
   sessionExpired: boolean;
-  /** Health of the SSE stream used for push refreshes. */
-  stream: ConsoleStreamHealth;
   /** Force a refetch now (used after every mutation). */
   refresh: () => Promise<void>;
-  /** Browser online state. False means show the last snapshot honestly. */
+}
+
+export interface ConsoleTransportData {
+  stream: ConsoleStreamHealth;
   online: boolean;
 }
 
 const ConsoleDataContext = createContext<ConsoleData | null>(null);
+const ConsoleTransportContext = createContext<ConsoleTransportData | null>(null);
 
 const UNSUPPORTED_STREAM: ConsoleStreamHealth = {
   status: "unsupported",
@@ -392,13 +394,20 @@ export function ConsoleDataProvider({ children }: { children: ReactNode }) {
       slowFirstLoad: state === "slow",
       error,
       sessionExpired,
-      stream,
-      refresh,
-      online
+      refresh
     };
-  }, [snapshot, fetchedAt, error, sessionExpired, fetching, slowFirstLoad, stream, refresh, online]);
+  }, [snapshot, fetchedAt, error, sessionExpired, fetching, slowFirstLoad, refresh]);
 
-  return <ConsoleDataContext.Provider value={value}>{children}</ConsoleDataContext.Provider>;
+  const transportValue = useMemo<ConsoleTransportData>(() => ({
+    stream,
+    online
+  }), [stream, online]);
+
+  return (
+    <ConsoleTransportContext.Provider value={transportValue}>
+      <ConsoleDataContext.Provider value={value}>{children}</ConsoleDataContext.Provider>
+    </ConsoleTransportContext.Provider>
+  );
 }
 
 export function useConsoleData(): ConsoleData {
@@ -415,4 +424,10 @@ export function useConsoleData(): ConsoleData {
  *  absence of rows would produce). */
 export function useConsoleDataOptional(): ConsoleData | null {
   return useContext(ConsoleDataContext);
+}
+
+export function useConsoleTransport(): ConsoleTransportData {
+  const ctx = useContext(ConsoleTransportContext);
+  if (!ctx) throw new Error("useConsoleTransport must be used inside ConsoleDataProvider");
+  return ctx;
 }

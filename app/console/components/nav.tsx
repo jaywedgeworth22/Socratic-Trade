@@ -68,6 +68,7 @@ export const DESTINATIONS: Destination[] = [
   { href: "/console/guardrails", label: "Guardrails", icon: Shield, desc: "Autonomy, spending caps, protective stops, schedule, and the trading rulebook." },
   { href: "/console/connections", label: "Connections", icon: Plug, desc: "Broker accounts and provider API keys." },
   { href: "/console/results", label: "Results", icon: BarChart3, desc: "Realized performance, equity curve, thesis scorecards, and learning evidence." },
+  { href: "/console/decisions", label: "Decisions", icon: Brain, desc: "All Socratic decision cases." },
   { href: "/console/usage", label: "Usage", icon: ReceiptText, desc: "Your LLM usage and estimated model cost by key, model, and workflow." },
   { href: "/console/settings", label: "Settings", icon: SettingsIcon, desc: "Notifications, sharing, confirmations, and console preferences." }
 ];
@@ -94,7 +95,7 @@ function isActive(pathname: string, href: string): boolean {
 const GROUPED_DESTINATION_HREFS: { label: string; hrefs: string[] }[] = [
   { label: "Core", hrefs: ["/console", "/console/approvals", "/console/lessons", "/console/activity"] },
   { label: "Monitor", hrefs: ["/console/scan", "/console/watchlist", "/console/macro", "/console/orders"] },
-  { label: "Review", hrefs: ["/console/assistant", "/console/results", "/console/usage"] },
+  { label: "Review", hrefs: ["/console/assistant", "/console/results", "/console/usage", "/console/decisions"] },
   { label: "Configure", hrefs: ["/console/strategy", "/console/guardrails", "/console/connections", "/console/settings"] }
 ];
 

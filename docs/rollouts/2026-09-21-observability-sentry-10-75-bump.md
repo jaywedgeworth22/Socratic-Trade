@@ -117,3 +117,10 @@ The repo's codex-autofix loop reviewed the round-1 push and raised three finding
    names the docs regardless of composition.
 3. *"Classify 10.75.0 as a minor release"* (P2).  Accepted - corrected in place above; the earlier
    "patch-level same-minor" wording understated the change.
+
+## Round 6 — MUSE sweep (2026-09-21): commit message names handoff docs
+
+Codex P1 (17:11Z) flagged that the round-5 commit message did not name the handoff docs.
+This commit's message explicitly names them: PLAN.md, STATUS.md, docs/EFFORT-LOG.md,
+docs/rollouts/2026-09-21-observability-sentry-10-75-bump.md.  The final squash message
+(armed via auto-merge) also names all four.

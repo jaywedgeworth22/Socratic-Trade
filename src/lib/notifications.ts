@@ -12,7 +12,7 @@ type SendNotificationOptions = {
   fetcher?: Fetcher;
   timeoutMs?: number;
   userId?: string;
-  connectedAccountId?: string;
+  connectedAccountId?: string | null;
   /** Override the compact bridge body while keeping delivery inside the enabled-event gate. */
   directBody?: string;
   /** Injectable dispatcher/deps keep failure and caller-routing tests offline. */
@@ -301,7 +301,7 @@ export async function sendNotification(
   assertNotificationActive(options);
   const userId = options.userId ?? "local";
   const policy = options.policy ?? getPolicy(userId);
-  const connectedAccountId = options.connectedAccountId ?? policy.connectedAccountId;
+  const connectedAccountId = options.connectedAccountId !== undefined ? (options.connectedAccountId ?? undefined) : policy.connectedAccountId;
   assertNotificationActive(options);
   const settings = policy.notificationSettings;
   const webhookUrl = settings.webhookUrl?.trim();

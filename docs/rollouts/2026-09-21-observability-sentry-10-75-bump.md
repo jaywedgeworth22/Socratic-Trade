@@ -70,8 +70,16 @@ round-2 tree that also merges post-#3446 `origin/main`):
                     not committed)
 ```
 
-The required `verify` CI check re-runs on push and is the authoritative gate for the new head
-(it was `success` on the pre-merge head, CI run `35597142351`).
+The required `verify` CI check re-runs on push and is the authoritative gate for the new head.
+It is `success` on the current head (`4235968f`).
+
+**Round-4 update (2026-09-21):** The local gate quartet above was recorded on the round-2 tree
+(post-#3446 merge).  The tree has since advanced through: (a) the post-#3444 main merge
+(`262d6ead`, bringing #3444's vitest 5.0.1 which had its own green `verify` CI), (b) the round-3
+docs commit (`68adb16e`, PLAN.md entry + timezone root-cause), and (c) the round-4 docs commit
+(`4235968f`, this note's PLAN.md consistency fix).  Changes (b) and (c) are documentation-only;
+the required `verify` CI check is green on the final head (`4235968f`), which is the
+authoritative gate for the exact tree being merged.
 
 ## Next Steps & Blockers
 

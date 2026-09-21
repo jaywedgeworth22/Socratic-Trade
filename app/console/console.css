@@ -121,6 +121,19 @@
   min-height: 100dvh;
 }
 
+@media (max-width: 640px) {
+  .console-root {
+    --con-fs-2xs: 11px;
+    --con-fs-xs: 13px;
+    --con-fs-sm: 14.5px;
+    --con-fs-base: 16px;
+    --con-fs-md: 18px;
+    --con-fs-lg: 21px;
+    --con-fs-xl: 26px;
+    --con-fs-xxl: 34px;
+  }
+}
+
 .console-root[data-textbox-font="lato"] {
   --con-control-font: var(--con-font-lato);
 }

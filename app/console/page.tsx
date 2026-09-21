@@ -40,6 +40,8 @@ import {
 import { redTeamFailureMeta, redTeamVerdictLabel } from "./lib/red-team";
 import { decisionActionLabel, deterministicOutcomePresentation, isSuccessfulApprovalResult, splitThesisRationale } from "./lib/thesis";
 import { useConsoleData } from "./lib/useConsoleData";
+import { useMediaQuery } from "./lib/useMediaQuery";
+import { ProposalRow } from "./components/proposal-row";
 import { safeTopCandidates } from "./lib/evidence-rows";
 import { destinationLabel } from "./components/nav";
 import { Ago, Card, Chip, Dash, Meter, SignedText, Stat } from "./ui/primitives";
@@ -146,9 +148,74 @@ export default function ConsoleHomePage() {
   // a single reading column like the other console pages. Capping it to
   // CONSOLE_PAGE_WIDTH would starve the main column to satisfy the aside's
   // floor. See docs/rollouts/2026-07-08-console-page-width-parity.md.
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+
+  const outcomeLoopCard = (
+    <Card
+      title={
+        <span className="flex items-center gap-1.5">
+          <TrendingUp size={13} /> Outcome Learning Loop
+        </span>
+      }
+      action={
+        <Link href="/console/results" className="flex items-center gap-1 text-[length:var(--con-fs-xs)] font-semibold text-[color:var(--con-accent)]">
+          {destinationLabel("/console/results")} <ArrowRight size={12} />
+        </Link>
+      }
+    >
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat
+          label={reality.tone === "paper" ? "Portfolio Value · Paper" : "Portfolio Value"}
+          value={fmtMoney(portfolio?.totalMarketValue)}
+          sub={reality.tone === "paper" ? reality.phrase : reality.account?.label}
+        />
+        <div>
+          <div className="con-card-title">Day P&amp;L</div>
+          <div className="con-num mt-1 text-[length:var(--con-fs-xl)] font-semibold leading-tight">
+            {dayPnl ? (
+              <SignedText value={dayPnl.pnl}>
+                {fmtSignedMoney(dayPnl.pnl)} ({fmtPct(dayPnl.pct, 2, true)})
+              </SignedText>
+            ) : (
+              <Dash />
+            )}
+          </div>
+          <div
+            className={cx(
+              "mt-0.5 text-[length:var(--con-fs-xs)]",
+              dayPnl?.isStaleBaseline ? "font-semibold text-[color:var(--con-warn)]" : "text-[color:var(--con-faint)]"
+            )}
+            title={
+              dayPnl
+                ? dayPnl.isStaleBaseline
+                  ? `Baseline: ${fmtMoney(dayPnl.baselineEquity)} at ${fmtExact(dayPnl.baselineAt)}.  No snapshot was persisted between then and today, so this compares across a real gap, not just "yesterday" — treat it as directional only.`
+                  : `Baseline: ${fmtMoney(dayPnl.baselineEquity)} at ${fmtExact(dayPnl.baselineAt)}`
+                : undefined
+            }
+          >
+            {dayPnl
+              ? dayPnl.isStaleBaseline
+                ? `No recent baseline — comparing to ${fmtDay(dayPnl.baselineAt)}`
+                : "vs last snapshot before today"
+              : "no prior-day snapshot yet"}
+          </div>
+        </div>
+        <Stat label="Cash" value={fmtMoney(portfolio?.cash)} sub={`Buying power ${fmtMoney(portfolio?.buyingPower)}`} />
+        <Stat
+          label="Closed Thesis Samples"
+          value={snapshot.thesisScorecard?.reduce((sum, t) => sum + t.trades, 0) ?? 0}
+          sub="basis for future framework changes"
+        />
+      </div>
+    </Card>
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-[length:var(--con-fs-lg)] font-bold">{destinationLabel("/console")}</h1>
+      
+      {!isDesktop && outcomeLoopCard}
+      
       {/* First-run checklist (PR-A3): when incomplete it dominates Thesis above the
           strategy bar + two-column desk; when ready it collapses to "You're set". */}
       <ReadinessChecklistHero snapshot={snapshot} />
@@ -284,63 +351,7 @@ export default function ConsoleHomePage() {
 
           
 
-          <Card
-            title={
-              <span className="flex items-center gap-1.5">
-                <TrendingUp size={13} /> Outcome Learning Loop
-              </span>
-            }
-            action={
-              <Link href="/console/results" className="flex items-center gap-1 text-[length:var(--con-fs-xs)] font-semibold text-[color:var(--con-accent)]">
-                {destinationLabel("/console/results")} <ArrowRight size={12} />
-              </Link>
-            }
-          >
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              <Stat
-                label={reality.tone === "paper" ? "Portfolio Value · Paper" : "Portfolio Value"}
-                value={fmtMoney(portfolio?.totalMarketValue)}
-                sub={reality.tone === "paper" ? reality.phrase : reality.account?.label}
-              />
-              <div>
-                <div className="con-card-title">Day P&amp;L</div>
-                <div className="con-num mt-1 text-[length:var(--con-fs-xl)] font-semibold leading-tight">
-                  {dayPnl ? (
-                    <SignedText value={dayPnl.pnl}>
-                      {fmtSignedMoney(dayPnl.pnl)} ({fmtPct(dayPnl.pct, 2, true)})
-                    </SignedText>
-                  ) : (
-                    <Dash />
-                  )}
-                </div>
-                <div
-                  className={cx(
-                    "mt-0.5 text-[length:var(--con-fs-xs)]",
-                    dayPnl?.isStaleBaseline ? "font-semibold text-[color:var(--con-warn)]" : "text-[color:var(--con-faint)]"
-                  )}
-                  title={
-                    dayPnl
-                      ? dayPnl.isStaleBaseline
-                        ? `Baseline: ${fmtMoney(dayPnl.baselineEquity)} at ${fmtExact(dayPnl.baselineAt)}.  No snapshot was persisted between then and today, so this compares across a real gap, not just "yesterday" — treat it as directional only.`
-                        : `Baseline: ${fmtMoney(dayPnl.baselineEquity)} at ${fmtExact(dayPnl.baselineAt)}`
-                      : undefined
-                  }
-                >
-                  {dayPnl
-                    ? dayPnl.isStaleBaseline
-                      ? `No recent baseline — comparing to ${fmtDay(dayPnl.baselineAt)}`
-                      : "vs last snapshot before today"
-                    : "no prior-day snapshot yet"}
-                </div>
-              </div>
-              <Stat label="Cash" value={fmtMoney(portfolio?.cash)} sub={`Buying power ${fmtMoney(portfolio?.buyingPower)}`} />
-              <Stat
-                label="Closed Thesis Samples"
-                value={snapshot.thesisScorecard?.reduce((sum, t) => sum + t.trades, 0) ?? 0}
-                sub="basis for future framework changes"
-              />
-            </div>
-          </Card>
+          {isDesktop && outcomeLoopCard}
 
           <MarkToMarketCard markToMarket={markToMarket} equityWindow={equityWindow} />
           <VsMarketCard benchmark={snapshot.performance?.benchmark} />

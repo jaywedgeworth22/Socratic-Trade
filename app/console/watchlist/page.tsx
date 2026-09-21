@@ -13,6 +13,8 @@ import { useSearchParams } from "next/navigation";
 import { BellPlus, Plus, Trash2 } from "lucide-react";
 import type { PriceAlert, WatchlistItem } from "@/lib/types";
 import { DEEP_LINK_FOCUS_CLASS, readSymbolQuery, scrollDeepLinkTarget, symbolElementId } from "../lib/deep-link-focus";
+import { useMediaQuery } from "../lib/useMediaQuery";
+import { useConsoleData } from "../lib/useConsoleData";
 import { cx, fmtMoney, EM_DASH } from "../lib/format";
 import { CONSOLE_PAGE_WIDTH } from "../lib/page-width";
 import { useToast } from "../ui/toast";
@@ -53,6 +55,7 @@ function WatchlistPageInner() {
   const [alerts, setAlerts] = useState<PriceAlert[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
 
   // Add-symbol form
   const [newSymbol, setNewSymbol] = useState("");
@@ -245,13 +248,13 @@ function WatchlistPageInner() {
         ) : data.items.length === 0 ? (
           <Empty>Nothing watched yet.  Add a ticker above — watching is free and never trades.</Empty>
         ) : (
-          <>
-            <div className="hidden overflow-x-auto lg:block">
+          isDesktop ? (
+            <div className="overflow-x-auto">
               <table className="con-table">
                 <thead>
                   <tr>
                     <th>Symbol</th>
-                    <th className="num" title="Latest known price from the active account's data source.  '—' means no quote is available right now — never a made-up number.">
+                    <th className="num" title="Latest known price from the active account's data source.  '—' means no quote is available right now — never a made-up number.">
                       Price
                     </th>
                     <th className="num" title="Armed price alerts on this symbol.">Alerts</th>
@@ -277,7 +280,7 @@ function WatchlistPageInner() {
                           className="num con-num"
                           title={
                             typeof quote?.price === "number"
-                              ? `${item.symbol}: ${fmtMoney(quote.price)}${quote.provider ? ` via ${quote.provider}` : ""}.  Quotes may be delayed.`
+                              ? `${item.symbol}: ${fmtMoney(quote.price)}${quote.provider ? ` via ${quote.provider}` : ""}.  Quotes may be delayed.`
                               : "No quote available — quotes come from the active account's data source and may be delayed."
                           }
                         >
@@ -303,7 +306,8 @@ function WatchlistPageInner() {
                 </tbody>
               </table>
             </div>
-            <div className="flex flex-col gap-2 px-2 pb-3 pt-2 lg:hidden">
+          ) : (
+            <div className="flex flex-col gap-2 px-2 pb-3 pt-2">
               {data.items.map((item) => {
                 const quote = data.quotes[item.symbol];
                 const armed = armedBySymbol.get(item.symbol) ?? 0;
@@ -343,7 +347,7 @@ function WatchlistPageInner() {
                 );
               })}
             </div>
-          </>
+          )
         )}
       </Card>
 

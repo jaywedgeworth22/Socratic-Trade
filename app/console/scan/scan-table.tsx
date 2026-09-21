@@ -19,6 +19,7 @@ import { Tooltip } from "../ui/primitives";
 import { useToast } from "../ui/toast";
 import { openSymbolDetails } from "../ui/symbol-drilldown";
 import { useSymbolDrawer } from "../ui/symbol-drawer";
+import { useMediaQuery } from "../lib/useMediaQuery";
 import { DEFAULT_VISIBLE_SCAN_COLUMN_IDS, SCAN_COLUMNS, type ScanColumn } from "./columns";
 
 /** Approx row height for virtualized height budgeting (con-table cells). */
@@ -323,6 +324,7 @@ export const ScanTable = memo(function ScanTable({ scan }: { scan: MarketScan })
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [watched, setWatched] = useState<Set<string>>(new Set());
   const [pendingWatch, setPendingWatch] = useState<Set<string>>(new Set());
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
 
   // Sync the current watchlist once on mount so rows already watched show a
   // filled star. Non-blocking: a failed sync just means an already-watched
@@ -482,103 +484,108 @@ export const ScanTable = memo(function ScanTable({ scan }: { scan: MarketScan })
     <div>
       {/* Column picker only applies to the desktop table — the mobile card
           list below always shows the same fixed load-bearing fields. */}
-      <div className="hidden items-center justify-between gap-3 border-b border-[color:var(--con-line)] px-4 py-2 lg:flex">
-        <Tooltip
-          content="Visible columns are saved per browser for the console scan table.">
-          <p className="text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">
-            {visibleColumns.length} shown
-          </p>
-        </Tooltip>
-        <ScanColumnsMenu
-          open={columnsOpen}
-          onOpenChange={setColumnsOpen}
-          visible={visible}
-          columnChooserRows={columnChooserRows}
-          onReset={resetScanColumns}
-          onToggle={(id) => saveVisibleColumns(toggleVisibleScanColumn(visible, id))}
-          onMove={(id, delta) => saveVisibleColumns(moveVisibleScanColumn(visible, id, delta))}
-        />
-      </div>
-      {/* Desktop: TableVirtuoso (C3) — only visible rows mount; sticky symbol via CSS. */}
-      <div className="hidden overflow-x-auto lg:block">
-        {rows.length === 0 ? (
-          <table className="con-table min-w-full">
-            <thead>{headerRow}</thead>
-            <tbody />
-          </table>
-        ) : (
-          <TableVirtuoso
-            style={{ height: tableHeight }}
-            data={rows}
-            overscan={8}
-            components={{
-              Table: (props) => <table {...props} className="con-table min-w-full" />,
-              TableRow: ({ item: _item, ...props }) => <tr {...props} className="group" />
-            }}
-            fixedHeaderContent={() => headerRow}
-            itemContent={(_index, q) => {
-              const symbolKey = q.symbol.trim().toUpperCase();
-              return (
-                <>
-                  {visibleColumns.map((c, i) => {
-                    const isSymbolCol = c.id === SYMBOL_COLUMN_ID;
-                    const alignmentClass =
-                      c.align === "left"
-                        ? "!text-left text-left"
-                        : c.align === "right"
-                          ? "!text-right text-right"
-                          : "!text-center text-center";
-                    const flexAlignClass =
-                      c.align === "left" ? "justify-start" : c.align === "right" ? "justify-end" : "justify-center";
-                    return (
-                      <td
-                        key={c.id}
-                        title={cellTitleWithReceived(c, q, received)}
-                        className={cx(
-                          "cursor-default whitespace-nowrap",
-                          alignmentClass,
-                          c.id === "score" && "w-16 px-2",
-                          c.num && "con-num",
-                          i === 0 && cx(STICKY_CELL, STICKY_CELL_HOVER)
-                        )}
-                      >
-                        {isSymbolCol ? (
-                          <div className="inline-flex w-full items-center justify-start gap-1.5">
-                            <WatchButton
-                              symbol={q.symbol}
-                              watched={watched.has(symbolKey)}
-                              pending={pendingWatch.has(symbolKey)}
-                              onToggle={() => void toggleWatch(q.symbol)}
-                            />
-                            {c.render(q)}
-                          </div>
-                        ) : (
-                          <div className={cx("inline-flex w-full items-center", flexAlignClass)}>{c.render(q)}</div>
-                        )}
-                      </td>
-                    );
-                  })}
-                </>
-              );
-            }}
+      {isDesktop && (
+        <div className="flex items-center justify-between gap-3 border-b border-[color:var(--con-line)] px-4 py-2">
+          <Tooltip
+            content="Visible columns are saved per browser for the console scan table.">
+            <p className="text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">
+              {visibleColumns.length} shown
+            </p>
+          </Tooltip>
+          <ScanColumnsMenu
+            open={columnsOpen}
+            onOpenChange={setColumnsOpen}
+            visible={visible}
+            columnChooserRows={columnChooserRows}
+            onReset={resetScanColumns}
+            onToggle={(id) => saveVisibleColumns(toggleVisibleScanColumn(visible, id))}
+            onMove={(id, delta) => saveVisibleColumns(moveVisibleScanColumn(visible, id, delta))}
           />
-        )}
-      </div>
-      <div className="flex flex-col gap-2 p-2 lg:hidden">
-        {rows.map((q) => {
-          const symbolKey = q.symbol.trim().toUpperCase();
-          return (
-            <ScanCard
-              key={q.symbol}
-              q={q}
-              received={received}
-              watched={watched.has(symbolKey)}
-              pending={pendingWatch.has(symbolKey)}
-              onToggleWatch={() => void toggleWatch(q.symbol)}
+        </div>
+      )}
+      {/* Desktop: TableVirtuoso (C3) — only visible rows mount; sticky symbol via CSS. */}
+      {isDesktop ? (
+        <div className="overflow-x-auto">
+          {rows.length === 0 ? (
+            <table className="con-table min-w-full">
+              <thead>{headerRow}</thead>
+              <tbody />
+            </table>
+          ) : (
+            <TableVirtuoso
+              style={{ height: tableHeight }}
+              data={rows}
+              overscan={8}
+              components={{
+                Table: (props) => <table {...props} className="con-table min-w-full" />,
+                TableRow: ({ item: _item, ...props }) => <tr {...props} className="group" />
+              }}
+              fixedHeaderContent={() => headerRow}
+              itemContent={(_index, q) => {
+                const symbolKey = q.symbol.trim().toUpperCase();
+                return (
+                  <>
+                    {visibleColumns.map((c, i) => {
+                      const isSymbolCol = c.id === SYMBOL_COLUMN_ID;
+                      const alignmentClass =
+                        c.align === "left"
+                          ? "!text-left text-left"
+                          : c.align === "right"
+                            ? "!text-right text-right"
+                            : "!text-center text-center";
+                      const flexAlignClass =
+                        c.align === "left" ? "justify-start" : c.align === "right" ? "justify-end" : "justify-center";
+                      return (
+                        <td
+                          key={c.id}
+                          title={cellTitleWithReceived(c, q, received)}
+                          className={cx(
+                            "cursor-default whitespace-nowrap",
+                            alignmentClass,
+                            c.id === "score" && "w-16 px-2",
+                            c.num && "con-num",
+                            i === 0 && cx(STICKY_CELL, STICKY_CELL_HOVER)
+                          )}
+                        >
+                          {isSymbolCol ? (
+                            <div className="inline-flex w-full items-center justify-start gap-1.5">
+                              <WatchButton
+                                symbol={q.symbol}
+                                watched={watched.has(symbolKey)}
+                                pending={pendingWatch.has(symbolKey)}
+                                onToggle={() => void toggleWatch(q.symbol)}
+                              />
+                              {c.render(q)}
+                            </div>
+                          ) : (
+                            <div className={cx("inline-flex w-full items-center", flexAlignClass)}>{c.render(q)}</div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </>
+                );
+              }}
             />
-          );
-        })}
-      </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2 p-2">
+          {rows.map((q) => {
+            const symbolKey = q.symbol.trim().toUpperCase();
+            return (
+              <ScanCard
+                key={q.symbol}
+                q={q}
+                received={received}
+                watched={watched.has(symbolKey)}
+                pending={pendingWatch.has(symbolKey)}
+                onToggleWatch={() => void toggleWatch(q.symbol)}
+              />
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 });

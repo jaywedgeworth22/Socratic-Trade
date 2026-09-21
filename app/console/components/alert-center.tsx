@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, BellOff, BellRing, Check, CheckCheck, ShieldAlert } from "lucide-react";
+import { AlertTriangle, BellOff, BellRing, Check, CheckCheck, Database, ShieldAlert } from "lucide-react";
 import { alertConditionKey, isAlertMuted, type AlertMuteMap } from "@/lib/alert-mutes";
-import { formatNotificationDisplay } from "@/lib/dashboard-ui";
+import { formatNotificationDisplay, isSystemSymbol } from "@/lib/dashboard-ui";
 import type { ConnectedAccount, NotificationEvent } from "@/lib/types";
 import type { DashboardSnapshot } from "../../dashboard-types";
 import {
@@ -18,6 +18,7 @@ import { notificationStatusLabel, notificationTypeLabel } from "../lib/labels";
 import { useConsoleData } from "../lib/useConsoleData";
 import { Ago, Btn, Card, Chip, Empty, TextInput } from "../ui/primitives";
 import { SymbolButton } from "../ui/symbol-drilldown";
+import { useSymbolDrawer } from "../ui/symbol-drawer";
 import { useToast } from "../ui/toast";
 
 type AlertCenterFilter = "attention" | "deliveries" | "approvals" | "all";
@@ -535,7 +536,20 @@ function AlertRow({
             muted
           </Chip>
         )}
-        {row.symbol && <SymbolButton symbol={row.symbol} className="text-[length:var(--con-fs-xs)]" />}
+        {row.symbol && (
+          // The dashboard-ui symbol extractor used to scan alert titles with an all-caps regex
+          // and link any match (including system identifiers like "RAG") into the SymbolDrilldown
+          // drawer — opening a phantom price-history page for the AI feature.  When the resolved
+          // token is a known system identifier, render a non-clickable Chip so the row still
+          // surfaces the source label without inviting the bad click.  RAG is special-cased to
+          // open the dedicated RAG info drawer (universe + last ingest + last strategy run)
+          // instead of a phantom symbol drilldown.
+          isSystemSymbol(row.symbol) ? (
+            <SystemSymbolChip symbol={row.symbol} event={row.event} />
+          ) : (
+            <SymbolButton symbol={row.symbol} className="text-[length:var(--con-fs-xs)]" />
+          )
+        )}
         <div className="ml-auto flex items-center gap-2 text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">
           <Ago iso={row.event.createdAt} />
           <Btn
@@ -604,5 +618,93 @@ function AlertRow({
         </div>
       </div>
     </article>
+  );
+}
+
+/** Non-clickable badge for tokens that look like tickers but are actually system identifiers
+ *  (RAG, FMP, ALPACA, OPENROUTER, …).  Replaces the previous SymbolButton rendering path that
+ *  routed "RAG" through a phantom SymbolDrilldown sheet.  RAG is special-cased to open the
+ *  dedicated RAG info drawer (universe + last strategy run + last ingest); every other system
+ *  identifier renders a static informational chip so the row still labels the source. */
+function SystemSymbolChip({ symbol, event }: { symbol: string; event: NotificationEvent }) {
+  const { openDrawer } = useSymbolDrawer();
+  if (symbol === "RAG") {
+    return (
+      <button
+        type="button"
+        title="Show RAG (Retrieval-Augmented Generation) details for this account"
+        onClick={(click) => {
+          click.stopPropagation();
+          openRagInfoDrawer(openDrawer);
+        }}
+        className="inline-flex items-center gap-1.5 rounded-control border border-[color:var(--con-line)] bg-[color:var(--con-surface-2)] px-2 py-0.5 text-[length:var(--con-fs-xs)] font-semibold text-[color:var(--con-fg)] transition-colors hover:border-[color:var(--con-accent)] hover:text-[color:var(--con-accent)]"
+      >
+        <Database size={11} />
+        <span>{symbol}</span>
+      </button>
+    );
+  }
+  return (
+    <Chip tone="muted" title={`${symbol} is a system identifier, not a tradable symbol — alert source label only.`}>
+      {symbol}
+    </Chip>
+  );
+}
+
+/** Opens the RAG info drawer via the shared SymbolDrawer context.  Renders a focused sheet
+ *  describing the universe under retrieval, the last ingest event, and the most recent
+ *  strategy run that pulled from RAG — the answers an owner wants when an alert says
+ *  "Usage limit hit: openrouter RAG ingest hit daily cap".  The drawer body intentionally
+ *  composes from props-only (no live fetch on mount) so the alert chip opens instantly;
+ *  future work can layer an async refresh if the field proves useful for daily ops. */
+function openRagInfoDrawer(
+  openDrawer: ReturnType<typeof useSymbolDrawer>["openDrawer"]
+): void {
+  openDrawer({
+    title: (
+      <span className="flex items-center gap-2">
+        <Database size={14} />
+        <span>RAG — Retrieval-Augmented Generation</span>
+      </span>
+    ),
+    ariaLabel: "RAG info",
+    body: <RagInfoSheet />
+  });
+}
+
+function RagInfoSheet() {
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-[length:var(--con-fs-sm)] leading-relaxed text-[color:var(--con-muted)]">
+        Retrieval-Augmented Generation is the system that pulls SEC filings, earnings transcripts,
+        and other corpus documents into strategy-run prompts.  It is not a stock ticker; the alerts
+        below it describe ingest, retrieval, and provider-health events for THIS account's universe.
+      </p>
+      <div className="grid gap-2">
+        <RagInfoRow label="Universe size" hint="Documents reachable in the vector store for the active account scope" pending />
+        <RagInfoRow label="Last ingest" hint="Most recent successful embed + upsert pair (UTC)" pending />
+        <RagInfoRow label="Last strategy run using RAG" hint="The most recent run that called the RAG retrieval tool" pending />
+        <RagInfoRow label="Daily cap" hint="Rolling 24h text-budget (RAG_INGEST_MAX_TEXTS_PER_DAY)" pending />
+      </div>
+      <p className="text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">
+        Live metrics are not yet wired here — follow-up lane will surface per-account universe
+        size, last ingest timestamp, and the last retrieval-call site (strategy run id).  Until
+        then, the active alerts above tell you which lane is degraded.
+      </p>
+    </div>
+  );
+}
+
+function RagInfoRow({ label, hint, pending }: { label: string; hint: string; pending?: boolean }) {
+  return (
+    <div className="rounded-control border border-[color:var(--con-line)] bg-[color:var(--con-surface-2)] px-3 py-2">
+      <p className="text-[length:var(--con-fs-xs)] font-semibold text-[color:var(--con-fg)]">{label}</p>
+      <p className="mt-0.5 text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">{hint}</p>
+      {pending && (
+        <p className="mt-1 text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">
+          <em>not wired in this PR</em>
+        </p>
+      )}
+    </div>
   );
 }

@@ -16,7 +16,8 @@ the PR can land.
 ## Changes Made
 
 - `STATUS.md` — new dated snapshot entry for the bump and this sweep round.
-- `docs/EFFORT-LOG.md` — new `[Socratic.Trade][MUSE]` row, marked `IN PR #3447`.
+- `docs/EFFORT-LOG.md` — row not added (file is 1MB, exceeds GitHub API limits for
+  programmatic update; to be added manually).
 - `docs/rollouts/2026-09-21-claude-code-action-1-0-230-bump.md` — this note.
 - `.github/workflows/codex-autofix.yml` — the Dependabot commit `18476568` itself (pinned SHA
   updated to the 1.0.230 release) plus the main-merge (picks up #3445 jose 6.2.12, #3426, #3427).

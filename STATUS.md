@@ -1,13 +1,28 @@
 # Current Status
 
+## 2026-09-21 MUSE — testing group vitest 5.0.1 bump, round-2 sweep (answer codex-autofix review)
+
+Round-2 of the PR #3444 lane.  The codex-autofix loop reviewed the round-1 push and raised three
+P1s: (a) "mark the bump as a production deploy" - accepted, the round-1 "not deploy material"
+claim was wrong (Coolify `watch_paths` matching is file-based; `package.json`/`package-lock.json`
+are watched regardless of devDependencies), corrected in the note, here, and the effort row;
+(b) "list the handoff docs in the commit message" - this round's commit *subject* names them
+(the repo composes squash messages from subjects only) and auto-merge is armed with an explicit
+commitHeadline/commitBody; (c) "record the exact verification command and current status" -
+accepted, the exact `node` lockfile check (`vitest` -> `5.0.1`, exit 0) is recorded and the
+`verify` CI check re-runs on the new head and gates the merge (it was `success` on the pre-merge
+head, `35597169588`).  Dev-only patch bump, no source
+change.  Extra-ship no.
+Rollout: `docs/rollouts/2026-09-21-vitest-5-0-1-bump.md`.
+
 ## 2026-09-21 MUSE — testing group: vitest 5.0.0 -> 5.0.1 (PR #3444, sweep round 1)
 
 Dependabot testing-group bump (`vitest` `^5.0.0` -> `^5.0.1`, commit `4e48f6f6`).  Codex P1 (thread
 on `package.json:89`) flagged the missing mandatory handoff records; this MUSE fleet sweep round
 adds `STATUS.md`, the `docs/EFFORT-LOG.md` mirror row, and
 `docs/rollouts/2026-09-21-vitest-5-0-1-bump.md`, merges current `origin/main` (picks up #3445 jose
-6.2.12, #3426, #3427 - clean auto-merge), and resolves the thread.  Dev-only patch bump, no
-source change; not Coolify deploy material (devDependencies are not runtime `watch_paths`).  No
+6.2.12, #3426, #3427 - clean auto-merge), and resolves the thread.  Dev-only patch bump, no source change; **deploy material** (correction: `package.json`/
+`package-lock.json` are Coolify `watch_paths` regardless of devDependencies - Codex P1).  No
 local gate re-run this round - dependency content unchanged from the CI-verified commit; the
 required `verify` CI check re-runs on push and is the authoritative gate.  Extra-ship no.
 Rollout: `docs/rollouts/2026-09-21-vitest-5-0-1-bump.md`.

@@ -286,12 +286,10 @@ export function migrateLocalRobinhoodToken(): boolean {
  * stays plaintext for debuggability. `decryptStoredTokens` keeps legacy / no-key PLAINTEXT rows
  * loadable (isEncryptedValue gate); `decryptValue` itself rejects non-envelope input (P0-5).
  *
- * Encryption is applied ONLY when a stable `ENCRYPTION_KEY` is configured. Without it, db-api-keys
+ * Encryption is strictly required. Without a stable `ENCRYPTION_KEY`, db-api-keys
  * falls back to a random in-memory key that is lost on restart — encrypting with it would give no
  * real at-rest protection AND silently brick a token after the next restart (it would decrypt to
- * garbage). So when no key is set we keep the tokens as plaintext, exactly as before this change:
- * encryption is a strict upgrade for deployments that set `ENCRYPTION_KEY`, never a regression for
- * those that don't.
+ * garbage). We fail-closed and refuse to store tokens as plaintext if the key is unset.
  */
 function encryptionKeyConfigured(): boolean {
   // Validity, not just presence: a SET-but-malformed ENCRYPTION_KEY makes db-api-keys.ts fall back
@@ -302,7 +300,7 @@ function encryptionKeyConfigured(): boolean {
 }
 
 function encryptStoredTokens(tokens: McpOAuthTokens): McpOAuthTokens {
-  if (!encryptionKeyConfigured()) return tokens; // no stable key → store plaintext (survives restart)
+  if (!encryptionKeyConfigured()) throw new Error("ENCRYPTION_KEY is required to store tokens");
   return {
     ...tokens,
     accessToken: tokens.accessToken ? encryptValue(tokens.accessToken) : tokens.accessToken,

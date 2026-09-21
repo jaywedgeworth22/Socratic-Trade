@@ -1,5 +1,7 @@
 import { LlmUsageClient } from "../../admin/llm-usage/llm-usage-client";
 
+export const metadata = { title: "Usage" };
+
 // Literal "Usage", not destinationLabel(): this page is a SERVER component and nav.tsx is
 // "use client" — calling its function here would throw (same trap documented in
 // app/console/assistant/page.tsx). Keep in lockstep with DESTINATIONS ("/console/usage") in

@@ -16,6 +16,8 @@ import { useConsoleDataOptional } from "../lib/useConsoleData";
 import { Card } from "../ui/primitives";
 import { DecisionsList } from "./decisions-list";
 
+export const metadata = { title: "Decisions" };
+
 type LoadState =
   | { status: "loading" }
   | { status: "error"; message: string }

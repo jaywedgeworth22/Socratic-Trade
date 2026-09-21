@@ -15,12 +15,13 @@ import { deriveReality } from "../lib/derive";
 import { cx, fmtExact, fmtMoney, fmtPct, fmtQty, fmtSignedMoney, EM_DASH, SENTENCE_GAP } from "../lib/format";
 import { CONSOLE_PAGE_WIDTH } from "../lib/page-width";
 import { useConsoleData } from "../lib/useConsoleData";
-import { Ago, Btn, Card, Chip, Dash, Empty, SignedText, type ChipTone } from "../ui/primitives";
+import { Ago, Btn, Card, Chip, Dash, Empty, SignedText, type ChipTone , Table, Th, Td} from "../ui/primitives";
 import { SymbolButton } from "../ui/symbol-drilldown";
 import { CancelOrderSheet } from "./cancel-sheet";
 import { ReplaceMarketSheet } from "./replace-market-sheet";
 import { DEEP_LINK_FOCUS_CLASS, readSymbolQuery, scrollDeepLinkTarget, symbolElementId } from "../lib/deep-link-focus";
 import {
+
   closingOrderPnl,
   deriveOpenOrders,
   effectiveOrderPrice,
@@ -37,6 +38,9 @@ import {
   type OpenOrderRow,
   type StoredPrice
 } from "./lib";
+
+export const metadata = { title: "Orders" };
+
 
 const SIDE_LABEL: Record<string, string> = { buy: "BUY", sell: "SELL", short: "SHORT", cover: "COVER" };
 
@@ -367,27 +371,27 @@ function OrdersPageInner() {
         ) : (
           <>
             <div className="hidden overflow-x-auto lg:block">
-              <table className="con-table">
+              <Table caption="Data table" className="con-table">
                 <thead>
                   <tr>
-                    <th title="Ticker — click a symbol to open its price history and details.">Symbol</th>
-                    <th title="Order direction: buy, sell, short, or cover.">Side</th>
-                    <th title="Order type.  Limit and stop-limit orders can sit unfilled and go stale; market orders execute immediately.">
+                    <Th title="Ticker — click a symbol to open its price history and details.">Symbol</Th>
+                    <Th title="Order direction: buy, sell, short, or cover.">Side</Th>
+                    <Th title="Order type.  Limit and stop-limit orders can sit unfilled and go stale; market orders execute immediately.">
                       Type
-                    </th>
-                    <th className="num" title="Order size as the broker holds it: share quantity, or an approximate dollar amount for notional orders.  Partial fills show how much already executed.">
+                    </Th>
+                    <Th className="num" title="Order size as the broker holds it: share quantity, or an approximate dollar amount for notional orders.  Partial fills show how much already executed.">
                       Size
-                    </th>
-                    <th className="num" title="Resting limit price and/or stop trigger price the broker holds for this order.  '—' when the broker reported neither (e.g. a market order).">
+                    </Th>
+                    <Th className="num" title="Resting limit price and/or stop trigger price the broker holds for this order.  '—' when the broker reported neither (e.g. a market order).">
                       Limit / Stop
-                    </th>
-                    <th className="num" title="Latest price this app has for the symbol: this account's OWN held mark (from the same snapshot as the order) when the symbol is currently held, else the most recent market scan (can be minutes old), else the durable per-symbol store's last-known price (age-tagged; can be hours or days old).  '—' only when none is available.  Where the order has a limit price, the gap between this price and the limit is shown underneath.">
+                    </Th>
+                    <Th className="num" title="Latest price this app has for the symbol: this account's OWN held mark (from the same snapshot as the order) when the symbol is currently held, else the most recent market scan (can be minutes old), else the durable per-symbol store's last-known price (age-tagged; can be hours or days old).  '—' only when none is available.  Where the order has a limit price, the gap between this price and the limit is shown underneath.">
                       Last price
-                    </th>
-                    <th title="Time-in-force: how long the order stays working.  DAY/GFD expires at market close; GTC rests until cancelled.">
+                    </Th>
+                    <Th title="Time-in-force: how long the order stays working.  DAY/GFD expires at market close; GTC rests until cancelled.">
                       TIF
-                    </th>
-                    <th
+                    </Th>
+                    <Th
                       title={
                         thresholdMinutes > 0
                           ? `How long the order has been working.  Limit/stop-limit orders older than your ${thresholdMinutes}-minute policy threshold with an unfilled remainder are flagged stale.`
@@ -395,14 +399,14 @@ function OrdersPageInner() {
                       }
                     >
                       Age
-                    </th>
-                    <th title="The order's state as last reported by the broker.">Status</th>
-                    <th className="num" title="Estimated realized P/L if this order's unfilled remainder closed right now at the last known price: only shown for orders that would REDUCE or CLOSE a held position (sell-of-long, cover-of-short, a bracket exit leg) — never for an order that opens or adds to a position.">
+                    </Th>
+                    <Th title="The order's state as last reported by the broker.">Status</Th>
+                    <Th className="num" title="Estimated realized P/L if this order's unfilled remainder closed right now at the last known price: only shown for orders that would REDUCE or CLOSE a held position (sell-of-long, cover-of-short, a bracket exit leg) — never for an order that opens or adds to a position.">
                       Est. P/L
-                    </th>
-                    <th title="Actions: replace a stale limit order's remainder at market, or cancel the order.">
+                    </Th>
+                    <Th title="Actions: replace a stale limit order's remainder at market, or cancel the order.">
                       <span className="sr-only">Actions</span>
-                    </th>
+                    </Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -423,7 +427,7 @@ function OrdersPageInner() {
                     />
                   ))}
                 </tbody>
-              </table>
+              </Table>
             </div>
             <div className="flex flex-col gap-2 px-2 pb-3 pt-2 lg:hidden">
               {rows.map((row) => (
@@ -457,19 +461,19 @@ function OrdersPageInner() {
         ) : (
           <>
             <div className="hidden overflow-x-auto lg:block">
-              <table className="con-table">
+              <Table caption="Data table" className="con-table">
                 <thead>
                   <tr>
-                    <th title="Ticker — click a symbol to open its price history and details.">Symbol</th>
-                    <th title="Order direction: buy, sell, short, or cover.">Side</th>
-                    <th title="Order type as placed.">Type</th>
-                    <th title="Time-in-force as placed.  DAY/GFD expires at market close; GTC rests until cancelled.">TIF</th>
-                    <th className="num" title="Order size: share quantity or approximate dollar amount.">Size</th>
-                    <th className="num" title="Average price the broker reports for the executed part; '—' when nothing executed.">
+                    <Th title="Ticker — click a symbol to open its price history and details.">Symbol</Th>
+                    <Th title="Order direction: buy, sell, short, or cover.">Side</Th>
+                    <Th title="Order type as placed.">Type</Th>
+                    <Th title="Time-in-force as placed.  DAY/GFD expires at market close; GTC rests until cancelled.">TIF</Th>
+                    <Th className="num" title="Order size: share quantity or approximate dollar amount.">Size</Th>
+                    <Th className="num" title="Average price the broker reports for the executed part; '—' when nothing executed.">
                       Avg fill
-                    </th>
-                    <th title="Final state the broker reported.">Status</th>
-                    <th title="When the broker last updated the order.">Updated</th>
+                    </Th>
+                    <Th title="Final state the broker reported.">Status</Th>
+                    <Th title="When the broker last updated the order.">Updated</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -479,44 +483,44 @@ function OrdersPageInner() {
                       id={order.id === firstFocusedHistoryId ? symbolElementId(order.symbol.toUpperCase()) : undefined}
                       className={order.id === firstFocusedHistoryId ? DEEP_LINK_FOCUS_CLASS : undefined}
                     >
-                      <td>
+                      <Td>
                         <SymbolButton symbol={order.symbol} />
-                      </td>
-                      <td
+                      </Td>
+                      <Td
                         className={isExit(order.side) ? "font-semibold text-[color:var(--con-warn)]" : "font-semibold"}
                         title={SIDE_TITLE[order.side] ?? "Order direction."}
                       >
                         {SIDE_LABEL[order.side] ?? String(order.side).toUpperCase()}
-                      </td>
-                      <td title={TYPE_TITLE[String(order.type)] ?? "Order type."}>{orderTypeLabel(order.type)}</td>
-                      <td title={tifTitle(order.timeInForce)}>{tifLabel(order.timeInForce) ?? <Dash />}</td>
-                      <td className="num con-num" title="Order size as placed.">
+                      </Td>
+                      <Td title={TYPE_TITLE[String(order.type)] ?? "Order type."}>{orderTypeLabel(order.type)}</Td>
+                      <Td title={tifTitle(order.timeInForce)}>{tifLabel(order.timeInForce) ?? <Dash />}</Td>
+                      <Td className="num con-num" title="Order size as placed.">
                         {sizeText(order)}
                         {executedText(order) && (
                           <span className="block text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">
                             {executedText(order)}
                           </span>
                         )}
-                      </td>
-                      <td className="num con-num" title="Average executed price reported by the broker.">
+                      </Td>
+                      <Td className="num con-num" title="Average executed price reported by the broker.">
                         {typeof order.averagePrice === "number" && Number.isFinite(order.averagePrice) ? (
                           fmtMoney(order.averagePrice)
                         ) : (
                           <Dash />
                         )}
-                      </td>
-                      <td>
+                      </Td>
+                      <Td>
                         <Chip tone={stateTone(order.state)} title="Final state the broker reported for this order.">
                           {readableState(order.state)}
                         </Chip>
-                      </td>
-                      <td className="whitespace-nowrap text-[color:var(--con-faint)]">
+                      </Td>
+                      <Td className="whitespace-nowrap text-[color:var(--con-faint)]">
                         <Ago iso={order.updatedAt ?? order.createdAt} />
-                      </td>
+                      </Td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </Table>
             </div>
             <div className="flex flex-col gap-2 px-2 pb-3 pt-2 lg:hidden">
               {history.map((order) => (
@@ -566,30 +570,30 @@ function OpenOrderTr({ row, quotes, positions, fallbackPrices, companyName, halt
       id={focused ? symbolElementId(order.symbol.toUpperCase()) : undefined}
       className={cx(row.stale && "bg-[color:var(--con-warn-soft)]", focused && DEEP_LINK_FOCUS_CLASS)}
     >
-      <td>
+      <Td>
         <SymbolButton symbol={order.symbol} />
         {companyName && (
           <span className="block max-w-44 truncate pl-[26px] text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">
             {companyName}
           </span>
         )}
-      </td>
-      <td
+      </Td>
+      <Td
         className={isExit(order.side) ? "font-semibold text-[color:var(--con-warn)]" : "font-semibold"}
         title={SIDE_TITLE[order.side] ?? "Order direction."}
       >
         {SIDE_LABEL[order.side] ?? String(order.side).toUpperCase()}
-      </td>
-      <td title={TYPE_TITLE[String(order.type)] ?? "Order type."}>{orderTypeLabel(order.type)}</td>
-      <td className="num con-num" title="Order size as the broker holds it; partial fills shown underneath.">
+      </Td>
+      <Td title={TYPE_TITLE[String(order.type)] ?? "Order type."}>{orderTypeLabel(order.type)}</Td>
+      <Td className="num con-num" title="Order size as the broker holds it; partial fills shown underneath.">
         {sizeText(order)}
         {view.filled > 0 && row.remaining > 0 && (
           <span className="block text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">
             {fmtQty(view.filled)} filled · {fmtQty(row.remaining)} left
           </span>
         )}
-      </td>
-      <td
+      </Td>
+      <Td
         className="num con-num"
         title={
           view.limit !== undefined && view.stop !== undefined
@@ -613,8 +617,8 @@ function OpenOrderTr({ row, quotes, positions, fallbackPrices, companyName, halt
             )}
           </>
         )}
-      </td>
-      <td
+      </Td>
+      <Td
         className="num con-num"
         title={
           view.price?.source === "position"
@@ -627,9 +631,9 @@ function OpenOrderTr({ row, quotes, positions, fallbackPrices, companyName, halt
         }
       >
         <OrderPriceInfo view={view} />
-      </td>
-      <td title={tifTitle(order.timeInForce)}>{view.tif ?? <Dash />}</td>
-      <td className="whitespace-nowrap">
+      </Td>
+      <Td title={tifTitle(order.timeInForce)}>{view.tif ?? <Dash />}</Td>
+      <Td className="whitespace-nowrap">
         <Ago iso={order.createdAt} />
         {row.stale && (
           <Chip
@@ -640,13 +644,13 @@ function OpenOrderTr({ row, quotes, positions, fallbackPrices, companyName, halt
             stale {fmtMinutes(row.ageMinutes)}
           </Chip>
         )}
-      </td>
-      <td>
+      </Td>
+      <Td>
         <Chip tone={stateTone(order.state)} title="The order's state as last reported by the broker.">
           {readableState(order.state)}
         </Chip>
-      </td>
-      <td className="num con-num" title="Estimated realized P/L if this order's unfilled remainder closed right now at the last known price.">
+      </Td>
+      <Td className="num con-num" title="Estimated realized P/L if this order's unfilled remainder closed right now at the last known price.">
         {view.estPnl ? (
           <SignedText value={view.estPnl.pnl}>
             {fmtSignedMoney(view.estPnl.pnl)}
@@ -655,10 +659,10 @@ function OpenOrderTr({ row, quotes, positions, fallbackPrices, companyName, halt
         ) : (
           <Dash />
         )}
-      </td>
-      <td>
+      </Td>
+      <Td>
         <OrderRowActions view={view} onReplace={onReplace} onCancel={onCancel} />
-      </td>
+      </Td>
     </tr>
   );
 }

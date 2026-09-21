@@ -1,4 +1,5 @@
 "use client";
+import { Table, Th, Td } from "../ui/primitives";
 
 /** Assistant-reply markdown, styled with the console's --con-* tokens.
  *
@@ -81,14 +82,14 @@ export function AssistantMarkdown({ children }: { children: string }) {
           pre: (props) => <pre className="my-2 overflow-x-auto" {...props} />,
           table: (props) => (
             <div className="my-2 overflow-x-auto">
-              <table className="w-full border-collapse text-[length:var(--con-fs-xs)]" {...props} />
+              <Table caption="Data table" className="w-full border-collapse text-[length:var(--con-fs-xs)]" {...props} />
             </div>
           ),
           tr: (props) => (
             <tr className="transition-colors hover:bg-[color:var(--con-surface-2)] focus-visible:bg-[color:var(--con-surface-2)]" {...props} />
           ),
-          th: (props) => <th className="border border-[color:var(--con-line)] px-2 py-1 text-left font-semibold" {...props} />,
-          td: (props) => <td className="border border-[color:var(--con-line)] px-2 py-1" {...props} />
+          th: (props) => <Th className="border border-[color:var(--con-line)] px-2 py-1 text-left font-semibold" {...props} />,
+          td: (props) => <Td className="border border-[color:var(--con-line)] px-2 py-1" {...props} />
         }}
       >
         {children}

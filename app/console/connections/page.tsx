@@ -16,6 +16,8 @@ import { Btn, Chip } from "../ui/primitives";
 import { ApiKeysCard } from "../settings/api-keys";
 import { BrokerAccountsCard } from "../settings/brokers";
 
+export const metadata = { title: "Connections" };
+
 export default function ConnectionsPage() {
   const { snapshot, loading, error, refresh } = useConsoleData();
   const ready = snapshot !== null;

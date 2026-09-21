@@ -40,7 +40,7 @@ export function Card({
               py via .con-disclosure.con-card:not([open]) in console.css so
               one-line titles like "You're set" sit vertically centered. */}
           <div className="flex items-center gap-3 px-4 pt-3.5 pb-1">
-            <span className="con-card-title">{title}</span>
+            <h2 className="con-card-title">{title}</h2>
             {action && (
               <span className="ml-auto" onClick={(e) => e.preventDefault()}>{action}</span>
             )}
@@ -198,7 +198,7 @@ export function Meter({
   max?: number;
   className?: string;
   /** Accessible name for the progressbar. Required for AT; the visible caption sits beside the bar. */
-  label?: string;
+  label: string;
 }) {
   const hasMax = typeof max === "number" && Number.isFinite(max) && max > 0;
   const rawRatio = hasMax ? Math.max(0, value / max!) : 0;
@@ -507,7 +507,8 @@ export function Tooltip({
         className
       )}
       tabIndex={interactive ? undefined : 0}
-      aria-describedby={tooltipId}
+      aria-label={!interactive && typeof content === "string" ? content : undefined}
+      aria-describedby={interactive ? tooltipId : undefined}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
       onClick={() => setOpen((prev) => !prev)}
@@ -542,3 +543,28 @@ export function Tooltip({
   );
 }
 
+
+// ── Table ────────────────────────────────────────────────────────────────────
+
+export function Table({ caption, className, ...props }: React.TableHTMLAttributes<HTMLTableElement> & { caption: React.ReactNode }) {
+  return (
+    <table className={cx("con-table", className)} {...props}>
+      <caption className="sr-only">{caption}</caption>
+      {props.children}
+    </table>
+  );
+}
+
+export function Th({ title, children, scope = "col", className, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) {
+  if (title) {
+    return <th scope={scope} className={className} {...props}><Tooltip content={title}>{children}</Tooltip></th>;
+  }
+  return <th scope={scope} className={className} {...props}>{children}</th>;
+}
+
+export function Td({ title, children, className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
+  if (title) {
+    return <td className={className} {...props}><Tooltip content={title}>{children}</Tooltip></td>;
+  }
+  return <td className={className} {...props}>{children}</td>;
+}

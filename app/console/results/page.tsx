@@ -29,9 +29,11 @@ import { thesisTagLabel } from "../lib/labels";
 import { modelDisplayName } from "../lib/models";
 import { CONSOLE_PAGE_WIDTH } from "../lib/page-width";
 import { useConsoleData } from "../lib/useConsoleData";
-import { Card, Chip, Dash, Empty, Select, SignedText, Stat } from "../ui/primitives";
+import { Card, Chip, Dash, Empty, Select, SignedText, Stat , Table, Th, Td} from "../ui/primitives";
 import { SymbolButton } from "../ui/symbol-drilldown";
 import { destinationLabel } from "../components/nav";
+
+export const metadata = { title: "Results" };
 
 type CompareAccountSummary = { id: string; label: string; environment: "paper" | "live" };
 type RedTeamEfficacySnapshot = NonNullable<DashboardSnapshot["redTeamEfficacy"]>;
@@ -326,26 +328,26 @@ export default function ResultsPage() {
             {perf.benchmark.subPeriods && perf.benchmark.subPeriods.length > 1 && (
               <div className="mt-3 overflow-x-auto border-t border-[color:var(--con-line)] pt-2">
                 <div className="con-card-title mb-1.5">Capital Regimes (Between Deposits / Withdrawals)</div>
-                <table className="w-full min-w-[32rem] text-left text-[length:var(--con-fs-xs)]">
+                <Table caption="Data table" className="w-full min-w-[32rem] text-left text-[length:var(--con-fs-xs)]">
                   <thead className="text-[color:var(--con-faint)]">
                     <tr>
-                      <th className="py-1 pr-2 font-medium">Window</th>
-                      <th className="py-1 pr-2 font-medium">Start → end equity</th>
-                      <th className="py-1 pr-2 font-medium">Transfer</th>
-                      <th className="py-1 pr-2 font-medium">You</th>
-                      <th className="py-1 font-medium">{perf.benchmark.benchmarkSymbol}</th>
+                      <Th className="py-1 pr-2 font-medium">Window</Th>
+                      <Th className="py-1 pr-2 font-medium">Start → end equity</Th>
+                      <Th className="py-1 pr-2 font-medium">Transfer</Th>
+                      <Th className="py-1 pr-2 font-medium">You</Th>
+                      <Th className="py-1 font-medium">{perf.benchmark.benchmarkSymbol}</Th>
                     </tr>
                   </thead>
                   <tbody>
                     {perf.benchmark.subPeriods.map((seg) => (
                       <tr key={`${seg.startDate}-${seg.endDate}-${seg.externalFlow}`} className="border-t border-[color:var(--con-line)]">
-                        <td className="py-1 pr-2 whitespace-nowrap">
+                        <Td className="py-1 pr-2 whitespace-nowrap">
                           {seg.startDate} → {seg.endDate}
-                        </td>
-                        <td className="py-1 pr-2 whitespace-nowrap">
+                        </Td>
+                        <Td className="py-1 pr-2 whitespace-nowrap">
                           {fmtMoney(seg.startEquity)} → {fmtMoney(seg.endEquity)}
-                        </td>
-                        <td className="py-1 pr-2 whitespace-nowrap">
+                        </Td>
+                        <Td className="py-1 pr-2 whitespace-nowrap">
                           {Math.abs(seg.externalFlow) < 0.01 ? (
                             "—"
                           ) : (
@@ -361,17 +363,17 @@ export default function ResultsPage() {
                               )}
                             </span>
                           )}
-                        </td>
-                        <td className="py-1 pr-2">
+                        </Td>
+                        <Td className="py-1 pr-2">
                           <SignedText value={seg.accountReturnPct}>{fmtPct(seg.accountReturnPct, 2, true)}</SignedText>
-                        </td>
-                        <td className="py-1">
+                        </Td>
+                        <Td className="py-1">
                           <SignedText value={seg.benchmarkReturnPct}>{fmtPct(seg.benchmarkReturnPct, 2, true)}</SignedText>
-                        </td>
+                        </Td>
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </Table>
               </div>
             )}
           </>
@@ -573,31 +575,31 @@ function SignalHealthCard() {
             />
           </div>
           <div className="mt-4 overflow-x-auto">
-            <table className="con-table">
+            <Table caption="Data table" className="con-table">
               <thead>
                 <tr>
-                  <th title="Confidence-score quantile — Q1 lowest confidence, top bucket highest.">Confidence bucket</th>
-                  <th className="num">n</th>
-                  <th className="num">Avg return</th>
-                  <th className="num">Hit rate</th>
+                  <Th title="Confidence-score quantile — Q1 lowest confidence, top bucket highest.">Confidence bucket</Th>
+                  <Th className="num">n</Th>
+                  <Th className="num">Avg return</Th>
+                  <Th className="num">Hit rate</Th>
                 </tr>
               </thead>
               <tbody>
                 {latest.quantileBuckets.map((bucket, index) => (
                   <tr key={bucket.bucket}>
-                    <td className="font-semibold">
+                    <Td className="font-semibold">
                       Q{bucket.bucket}
                       {index === 0 ? " (lowest)" : index === latest.quantileBuckets.length - 1 ? " (highest)" : ""}
-                    </td>
-                    <td className="num con-num">{bucket.n}</td>
-                    <td className="num">
+                    </Td>
+                    <Td className="num con-num">{bucket.n}</Td>
+                    <Td className="num">
                       <SignedText value={bucket.avgReturn}>{fmtPct(bucket.avgReturn, 2, true)}</SignedText>
-                    </td>
-                    <td className="num con-num">{fmtPct(bucket.hitRate * 100, 1)}</td>
+                    </Td>
+                    <Td className="num con-num">{fmtPct(bucket.hitRate * 100, 1)}</Td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </Table>
           </div>
           <p className="mt-2 text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">
             A healthy signal rises from Q1 to the top bucket.{SENTENCE_GAP}Updated {fmtExact(latest.createdAt)} CT.
@@ -716,15 +718,15 @@ function LookaheadAuditCard() {
         source) and never count toward an all-clear.
       </p>
       <div className="mt-3 overflow-x-auto">
-        <table className="con-table">
+        <Table caption="Data table" className="con-table">
           <thead>
             <tr>
-              <th>Decision</th>
-              <th>Field</th>
-              <th className="num" title="Value persisted at decision time (factor sub-score, or used-chunk count for RAG evidence).">Persisted</th>
-              <th className="num" title="Value recomputed from data truncated to the decision date (or the strict as-of replay).">Replayed</th>
-              <th className="num" title="Absolute sub-score difference; 1 − Jaccard for RAG evidence.">Δ</th>
-              <th>Classification</th>
+              <Th>Decision</Th>
+              <Th>Field</Th>
+              <Th className="num" title="Value persisted at decision time (factor sub-score, or used-chunk count for RAG evidence).">Persisted</Th>
+              <Th className="num" title="Value recomputed from data truncated to the decision date (or the strict as-of replay).">Replayed</Th>
+              <Th className="num" title="Absolute sub-score difference; 1 − Jaccard for RAG evidence.">Δ</Th>
+              <Th>Classification</Th>
             </tr>
           </thead>
           <tbody>
@@ -735,15 +737,15 @@ function LookaheadAuditCard() {
               const shortReason = reasonRaw && !reasonRaw.includes(" ") ? reasonRaw.replaceAll("_", " ") : undefined;
               return (
                 <tr key={`${finding.decisionId}:${finding.factorOrField}`}>
-                  <td className="font-semibold">
+                  <Td className="font-semibold">
                     {finding.symbol}
                     <span className="text-[color:var(--con-faint)]"> · {finding.asOf ? `${fmtExact(finding.asOf)} CT` : EM_DASH}</span>
-                  </td>
-                  <td>{LOOKAHEAD_FIELD_LABELS[finding.factorOrField] ?? finding.factorOrField}</td>
-                  <td className="num con-num">{finding.persistedValue !== undefined ? finding.persistedValue.toFixed(1) : <Dash />}</td>
-                  <td className="num con-num">{finding.recomputedValue !== undefined ? finding.recomputedValue.toFixed(1) : <Dash />}</td>
-                  <td className="num con-num">{finding.delta !== undefined ? finding.delta.toFixed(2) : <Dash />}</td>
-                  <td>
+                  </Td>
+                  <Td>{LOOKAHEAD_FIELD_LABELS[finding.factorOrField] ?? finding.factorOrField}</Td>
+                  <Td className="num con-num">{finding.persistedValue !== undefined ? finding.persistedValue.toFixed(1) : <Dash />}</Td>
+                  <Td className="num con-num">{finding.recomputedValue !== undefined ? finding.recomputedValue.toFixed(1) : <Dash />}</Td>
+                  <Td className="num con-num">{finding.delta !== undefined ? finding.delta.toFixed(2) : <Dash />}</Td>
+                  <Td>
                     {finding.classification === "clean" ? (
                       <Chip tone="pos">clean</Chip>
                     ) : finding.classification === "mismatch" ? (
@@ -753,12 +755,12 @@ function LookaheadAuditCard() {
                         unverifiable{shortReason ? ` — ${shortReason}` : ""}
                       </Chip>
                     )}
-                  </td>
+                  </Td>
                 </tr>
               );
             })}
           </tbody>
-        </table>
+        </Table>
       </div>
       <p className="mt-2 text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">
         Showing {shown.length} of {data.findings.length} recent findings.{SENTENCE_GAP}Mismatch tolerance{" "}
@@ -887,14 +889,14 @@ function RedTeamEfficacyCard({ efficacy }: { efficacy: RedTeamEfficacySnapshot |
             <Empty>No resolved blocking vetoes yet.</Empty>
           ) : (
             <div className="overflow-x-auto">
-              <table className="con-table">
+              <Table caption="Data table" className="con-table">
                 <thead>
                   <tr>
-                    <th>Red Team</th>
-                    <th className="num">n</th>
-                    <th className="num">Avoided</th>
-                    <th className="num">Missed</th>
-                    <th className="num" title="Average side-adjusted vetoed-trade return.  Negative is good for the veto.">Avg</th>
+                    <Th>Red Team</Th>
+                    <Th className="num">n</Th>
+                    <Th className="num">Avoided</Th>
+                    <Th className="num">Missed</Th>
+                    <Th className="num" title="Average side-adjusted vetoed-trade return.  Negative is good for the veto.">Avg</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -908,20 +910,20 @@ function RedTeamEfficacyCard({ efficacy }: { efficacy: RedTeamEfficacySnapshot |
                           : `n=${row.maturedVetoes}`;
                     return (
                       <tr key={row.model}>
-                        <td className="font-semibold">
+                        <Td className="font-semibold">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <span>{redTeamAttributionLabel(row.model)}</span>
                             {tier !== "ready" ? <Chip tone={tier === "hidden" ? "muted" : "warn"}>{gateLabel}</Chip> : null}
                           </div>
-                        </td>
-                        <td className="num con-num">{row.maturedVetoes}</td>
-                        <td className="num con-num" title={gateLabel}>
+                        </Td>
+                        <Td className="num con-num">{row.maturedVetoes}</Td>
+                        <Td className="num con-num" title={gateLabel}>
                           {tier === "hidden" ? EM_DASH : fmtPct(row.vetoValueAddRate, 1)}
-                        </td>
-                        <td className="num con-num" title={gateLabel}>
+                        </Td>
+                        <Td className="num con-num" title={gateLabel}>
                           {tier === "hidden" ? EM_DASH : fmtPct(row.survivorRiskHitRate, 1)}
-                        </td>
-                        <td className="num" title={gateLabel}>
+                        </Td>
+                        <Td className="num" title={gateLabel}>
                           {tier === "hidden" ? (
                             EM_DASH
                           ) : (
@@ -929,12 +931,12 @@ function RedTeamEfficacyCard({ efficacy }: { efficacy: RedTeamEfficacySnapshot |
                               {fmtPct(row.avgReturnPct, 2, true)}
                             </span>
                           )}
-                        </td>
+                        </Td>
                       </tr>
                     );
                   })}
                 </tbody>
-              </table>
+              </Table>
             </div>
           )}
         </div>
@@ -950,40 +952,40 @@ function RedTeamEfficacyCard({ efficacy }: { efficacy: RedTeamEfficacySnapshot |
             <Empty>No resolved blocking vetoes yet.</Empty>
           ) : (
             <div className="overflow-x-auto">
-              <table className="con-table">
+              <Table caption="Data table" className="con-table">
                 <thead>
                   <tr>
-                    <th>Symbol</th>
-                    <th>Side</th>
-                    <th>Thesis</th>
-                    <th>Red Team</th>
-                    <th className="num" title="Side-adjusted forward return after the veto.  Negative = the veto avoided a loser.">Return</th>
-                    <th>Readout</th>
+                    <Th>Symbol</Th>
+                    <Th>Side</Th>
+                    <Th>Thesis</Th>
+                    <Th>Red Team</Th>
+                    <Th className="num" title="Side-adjusted forward return after the veto.  Negative = the veto avoided a loser.">Return</Th>
+                    <Th>Readout</Th>
                   </tr>
                 </thead>
                 <tbody>
                   {efficacy.records.map((record) => (
                     <tr key={`${record.runId}:${record.symbol}`}>
-                      <td className="font-semibold">
+                      <Td className="font-semibold">
                         <SymbolButton symbol={record.symbol} />
-                      </td>
-                      <td className="capitalize">{record.side ?? EM_DASH}</td>
-                      <td title={record.reason ?? undefined}>{record.thesisTag ? thesisTagLabel(record.thesisTag) : EM_DASH}</td>
-                      <td>{redTeamAttributionLabel(record.model)}</td>
-                      <td className="num">
+                      </Td>
+                      <Td className="capitalize">{record.side ?? EM_DASH}</Td>
+                      <Td title={record.reason ?? undefined}>{record.thesisTag ? thesisTagLabel(record.thesisTag) : EM_DASH}</Td>
+                      <Td>{redTeamAttributionLabel(record.model)}</Td>
+                      <Td className="num">
                         <span style={{ color: record.returnPct < 0 ? "var(--con-pos)" : record.returnPct > 0 ? "var(--con-neg)" : undefined }}>
                           {fmtPct(record.returnPct, 2, true)}
                         </span>
-                      </td>
-                      <td>
+                      </Td>
+                      <Td>
                         <Chip tone={redTeamReturnTone(record.returnPct)}>
                           {record.returnPct < 0 ? "avoided loser" : record.returnPct > 0 ? "missed winner" : "flat"}
                         </Chip>
-                      </td>
+                      </Td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </Table>
             </div>
           )}
         </div>
@@ -1096,14 +1098,14 @@ function ScorecardCard({
         <Empty>No closed trades to score yet.</Empty>
       ) : (
         <div className="overflow-x-auto">
-          <table className="con-table">
+          <Table caption="Data table" className="con-table">
             <thead>
               <tr>
-                <th>{nameLabel}</th>
-                <th className="num">n</th>
-                <th className="num">Win</th>
-                <th className="num" title="Raw average realized return per closed lot in this group, not benchmark-relative.  Use the SPY panel for excess return.">Avg</th>
-                <th className="num">P&amp;L</th>
+                <Th>{nameLabel}</Th>
+                <Th className="num">n</Th>
+                <Th className="num">Win</Th>
+                <Th className="num" title="Raw average realized return per closed lot in this group, not benchmark-relative.  Use the SPY panel for excess return.">Avg</Th>
+                <Th className="num">P&amp;L</Th>
               </tr>
             </thead>
             <tbody>
@@ -1111,20 +1113,20 @@ function ScorecardCard({
                 const thin = row.trades < 5;
                 return (
                   <tr key={row.name} className={thin ? "opacity-60" : undefined} title={thin ? "Small sample — read with caution." : undefined}>
-                    <td className="font-semibold">{row.name}</td>
-                    <td className="num con-num">{row.trades}</td>
-                    <td className="num con-num">{fmtPct(row.winRate, 0)}</td>
-                    <td className="num" title="Raw average realized return for this thesis/regime group.  Positive means the closed lots made money in their own direction; it is not SPY-relative.">
+                    <Td className="font-semibold">{row.name}</Td>
+                    <Td className="num con-num">{row.trades}</Td>
+                    <Td className="num con-num">{fmtPct(row.winRate, 0)}</Td>
+                    <Td className="num" title="Raw average realized return for this thesis/regime group.  Positive means the closed lots made money in their own direction; it is not SPY-relative.">
                       <SignedText value={row.avgReturnPct}>{fmtPct(row.avgReturnPct, 2, true)}</SignedText>
-                    </td>
-                    <td className="num">
+                    </Td>
+                    <Td className="num">
                       <SignedText value={row.totalPnl}>{fmtSignedMoney(row.totalPnl)}</SignedText>
-                    </td>
+                    </Td>
                   </tr>
                 );
               })}
             </tbody>
-          </table>
+          </Table>
         </div>
       )}
     </Card>
@@ -1187,15 +1189,15 @@ function TaxBlock() {
         <div>
           <div className="con-card-title mb-1">Open Lots — Days to Long-Term Treatment</div>
           <div className="overflow-x-auto">
-            <table className="con-table">
+            <Table caption="Data table" className="con-table">
               <thead>
                 <tr>
-                  <th>Symbol</th>
-                  <th className="num">Qty</th>
-                  <th className="num">Days held</th>
-                  <th className="num">To long-term</th>
-                  <th className="num">Unrealized</th>
-                  <th className="num">Early-exit tax cost</th>
+                  <Th>Symbol</Th>
+                  <Th className="num">Qty</Th>
+                  <Th className="num">Days held</Th>
+                  <Th className="num">To long-term</Th>
+                  <Th className="num">Unrealized</Th>
+                  <Th className="num">Early-exit tax cost</Th>
                 </tr>
               </thead>
               <tbody>
@@ -1204,7 +1206,7 @@ function TaxBlock() {
                   .slice(0, 12)
                   .map((lot, i) => (
                     <tr key={`${lot.symbol}-${i}`}>
-                      <td className="font-semibold">
+                      <Td className="font-semibold">
                         <span className="inline-flex items-center gap-1.5">
                           <SymbolButton symbol={lot.symbol} />
                           {lot.ledgerMismatch && (
@@ -1216,24 +1218,24 @@ function TaxBlock() {
                             </Chip>
                           )}
                         </span>
-                      </td>
-                      <td className="num con-num">{fmtQty(lot.quantity)}</td>
-                      <td className="num con-num">{lot.daysHeld}</td>
-                      <td className="num con-num">{lot.isLongTerm ? "long-term" : `${lot.daysToLongTerm}d`}</td>
-                      <td className="num">
+                      </Td>
+                      <Td className="num con-num">{fmtQty(lot.quantity)}</Td>
+                      <Td className="num con-num">{lot.daysHeld}</Td>
+                      <Td className="num con-num">{lot.isLongTerm ? "long-term" : `${lot.daysToLongTerm}d`}</Td>
+                      <Td className="num">
                         {typeof lot.unrealizedGain === "number" ? (
                           <SignedText value={lot.unrealizedGain}>{fmtSignedMoney(lot.unrealizedGain)}</SignedText>
                         ) : (
                           EM_DASH
                         )}
-                      </td>
-                      <td className="num con-num" title="Extra estimated tax if sold now vs waiting for long-term treatment.">
+                      </Td>
+                      <Td className="num con-num" title="Extra estimated tax if sold now vs waiting for long-term treatment.">
                         {typeof lot.earlyExitTaxPremium === "number" ? `~${fmtMoney(lot.earlyExitTaxPremium)}` : EM_DASH}
-                      </td>
+                      </Td>
                     </tr>
                   ))}
               </tbody>
-            </table>
+            </Table>
           </div>
           {(tax.ledgerMismatchedSymbols?.length ?? 0) > 0 && (
             <p className="mt-1 text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">

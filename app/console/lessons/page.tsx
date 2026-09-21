@@ -2,6 +2,8 @@ import { CONSOLE_PAGE_WIDTH } from "../lib/page-width";
 import { LearnedContextInbox, LearnedFactsArchive } from "./learned-context";
 import { LearningLedgerPanel } from "./learning-ledger";
 
+export const metadata = { title: "Lessons" };
+
 export default function LessonsPage() {
   return (
     <div className={`${CONSOLE_PAGE_WIDTH} space-y-8 px-4 pb-12 pt-6 lg:px-8`}>

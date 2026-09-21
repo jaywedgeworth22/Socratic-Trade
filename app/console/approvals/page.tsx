@@ -29,6 +29,8 @@ import { useToast } from "../ui/toast";
 import { destinationLabel } from "../components/nav";
 import { proposalElementId, readProposalQuery, scrollDeepLinkTarget } from "../lib/deep-link-focus";
 
+export const metadata = { title: "Approvals" };
+
 const SIDE_OPTIONS: Array<{ value: ApprovalSideFilter; label: string }> = [
   { value: "all", label: "all ideas" },
   { value: "openings", label: "openings" },

@@ -35,7 +35,7 @@ import {
   redTeamSampleGate,
   redTeamSampleTier // encapsulates the 20/50 (MIN/SOLID) matured-veto thresholds
 } from "../lib/red-team-efficacy";
-import { Chip, Dash, IconButton, TONE_VAR } from "../ui/primitives";
+import { Chip, Dash, IconButton, TONE_VAR , Table, Th, Td} from "../ui/primitives";
 import { Sheet } from "../ui/sheet";
 
 type PickerRole = "proposer" | "red-team" | "strategist";
@@ -281,21 +281,21 @@ export function ModelStatsButton({ role }: { role: PickerRole }) {
         )}
         {data && !loading && (
           <div className="overflow-x-auto">
-            <table className="con-table w-full">
+            <Table caption="Data table" className="con-table w-full">
               <thead>
                 <tr>
-                  <th className="text-left">Provider</th>
-                  <th className="text-left">Model</th>
-                  <th className="text-left">Cost / call</th>
+                  <Th className="text-left">Provider</Th>
+                  <Th className="text-left">Model</Th>
+                  <Th className="text-left">Cost / call</Th>
                   {isStrategist ? (
                     <>
-                      <th className="text-left">Runs</th>
-                      <th className="text-left">Total cost{data ? ` (${data.sinceDays}d)` : ""}</th>
+                      <Th className="text-left">Runs</Th>
+                      <Th className="text-left">Total cost{data ? ` (${data.sinceDays}d)` : ""}</Th>
                     </>
                   ) : (
                     <>
-                      <th className="text-left">Latency (p50)</th>
-                      <th className="text-left">{role === "proposer" ? "Realized performance" : "Veto value-add"}</th>
+                      <Th className="text-left">Latency (p50)</Th>
+                      <Th className="text-left">{role === "proposer" ? "Realized performance" : "Veto value-add"}</Th>
                     </>
                   )}
                 </tr>
@@ -305,7 +305,7 @@ export function ModelStatsButton({ role }: { role: PickerRole }) {
                   <ProviderRows key={group.provider} label={group.label} models={group.options.map((o) => o.value)} byModel={byModel} role={role} />
                 ))}
               </tbody>
-            </table>
+            </Table>
           </div>
         )}
         {data && !loading && (
@@ -355,36 +355,36 @@ function ProviderRows({
         return (
           <tr key={model} className={idx === 0 ? "border-t border-[color:var(--con-border)]" : ""}>
             {idx === 0 && (
-              <td
+              <Td
                 rowSpan={models.length}
                 className="align-middle pr-4 text-[length:var(--con-fs-xs)] font-semibold text-[color:var(--con-muted)]"
               >
                 <div className="max-sm:[writing-mode:vertical-rl] max-sm:rotate-180 sm:whitespace-nowrap flex items-center justify-center min-h-[4rem] sm:min-h-0 sm:block sm:h-auto">
                   {label}
                 </div>
-              </td>
+              </Td>
             )}
-            <td className="whitespace-nowrap font-medium">{model}</td>
-            <td>
+            <Td className="whitespace-nowrap font-medium">{model}</Td>
+            <Td>
               <CostCell s={s} />
-            </td>
+            </Td>
             {role === "strategist" ? (
               <>
-                <td>
+                <Td>
                   <RunsCell s={s} />
-                </td>
-                <td>
+                </Td>
+                <Td>
                   <TotalCostCell s={s} />
-                </td>
+                </Td>
               </>
             ) : (
               <>
-                <td>
+                <Td>
                   <LatencyCell s={s} />
-                </td>
-                <td>
+                </Td>
+                <Td>
                   <PerfCell s={s} role={role} />
-                </td>
+                </Td>
               </>
             )}
           </tr>

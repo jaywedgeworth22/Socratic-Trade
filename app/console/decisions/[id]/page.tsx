@@ -14,6 +14,8 @@ import { Btn, Card, Chip, SignedText, TextArea } from "../../ui/primitives";
 import { ModelBadge } from "../../ui/provider-logo";
 import { SymbolButton } from "../../ui/symbol-drilldown";
 
+export const metadata = { title: "Decision Details" };
+
 type LoadState =
   | { status: "loading" }
   | { status: "error"; message: string }

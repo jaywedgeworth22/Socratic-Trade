@@ -65,11 +65,15 @@ import {
 } from "./field-defs";
 import { StopFlowDiagram } from "./stop-flow";
 import {
+
   buildUniverseExtraPatch,
   discardAllDrafts,
   emptyUniverseDraft,
   type UniverseDraft
 } from "./universe-draft";
+
+export const metadata = { title: "Guardrails" };
+
 
 function isIraTaxation(taxationType: TaxationType | undefined): boolean {
   return taxationType === "roth_ira" || taxationType === "traditional_ira";

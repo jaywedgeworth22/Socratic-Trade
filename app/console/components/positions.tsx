@@ -10,7 +10,7 @@ import type { DashboardSnapshot } from "../../dashboard-types";
 import type { OptionPosition } from "@/lib/types";
 import { deriveProtection, deriveUnmanagedShorts, grossExposure, grossExposureWeightPct, unmanagedShortNotice } from "../lib/derive";
 import { fmtMoney, fmtPct, fmtQty, EM_DASH } from "../lib/format";
-import { Card, Dash, Empty, SignedText } from "../ui/primitives";
+import { Card, Dash, Empty, SignedText , Table, Th, Td} from "../ui/primitives";
 import { SymbolButton } from "../ui/symbol-drilldown";
 
 /** Concentration cue for a position's weight vs. policy.maxSymbolExposurePct.
@@ -83,22 +83,22 @@ export const PositionsCard = memo(function PositionsCard({ snapshot }: { snapsho
       ) : (
         <>
           <div className="hidden overflow-x-auto lg:block">
-            <table className="con-table">
+            <Table caption="Data table" className="con-table">
               <thead>
                 <tr>
-                  <th title="Ticker — click a symbol to open its price history and details.">Symbol</th>
-                  <th className="num" title="Shares held; negative means a short position.">Qty</th>
-                  <th className="num" title="Average price paid per share.">Avg cost</th>
-                  <th className="num" title="Current market value of the position.">Value</th>
-                  <th className="num" title="Share of gross exposure (absolute): this position's |market value| as a percent of the sum of |market value| across all open positions.  Direction is carried by the SHORT tag, so shorts never show a negative weight.">Weight</th>
-                  <th className="num" title="Market value minus cost basis — the gain or loss if you closed now.">Unrealized</th>
-                  <th title="What protects this position: a resting broker stop order, an app-managed stop rule, or nothing (—).">Protection</th>
+                  <Th title="Ticker — click a symbol to open its price history and details.">Symbol</Th>
+                  <Th className="num" title="Shares held; negative means a short position.">Qty</Th>
+                  <Th className="num" title="Average price paid per share.">Avg cost</Th>
+                  <Th className="num" title="Current market value of the position.">Value</Th>
+                  <Th className="num" title="Share of gross exposure (absolute): this position's |market value| as a percent of the sum of |market value| across all open positions.  Direction is carried by the SHORT tag, so shorts never show a negative weight.">Weight</Th>
+                  <Th className="num" title="Market value minus cost basis — the gain or loss if you closed now.">Unrealized</Th>
+                  <Th title="What protects this position: a resting broker stop order, an app-managed stop rule, or nothing (—).">Protection</Th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map(({ p, short, unrealized, unrealizedPct, weightPct, protection, meta, exposure }) => (
                   <tr key={p.symbol}>
-                    <td>
+                    <Td>
                       <SymbolButton symbol={p.symbol} />
                       {short && (
                         <span className="ml-1.5 text-[length:var(--con-fs-xs)] font-semibold text-[color:var(--con-warn)]">SHORT</span>
@@ -108,11 +108,11 @@ export const PositionsCard = memo(function PositionsCard({ snapshot }: { snapsho
                           {meta.companyName}
                         </span>
                       )}
-                    </td>
-                    <td className="num con-num">{fmtQty(p.quantity)}</td>
-                    <td className="num con-num">{fmtMoney(p.averageCost)}</td>
-                    <td className="num con-num">{fmtMoney(p.marketValue)}</td>
-                    <td className="num con-num" title={exposure.title}>
+                    </Td>
+                    <Td className="num con-num">{fmtQty(p.quantity)}</Td>
+                    <Td className="num con-num">{fmtMoney(p.averageCost)}</Td>
+                    <Td className="num con-num">{fmtMoney(p.marketValue)}</Td>
+                    <Td className="num con-num" title={exposure.title}>
                       {weightPct === undefined ? (
                         <Dash />
                       ) : (
@@ -123,8 +123,8 @@ export const PositionsCard = memo(function PositionsCard({ snapshot }: { snapsho
                           )}
                         </span>
                       )}
-                    </td>
-                    <td className="num">
+                    </Td>
+                    <Td className="num">
                       {unrealized === undefined ? (
                         <Dash />
                       ) : (
@@ -133,8 +133,8 @@ export const PositionsCard = memo(function PositionsCard({ snapshot }: { snapsho
                           {unrealizedPct !== undefined ? ` (${fmtPct(unrealizedPct, 1, true)})` : ""}
                         </SignedText>
                       )}
-                    </td>
-                    <td title={protection.detail}>
+                    </Td>
+                    <Td title={protection.detail}>
                       {protection.label === null ? (
                         <span className="text-[color:var(--con-faint)]">{EM_DASH}</span>
                       ) : (
@@ -145,11 +145,11 @@ export const PositionsCard = memo(function PositionsCard({ snapshot }: { snapsho
                           {protection.label}
                         </span>
                       )}
-                    </td>
+                    </Td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </Table>
           </div>
 
           {/* <lg: the table's horizontal scroll isn't a good hand-held experience —
@@ -224,17 +224,17 @@ export const PositionsCard = memo(function PositionsCard({ snapshot }: { snapsho
     {snapshot.options && snapshot.options.length > 0 && (
       <Card title="Unmanaged Options (no automated exit protection)" padded={false} className="mt-4">
         <div className="hidden overflow-x-auto lg:block">
-          <table className="con-table">
+          <Table caption="Data table" className="con-table">
             <thead>
               <tr>
-                <th title="OCC option symbol.">Symbol</th>
-                <th title="Underlying symbol.">Underlying</th>
-                <th title="Option type (Call/Put) and strike price.">Strike / Type</th>
-                <th title="Expiration date.">Expiration</th>
-                <th className="num" title="Number of contracts held; negative means short/written.">Qty</th>
-                <th className="num" title="Average price paid per contract (not multiplier-adjusted).">Avg cost</th>
-                <th className="num" title="Current market value of the option position (multiplier-adjusted).">Value</th>
-                <th className="num" title="Gain or loss if closed now.">Unrealized P&amp;L</th>
+                <Th title="OCC option symbol.">Symbol</Th>
+                <Th title="Underlying symbol.">Underlying</Th>
+                <Th title="Option type (Call/Put) and strike price.">Strike / Type</Th>
+                <Th title="Expiration date.">Expiration</Th>
+                <Th className="num" title="Number of contracts held; negative means short/written.">Qty</Th>
+                <Th className="num" title="Average price paid per contract (not multiplier-adjusted).">Avg cost</Th>
+                <Th className="num" title="Current market value of the option position (multiplier-adjusted).">Value</Th>
+                <Th className="num" title="Gain or loss if closed now.">Unrealized P&amp;L</Th>
               </tr>
             </thead>
             <tbody>
@@ -246,31 +246,31 @@ export const PositionsCard = memo(function PositionsCard({ snapshot }: { snapsho
 
                 return (
                   <tr key={opt.symbol}>
-                    <td className="font-mono text-xs">{opt.symbol}</td>
-                    <td>
+                    <Td className="font-mono text-xs">{opt.symbol}</Td>
+                    <Td>
                       <SymbolButton symbol={opt.underlyingSymbol} />
-                    </td>
-                    <td>
+                    </Td>
+                    <Td>
                       <span className="font-semibold">${opt.strikePrice}</span>{" "}
                       <span className={opt.optionType === "call" ? "text-indigo-400" : "text-pink-400"}>
                         {opt.optionType.toUpperCase()}
                       </span>
-                    </td>
-                    <td>{opt.expirationDate}</td>
-                    <td className="num con-num">{fmtQty(qty)}</td>
-                    <td className="num con-num">{fmtMoney(opt.averageCost)}</td>
-                    <td className="num con-num">{fmtMoney(opt.marketValue)}</td>
-                    <td className="num">
+                    </Td>
+                    <Td>{opt.expirationDate}</Td>
+                    <Td className="num con-num">{fmtQty(qty)}</Td>
+                    <Td className="num con-num">{fmtMoney(opt.averageCost)}</Td>
+                    <Td className="num con-num">{fmtMoney(opt.marketValue)}</Td>
+                    <Td className="num">
                       <SignedText value={unrealized}>
                         {`${unrealized > 0 ? "+" : ""}${fmtMoney(unrealized)}`}
                         {unrealizedPct !== undefined ? ` (${fmtPct(unrealizedPct, 1, true)})` : ""}
                       </SignedText>
-                    </td>
+                    </Td>
                   </tr>
                 );
               })}
             </tbody>
-          </table>
+          </Table>
         </div>
 
         <div className="flex flex-col divide-y divide-[color:var(--con-line)] lg:hidden">

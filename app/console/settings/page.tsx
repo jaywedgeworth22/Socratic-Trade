@@ -41,10 +41,14 @@ import { LegalCard } from "./legal";
 import { LlmBudgetCard } from "./llm-budget";
 import { DataSharingCard } from "./sharing";
 import {
+
   fetchSourceFeatures,
   patchSourceFeatures,
   type SourceFeatureRow
 } from "./lib";
+
+export const metadata = { title: "Settings" };
+
 
 /** Sticky jump-chip targets for the long Settings page (UX PR-B4).
  *  Ids are also hash deep-link anchors — keep in sync with the wrappers below

@@ -37,6 +37,7 @@ export default async function LoginPage(props: { searchParams?: Promise<{ callba
   return (
     <main className="grid min-h-screen place-items-center bg-bg px-6 text-center">
       <div className="w-full max-w-md space-y-6">
+        <h1 className="sr-only">Sign in to Socratic Trade</h1>
         <div className="flex justify-center mb-2 px-4 overflow-hidden">
           <HeaderLogo height={30} />
         </div>

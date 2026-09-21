@@ -1,11 +1,12 @@
 "use client";
+import { Table, Th, Td } from "../ui/primitives";
 
 import { useState } from "react";
 import { RefreshCw } from "lucide-react";
 import type { WeeklyDigestName, WeeklyMarketDigest } from "@/lib/weekly-market-digest";
 import { cx, fmtMoney, fmtPct, EM_DASH, SENTENCE_GAP } from "../lib/format";
 import { useConsoleData } from "../lib/useConsoleData";
-import { Ago, Btn, Card, Chip, Empty } from "../ui/primitives";
+import { Ago, Btn, Card, Chip, Empty , Table, Th, Td} from "../ui/primitives";
 import { SymbolButton } from "../ui/symbol-drilldown";
 
 function fmtCap(value: number | undefined): string {
@@ -172,21 +173,21 @@ function ScreenList({
       {names.length === 0 ? (
         <p className="text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">{empty}</p>
       ) : (
-        <table className="w-full text-left text-[length:var(--con-fs-xs)]">
+        <Table caption="Data table" className="w-full text-left text-[length:var(--con-fs-xs)]">
           <thead>
             <tr className="text-[color:var(--con-faint)]">
-              <th className="pb-1 font-medium">Ticker</th>
+              <Th className="pb-1 font-medium">Ticker</Th>
               {columns === "value" ? (
                 <>
-                  <th className="pb-1 font-medium">P/E</th>
-                  <th className="pb-1 font-medium">vs 52w low</th>
-                  <th className="pb-1 font-medium">Cap</th>
+                  <Th className="pb-1 font-medium">P/E</Th>
+                  <Th className="pb-1 font-medium">vs 52w low</Th>
+                  <Th className="pb-1 font-medium">Cap</Th>
                 </>
               ) : (
                 <>
-                  <th className="pb-1 font-medium">5-day</th>
-                  <th className="pb-1 font-medium">RSI-14</th>
-                  <th className="pb-1 font-medium">vs MAs</th>
+                  <Th className="pb-1 font-medium">5-day</Th>
+                  <Th className="pb-1 font-medium">RSI-14</Th>
+                  <Th className="pb-1 font-medium">vs MAs</Th>
                 </>
               )}
             </tr>
@@ -194,32 +195,32 @@ function ScreenList({
           <tbody>
             {names.map((row) => (
               <tr key={row.symbol} className="border-t border-[color:var(--con-line)]">
-                <td className="py-1.5 pr-2">
+                <Td className="py-1.5 pr-2">
                   <SymbolButton symbol={row.symbol} className="text-inherit" />
                   {row.sector ? <span className="ml-1 text-[color:var(--con-faint)]">{row.sector}</span> : null}
-                </td>
+                </Td>
                 {columns === "value" ? (
                   <>
-                    <td className="py-1.5 pr-2">{row.peRatio != null ? row.peRatio.toFixed(1) : EM_DASH}</td>
-                    <td className="py-1.5 pr-2">{fmtPct(row.pctAbove52wLow, 1)}</td>
-                    <td className="py-1.5">{fmtCap(row.marketCap)}</td>
+                    <Td className="py-1.5 pr-2">{row.peRatio != null ? row.peRatio.toFixed(1) : EM_DASH}</Td>
+                    <Td className="py-1.5 pr-2">{fmtPct(row.pctAbove52wLow, 1)}</Td>
+                    <Td className="py-1.5">{fmtCap(row.marketCap)}</Td>
                   </>
                 ) : (
                   <>
-                    <td className="py-1.5 pr-2">{fmtPct(row.return5d, 1, true)}</td>
-                    <td className="py-1.5 pr-2">
+                    <Td className="py-1.5 pr-2">{fmtPct(row.return5d, 1, true)}</Td>
+                    <Td className="py-1.5 pr-2">
                       {row.rsi14 != null ? row.rsi14.toFixed(0) : EM_DASH}
                       {row.rsiZone ? <span className="ml-1 text-[color:var(--con-faint)]">{row.rsiZone}</span> : null}
-                    </td>
-                    <td className="py-1.5 text-[color:var(--con-faint)]">
+                    </Td>
+                    <Td className="py-1.5 text-[color:var(--con-faint)]">
                       20 {vsLabel(row.vsSma20)} · 50 {vsLabel(row.vsSma50)} · 200 {vsLabel(row.vsSma200)}
-                    </td>
+                    </Td>
                   </>
                 )}
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       )}
     </div>
   );

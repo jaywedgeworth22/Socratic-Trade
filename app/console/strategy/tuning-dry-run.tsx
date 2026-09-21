@@ -1,11 +1,12 @@
 "use client";
+import { Table, Th, Td } from "../ui/primitives";
 
 /** Read-only preview of GET /api/admin/tuning-dry-run.  Does not apply weights. */
 
 import { useState } from "react";
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
-import { Ago, Btn, Card, Chip } from "../ui/primitives";
+import { Ago, Btn, Card, Chip , Table, Th, Td} from "../ui/primitives";
 import { SENTENCE_GAP } from "../lib/format";
 import {
   fetchTuningDryRun,
@@ -106,33 +107,33 @@ function DryRunResult({ result }: { result: TuningDryRunResponse }) {
       )}
       <OosReadout decision={decision} />
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-[length:var(--con-fs-xs)]">
+        <Table caption="Data table" className="w-full text-left text-[length:var(--con-fs-xs)]">
           <thead className="text-[color:var(--con-faint)]">
             <tr>
-              <th className="py-1 font-medium">Factor</th>
-              <th className="py-1 font-medium">Before</th>
-              <th className="py-1 font-medium">After</th>
-              <th className="py-1 font-medium">Delta</th>
+              <Th className="py-1 font-medium">Factor</Th>
+              <Th className="py-1 font-medium">Before</Th>
+              <Th className="py-1 font-medium">After</Th>
+              <Th className="py-1 font-medium">Delta</Th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
               <tr key={row.key} className="border-t border-[color:var(--con-line)]">
-                <td className="py-1.5">
+                <Td className="py-1.5">
                   {row.label}
                   {changed.has(row.key) && (
                     <Chip tone="accent" className="ml-2">
                       changed
                     </Chip>
                   )}
-                </td>
-                <td className="con-num py-1.5">{formatWeight(row.before)}</td>
-                <td className="con-num py-1.5">{formatWeight(row.after)}</td>
-                <td className="con-num py-1.5">{formatSigned(row.delta)}</td>
+                </Td>
+                <Td className="con-num py-1.5">{formatWeight(row.before)}</Td>
+                <Td className="con-num py-1.5">{formatWeight(row.after)}</Td>
+                <Td className="con-num py-1.5">{formatSigned(row.delta)}</Td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       </div>
     </div>
   );

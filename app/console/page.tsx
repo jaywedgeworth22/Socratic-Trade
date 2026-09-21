@@ -51,6 +51,8 @@ import { applyCoachChipPrefill, COACH_NOTE_CHIPS } from "./lib/coach-chips";
 import { Sheet } from "./ui/sheet";
 import { useToast } from "./ui/toast";
 
+export const metadata = { title: "Dashboard" };
+
 export default function ConsoleHomePage() {
   const { snapshot, refresh } = useConsoleData();
 

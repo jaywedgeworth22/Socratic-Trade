@@ -3,6 +3,10 @@ import type { Metadata, Viewport } from "next";
 import { ConsoleShell } from "./components/shell";
 
 export const metadata: Metadata = {
+  title: {
+    template: "%s | Socratic Trade",
+    default: "Console | Socratic Trade"
+  },
   description: "Socratic Trade autonomy desk: live thesis, decision trace, evidence, coaching, and framework learning."
 };
 

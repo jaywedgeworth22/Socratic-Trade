@@ -16,8 +16,10 @@ import { DEEP_LINK_FOCUS_CLASS, readSymbolQuery, scrollDeepLinkTarget, symbolEle
 import { cx, fmtMoney, EM_DASH } from "../lib/format";
 import { CONSOLE_PAGE_WIDTH } from "../lib/page-width";
 import { useToast } from "../ui/toast";
-import { Ago, Btn, Card, Chip, Dash, Empty, Field, NumInput, Select, TextInput } from "../ui/primitives";
+import { Ago, Btn, Card, Chip, Dash, Empty, Field, NumInput, Select, TextInput , Table, Th, Td} from "../ui/primitives";
 import { SymbolButton } from "../ui/symbol-drilldown";
+
+export const metadata = { title: "Watchlist" };
 
 interface WatchlistQuote {
   symbol: string;
@@ -247,16 +249,16 @@ function WatchlistPageInner() {
         ) : (
           <>
             <div className="hidden overflow-x-auto lg:block">
-              <table className="con-table">
+              <Table caption="Data table" className="con-table">
                 <thead>
                   <tr>
-                    <th>Symbol</th>
-                    <th className="num" title="Latest known price from the active account's data source.  '—' means no quote is available right now — never a made-up number.">
+                    <Th>Symbol</Th>
+                    <Th className="num" title="Latest known price from the active account's data source.  '—' means no quote is available right now — never a made-up number.">
                       Price
-                    </th>
-                    <th className="num" title="Armed price alerts on this symbol.">Alerts</th>
-                    <th title="When you added the symbol.">Added</th>
-                    <th aria-label="Row actions" />
+                    </Th>
+                    <Th className="num" title="Armed price alerts on this symbol.">Alerts</Th>
+                    <Th title="When you added the symbol.">Added</Th>
+                    <Th aria-label="Row actions" />
                   </tr>
                 </thead>
                 <tbody>
@@ -270,10 +272,10 @@ function WatchlistPageInner() {
                         id={focused ? symbolElementId(item.symbol.toUpperCase()) : undefined}
                         className={focused ? DEEP_LINK_FOCUS_CLASS : undefined}
                       >
-                        <td className="con-mono font-semibold">
+                        <Td className="con-mono font-semibold">
                           <SymbolButton symbol={item.symbol} />
-                        </td>
-                        <td
+                        </Td>
+                        <Td
                           className="num con-num"
                           title={
                             typeof quote?.price === "number"
@@ -282,26 +284,26 @@ function WatchlistPageInner() {
                           }
                         >
                           {typeof quote?.price === "number" ? fmtMoney(quote.price) : EM_DASH}
-                        </td>
-                        <td className="num con-num" title={armed > 0 ? `${armed} armed alert${armed === 1 ? "" : "s"} on ${item.symbol} — listed below.` : `No armed alerts on ${item.symbol}.`}>
+                        </Td>
+                        <Td className="num con-num" title={armed > 0 ? `${armed} armed alert${armed === 1 ? "" : "s"} on ${item.symbol} — listed below.` : `No armed alerts on ${item.symbol}.`}>
                           {armed > 0 ? armed : <Dash />}
-                        </td>
-                        <td>
+                        </Td>
+                        <Td>
                           <Ago iso={item.addedAt} />
-                        </td>
-                        <td className="num">
+                        </Td>
+                        <Td className="num">
                           <WatchlistRowActions
                             symbol={item.symbol}
                             busy={busy}
                             onAlert={() => prefillAlert(item.symbol)}
                             onRemove={() => void removeSymbol(item.symbol)}
                           />
-                        </td>
+                        </Td>
                       </tr>
                     );
                   })}
                 </tbody>
-              </table>
+              </Table>
             </div>
             <div className="flex flex-col gap-2 px-2 pb-3 pt-2 lg:hidden">
               {data.items.map((item) => {

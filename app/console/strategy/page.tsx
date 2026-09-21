@@ -59,6 +59,8 @@ import { Sheet } from "../ui/sheet";
 import { OverlaysPanel } from "./overlays-panel";
 import { TuningDryRunPanel } from "./tuning-dry-run";
 
+export const metadata = { title: "Strategy" };
+
 /** Shipped default weights (src/lib/defaults.ts) — shown as ghost reference. */
 const DEFAULT_WEIGHTS: ScoringWeights = {
   liquidity: 1.4,

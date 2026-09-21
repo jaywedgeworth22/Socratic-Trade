@@ -1,10 +1,11 @@
 "use client";
+import { Table, Th, Td } from "../ui/primitives";
 
 /** Admin learning-mutation ledger (GET/POST /api/admin/learning-ledger). */
 
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import { Ago, Btn, Card, Chip } from "../ui/primitives";
+import { Ago, Btn, Card, Chip , Table, Th, Td} from "../ui/primitives";
 import { SENTENCE_GAP } from "../lib/format";
 import {
   FACTOR_LABELS,
@@ -133,24 +134,24 @@ function LedgerRow({
         </span>
       </div>
       <div className="mt-2 overflow-x-auto">
-        <table className="w-full text-left text-[length:var(--con-fs-xs)]">
+        <Table caption="Data table" className="w-full text-left text-[length:var(--con-fs-xs)]">
           <thead className="text-[color:var(--con-faint)]">
             <tr>
-              <th className="py-1 font-medium">Factor</th>
-              <th className="py-1 font-medium">Before</th>
-              <th className="py-1 font-medium">After</th>
+              <Th className="py-1 font-medium">Factor</Th>
+              <Th className="py-1 font-medium">Before</Th>
+              <Th className="py-1 font-medium">After</Th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
               <tr key={row.key} className="border-t border-[color:var(--con-line)]">
-                <td className="py-1">{FACTOR_LABELS[row.key]}</td>
-                <td className="con-num py-1">{formatWeight(row.before)}</td>
-                <td className="con-num py-1">{formatWeight(row.after)}</td>
+                <Td className="py-1">{FACTOR_LABELS[row.key]}</Td>
+                <Td className="con-num py-1">{formatWeight(row.before)}</Td>
+                <Td className="con-num py-1">{formatWeight(row.after)}</Td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       </div>
       {entry.revertedAt && (
         <div className="mt-2 text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">

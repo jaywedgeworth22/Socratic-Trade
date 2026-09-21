@@ -24,13 +24,17 @@ function StepRow({ step, isNext }: { step: ReadinessStep; isNext: boolean }) {
             : "var(--con-line)"
       }}
     >
+      <span className="sr-only">
+        {step.complete ? "Completed" : isNext ? "Next step" : "Pending"}
+      </span>
       {step.complete ? (
-        <Check size={15} className="mt-0.5 shrink-0" style={{ color: "var(--con-pos)" }} />
+        <Check size={15} className="mt-0.5 shrink-0" style={{ color: "var(--con-pos)" }} aria-hidden="true" />
       ) : (
         <Circle
           size={15}
           className="mt-0.5 shrink-0"
           style={{ color: isNext ? "var(--con-accent)" : "var(--con-faint)" }}
+          aria-hidden="true"
         />
       )}
       <div className="min-w-0 flex-1">

@@ -22,6 +22,8 @@ import { NotificationsLedger } from "./notifications-ledger";
 import { OrderFillsList } from "./order-fills-list";
 import { StrategyRunsList } from "./strategy-runs-list";
 
+export const metadata = { title: "Activity" };
+
 export default function ActivityPage() {
   return (
     <Suspense fallback={null}>

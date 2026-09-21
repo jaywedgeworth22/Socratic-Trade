@@ -31,6 +31,8 @@ import { asFullMarketScan, newestScan, useLiveScan } from "./use-live-scan";
 import { destinationLabel } from "../components/nav";
 import { WeeklyDigestCard } from "../components/weekly-digest-card";
 
+export const metadata = { title: "Scan" };
+
 type Tab = "scan" | "smart";
 
 export default function ScanPage() {

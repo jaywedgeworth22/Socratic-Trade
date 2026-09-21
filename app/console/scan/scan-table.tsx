@@ -15,7 +15,7 @@ import type { MarketQuote, MarketScan } from "@/lib/types";
 import { receivedLabel } from "@/lib/dashboard-ui";
 import { cx, SENTENCE_GAP } from "../lib/format";
 import { useFocusTrap } from "../ui/focus-trap";
-import { Tooltip } from "../ui/primitives";
+import { Tooltip , Table, Th, Td} from "../ui/primitives";
 import { useToast } from "../ui/toast";
 import { openSymbolDetails } from "../ui/symbol-drilldown";
 import { useSymbolDrawer } from "../ui/symbol-drawer";
@@ -447,7 +447,7 @@ export const ScanTable = memo(function ScanTable({ scan }: { scan: MarketScan })
       {visibleColumns.map((c, i) => {
         const active = activeSort.col === c.id;
         return (
-          <th
+          <Th
             key={c.id}
             scope="col"
             aria-sort={active ? (activeSort.dir === "asc" ? "ascending" : "descending") : undefined}
@@ -472,7 +472,7 @@ export const ScanTable = memo(function ScanTable({ scan }: { scan: MarketScan })
                 </span>
               </button>
             </Tooltip>
-          </th>
+          </Th>
         );
       })}
     </tr>
@@ -502,17 +502,17 @@ export const ScanTable = memo(function ScanTable({ scan }: { scan: MarketScan })
       {/* Desktop: TableVirtuoso (C3) — only visible rows mount; sticky symbol via CSS. */}
       <div className="hidden overflow-x-auto lg:block">
         {rows.length === 0 ? (
-          <table className="con-table min-w-full">
+          <Table caption="Data table" className="con-table min-w-full">
             <thead>{headerRow}</thead>
             <tbody />
-          </table>
+          </Table>
         ) : (
           <TableVirtuoso
             style={{ height: tableHeight }}
             data={rows}
             overscan={8}
             components={{
-              Table: (props) => <table {...props} className="con-table min-w-full" />,
+              Table: (props) => <Table caption="Data table" {...props} className="con-table min-w-full" />,
               TableRow: ({ item: _item, ...props }) => <tr {...props} className="group" />
             }}
             fixedHeaderContent={() => headerRow}
@@ -531,7 +531,7 @@ export const ScanTable = memo(function ScanTable({ scan }: { scan: MarketScan })
                     const flexAlignClass =
                       c.align === "left" ? "justify-start" : c.align === "right" ? "justify-end" : "justify-center";
                     return (
-                      <td
+                      <Td
                         key={c.id}
                         title={cellTitleWithReceived(c, q, received)}
                         className={cx(
@@ -555,7 +555,7 @@ export const ScanTable = memo(function ScanTable({ scan }: { scan: MarketScan })
                         ) : (
                           <div className={cx("inline-flex w-full items-center", flexAlignClass)}>{c.render(q)}</div>
                         )}
-                      </td>
+                      </Td>
                     );
                   })}
                 </>

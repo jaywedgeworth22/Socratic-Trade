@@ -31,6 +31,8 @@ import { TrendsCard } from "./trends";
 import { destinationLabel } from "../components/nav";
 import { WeeklyDigestCard } from "../components/weekly-digest-card";
 
+export const metadata = { title: "Macro" };
+
 export default function MacroPage() {
   const { snapshot, error } = useConsoleData();
   if (!snapshot) return null;

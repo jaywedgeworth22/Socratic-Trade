@@ -38,10 +38,14 @@ PR #3449 fills out the quote data cascade with multi-provider coalescing (broker
 
 ## 3. Verification
 
-- `npx tsc --noEmit`: clean.
-- Targeted: `test/quotes-cascade.test.ts`, `test/market.test.ts`, `test/provenance-stamps.test.ts`, `test/data-providers.test.ts`, `test/enrichment-coverage.test.ts`, `test/enrichment-scarce-tier-gate.test.ts`, `test/quote-route.test.ts`, `test/on-demand-quote.test.ts` — all pass.
+- `npx tsc --noEmit`: clean (no output).
+- Targeted: `test/quotes-cascade.test.ts` (49), `test/market.test.ts`, `test/provenance-stamps.test.ts`, `test/data-providers.test.ts`, `test/enrichment-coverage.test.ts`, `test/enrichment-scarce-tier-gate.test.ts`, `test/quote-route.test.ts`, `test/on-demand-quote.test.ts` — all pass.
 - New/updated tests: `isCascadeFieldComplete` unit tests; "does NOT stop at Level 3 (Finnhub) on a field-incomplete quote"; "does NOT stop on a fresh broker quote missing prevClose/OHLC — Alpaca backfills"; per-field provenance merge + persistence tests; Tiingo `retries: 0` and quota-exhaustion tests; `applyEnrichment` new-fields test; cascade `takeScalar` arbitration test.  Three pre-existing cascade tests had their mocks made field-complete to preserve their original intent under the new gate.
-- Full gate (in order): `npm run lint`, `npx tsc --noEmit`, `npm test`, `npm run build` — recorded in the commit message.
+- **Full gate, run IN ORDER on the pushed head `55060c6b` (after push, so every number below is from this head):**
+  - `npm run lint`: **0 errors**, 825 warnings (repo-pre-existing; changed files contribute 0)
+  - `npx tsc --noEmit`: **clean**
+  - `npm test`: **8204 passed / 51 skipped / 0 failed** (8255 total, ~818s)
+  - `npm run build`: **EXIT=0**
 
 ## 4. Follow-ups / Notes
 

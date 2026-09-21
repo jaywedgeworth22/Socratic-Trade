@@ -13,6 +13,7 @@ the PR can land.
 
 ## Changes Made
 
+- `PLAN.md` — new dated entry for the bump (round-3; AGENTS.md requires a PLAN.md entry at every commit boundary).
 - `STATUS.md` — new dated snapshot entry for the bump and this sweep round.
 - `docs/EFFORT-LOG.md` — new `[Socratic.Trade][MUSE]` row, marked `IN PR #3443`.
 - `docs/rollouts/2026-09-21-observability-sentry-10-75-bump.md` — this note.
@@ -29,8 +30,11 @@ The main merge auto-resolved cleanly - no conflicts.
   which understated the change - Codex P2).  Nothing in `src/**` references Sentry internals that
   changed between these minors, so no migration or code change is needed; the bump stays
   compatible with the existing `src/lib/sentry*.ts` usage.
-- **`PLAN.md` intentionally not updated.**  A patch-level dependency bump changes no scope,
-  timeline, or approach.
+- **`PLAN.md` updated (round-3).**  The round-1/round-2 rationale that a dependency bump
+  needs no PLAN.md entry was wrong — AGENTS.md requires a PLAN.md entry at every commit
+  boundary, so the round-3 commit added one at the top of PLAN.md.  The earlier
+  "intentionally not updated / patch-level" wording below is superseded and retained only
+  for history.
 - **Classified runtime dependency-only.**  `package.json`/`package-lock.json` are Coolify runtime
   `watch_paths`, so on merge this is image-deploy material subject to the weekday RTH latch -
   not a docs-only update.  (Same classification Codex required on PR #3178.)

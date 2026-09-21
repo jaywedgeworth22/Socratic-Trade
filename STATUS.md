@@ -1,5 +1,20 @@
 # Current Status
 
+## 2026-09-21 FIXER — @datadog/browser-rum 7.9.0 → 7.13.0 bump: handoff records added (PR #3446)
+
+Dependabot's `^7.9.0` → `^7.13.0` bump changed only `package.json` + `package-lock.json`, so it carried
+none of the mandatory handoff records; Codex flagged that as P1 on `package.json:39`.  This
+`[codex-autofix]` round adds `STATUS.md`, `docs/EFFORT-LOG.md`, the `PLAN.md` scope note, and
+`docs/rollouts/2026-09-21-datadog-browser-rum-7.13-bump.md`.  Same-major bump (browser-rum /
+browser-core / browser-rum-core 7.13.0, transitive `@datadog/js-core` 0.0.10 → 0.0.14), so no source
+change was needed: the only call site `src/lib/datadog-rum.ts:24` is a dynamic import cast to a local
+3-method `RumSdk` type using only long-stable `init` options, and it is already fail-soft
+(`try`/`catch` → `console.warn`; `addError` never throws).  Classified **runtime** dependency-only
+(`package.json`/lockfile are Coolify `watch_paths`), **not** docs-only.  No live effect: RUM send
+stays dark (`DD_RUM_ENABLED=false`, RUM app `is_active=false` — do not enable it here).  No Coolify
+Deploy from this lane.
+Rollout: `docs/rollouts/2026-09-21-datadog-browser-rum-7.13-bump.md`.
+
 ## 2026-09-18 GROK — #3385 sqliteYieldRetry remainder (scheduler writes + synthetic-stop delete/audit)
 
 #3383 is live (`2fc699c328`) and dropped serving `busy_timeout` to 100ms.  Three scheduler writes still ran synchronously: `scheduler:lastTick`, managed-vector lastAttempt/lastSuccess, and boot `setPolicy`.  A SQLITE_BUSY on lastTick after the short pin was counted as a health failure and could abdicate a live leader.  Boot halt shared one envelope between idempotent `setPolicy` and non-idempotent `audit`.  Three synthetic-stop plan-purge paths still mixed `deleteSyntheticStop` and `audit` in one `sqliteYieldRetry` callback, so a BUSY on audit could duplicate `synthetic_stop_purged_by_plan`.  Each write now has its own yield-retry envelope.  PR #3408, squash auto-merge armed.  Extra-ship no.  Stay out of `broker-protective-stops.ts`.  No Coolify Deploy.

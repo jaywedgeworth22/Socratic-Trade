@@ -38,8 +38,19 @@ The main merge auto-resolved cleanly - no conflicts.
 ## Verification State
 
 The dependency-diff portion of the PR touches only `.github/workflows/codex-autofix.yml`
-(the single `uses:` pin line).  The required checks run on the pushed commit and are the
-authoritative gate.
+(the single `uses:` pin line: `anthropics/claude-code-action@4036a180cf690f49529f5d8c79c998855287f590`
+for the 1.0.230 release).  A workflow-file pin bump cannot affect application code, so no local
+lint/tsc/test/build run was needed for it; the required checks are the authoritative gate, and
+they were **green on the pre-merge head** (`f1631241`):
+
+- CI workflow run `35597203652` — conclusion `success` (includes the `verify`, `verify-ios`, and
+  `verify-hosted` checks)
+- Security workflow — `success`
+- Shared package pin check (`check-pin`) — `success`
+- Auto-merge PRs — `success`
+
+(Codex P1 asked that this section record the actual verification outcome rather than deferring to
+a future CI run - recorded above, 2026-09-21.  This round also merges post-#3446 `origin/main`; the required checks re-run on the new head and gate the merge.)
 
 ## Next Steps & Blockers
 
@@ -49,3 +60,15 @@ authoritative gate.
 ## Zero-Code Findings
 
 Codex's finding was documentation-only; no correctness defect was reported in the bump itself.
+
+## Round 2 — MUSE sweep (2026-09-21): answer codex-autofix review of the round-1 push
+
+The repo's codex-autofix loop reviewed the round-1 push and raised one P1: *"Record the required
+verification results"* - the round-1 note said no gate was run and then declared no blockers.
+Accepted: the `## Verification State` section above now records the actual check outcomes
+(CI `success`, run `35597203652` on the pre-merge head; the required checks re-run on the new
+head after this round's `origin/main` merge and gate the merge) instead of deferring to a future
+run.  This round's commit *subject* names the updated docs (`STATUS.md`, `docs/EFFORT-LOG.md`,
+`docs/rollouts/2026-09-21-claude-code-action-1-0-230-bump.md`) - subjects matter because this repo
+sets `squash_merge_commit_message: COMMIT_MESSAGES`; belt and suspenders, auto-merge is armed with
+an explicit `commitHeadline` / `commitBody` via the `enablePullRequestAutoMerge` GraphQL mutation.

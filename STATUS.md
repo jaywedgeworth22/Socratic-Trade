@@ -1,5 +1,18 @@
 # Current Status
 
+## 2026-09-21 MUSE — claude-code-action 1.0.230 bump, round-2 sweep (answer codex-autofix review)
+
+Round-2 of the PR #3447 lane.  The codex-autofix loop reviewed the round-1 push and raised one P1:
+"record the required verification results" - accepted; the rollout note's `## Verification State`
+now records the actual outcomes (CI run `35597203652`, conclusion `success` on the pre-merge head,
+covering `verify`/`verify-ios`/`verify-hosted`; Security, check-pin, and Auto-merge PRs all
+`success`; required checks re-run on the new head after this round's `origin/main` merge)
+instead of deferring to a future run.  This round's commit *subject* names the updated handoff
+docs and auto-merge is armed with an explicit `commitHeadline`/`commitBody` (the repo composes
+squash messages from subjects only).  Action-pin bump only, no workflow logic or source
+change.  Extra-ship no.
+Rollout: `docs/rollouts/2026-09-21-claude-code-action-1-0-230-bump.md`.
+
 ## 2026-09-21 MUSE — github_actions: anthropics/claude-code-action 1.0.226 -> 1.0.230 (PR #3447, sweep round 1)
 
 Dependabot bump of the pinned `anthropics/claude-code-action` SHA in

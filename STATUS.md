@@ -1,5 +1,16 @@
 # Current Status
 
+## 2026-09-21 CLAUDE — next 16.3.4 -> 16.3.5 bump handoff docs (PR #3442, codex-autofix)
+
+Dependabot bump of `next` `^16.3.4` -> `^16.3.5` (next-react group) in PR #3442 touched only
+`package.json` + `package-lock.json`, so Codex flagged it P1 for omitting the mandatory per-commit
+handoff updates.  This commit adds the missing `STATUS.md` entry, the `docs/EFFORT-LOG.md` mirror
+row, and a `docs/rollouts/` note; the lockfile itself is unchanged.  16.3.5 is a backport-only
+patch (disk-LRU 0-byte image skip/reject, standalone server NFTs, CSP nonce on loading/template
+scripts, `use cache` prerender signal retention) — no API or config migration, so no source
+changes were required.  Round 1 of the codex-autofix loop.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-21-next-16.3.5-bump.md`.
+
 ## 2026-09-18 GROK — #3385 sqliteYieldRetry remainder (scheduler writes + synthetic-stop delete/audit)
 
 #3383 is live (`2fc699c328`) and dropped serving `busy_timeout` to 100ms.  Three scheduler writes still ran synchronously: `scheduler:lastTick`, managed-vector lastAttempt/lastSuccess, and boot `setPolicy`.  A SQLITE_BUSY on lastTick after the short pin was counted as a health failure and could abdicate a live leader.  Boot halt shared one envelope between idempotent `setPolicy` and non-idempotent `audit`.  Three synthetic-stop plan-purge paths still mixed `deleteSyntheticStop` and `audit` in one `sqliteYieldRetry` callback, so a BUSY on audit could duplicate `synthetic_stop_purged_by_plan`.  Each write now has its own yield-retry envelope.  PR #3408, squash auto-merge armed.  Extra-ship no.  Stay out of `broker-protective-stops.ts`.  No Coolify Deploy.

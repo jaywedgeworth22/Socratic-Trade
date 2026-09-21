@@ -50,49 +50,9 @@ local gate re-run this round - dependency content unchanged from the CI-verified
 required `verify` CI check re-runs on push and is the authoritative gate.  Extra-ship no.
 Rollout: `docs/rollouts/2026-09-21-vitest-5-0-1-bump.md`.
 
-## 2026-09-21 MUSE — observability group Sentry 10.75.0 bump, round-3 sweep (answer Codex re-review)
+## 2026-09-21 MUSE — observability group: @sentry/nextjs + @sentry/profiling-node 10.74.0 -> 10.75.0 (PR #3443, current state)
 
-Round-3 of the PR #3443 lane.  Codex re-reviewed the round-2 push and raised two new P1s:
-(a) "add the mandatory PLAN.md update" - accepted; a PLAN.md entry for this bump is now at
-the top of PLAN.md (the round-2 "intentionally untouched" rationale was wrong per AGENTS.md,
-which requires a PLAN.md entry at every commit boundary); (b) "do not clear blockers while
-the required test gate fails" - accepted in documentation form: the 7 local npm test
-failures in test/market-hours.test.ts are now root-caused precisely instead of hand-waved.
-They are a machine-timezone artifact - the functions return ET-midnight instants while the
-tests assert on local-time date components, so on the Mac's America/Chicago clock the
-assertions shift by one day; the file passes 39/39 under TZ=America/New_York and TZ=UTC,
-and CI (UTC) verify is green on this head.  The rollout note's Verification State and Next
-Steps & Blockers sections record this exactly.  Auto-merge stays armed with the explicit
-docs-naming squash message; required checks gate the merge.  Extra-ship no.  No Coolify
-Deploy.
-Rollout: `docs/rollouts/2026-09-21-observability-sentry-10-75-bump.md`.
-
-## 2026-09-21 MUSE — observability group Sentry 10.75.0 bump, round-2 sweep (answer codex-autofix review)
-
-Round-2 of the PR #3443 lane.  The codex-autofix loop reviewed the round-1 push and raised three
-findings: (a) P1 "run the required gates" - accepted, the full local lint -> tsc -> test -> build
-gate was run on the round-2 merged tree after a fresh `npm install`, results in the rollout note;
-(b) P1 "list the handoff docs in the commit message" - this round's commit *subject* names them
-(the repo composes squash messages from subjects only) and auto-merge is armed with an explicit
-`commitHeadline`/`commitBody` naming them; (c) P2 "classify 10.75.0 as a minor release" - accepted,
-the "patch-level same-minor" wording was wrong and is corrected in the note, here, and in the
-effort row.  Required `verify` CI check re-runs on the new head and gates the merge (it was
-`success` on the pre-merge head, CI run `35597142351`).
-Runtime dependency-only (watch_paths; RTH latch on merge).  Extra-ship no.  No Coolify Deploy.
-Rollout: `docs/rollouts/2026-09-21-observability-sentry-10-75-bump.md`.
-
-## 2026-09-21 MUSE — observability group: @sentry/nextjs + @sentry/profiling-node 10.74.0 -> 10.75.0 (PR #3443, sweep round 1)
-
-Dependabot observability-group bump (`@sentry/nextjs` `^10.74.0` -> `^10.75.0`,
-`@sentry/profiling-node` `10.74.0` -> `10.75.0` - a SemVer minor release, commit `21860abc`).  Codex P1 (thread on
-`package.json:47`) flagged the missing mandatory handoff records; this MUSE fleet sweep round adds
-`STATUS.md`, the `docs/EFFORT-LOG.md` mirror row, and
-`docs/rollouts/2026-09-21-observability-sentry-10-75-bump.md`, merges current `origin/main`
-(picks up #3445 jose 6.2.12, #3426, #3427 - clean auto-merge), and resolves the thread.
-Minor release, no source change required.  Classified runtime dependency-only (manifest/lockfile are
-Coolify `watch_paths`; weekday RTH latch applies on merge).  No local gate re-run this round -
-dependency content unchanged from the CI-verified commit; the required `verify` CI check re-runs
-on push and is the authoritative gate.  Extra-ship no.  No Coolify Deploy.
+Dependabot observability-group bump (`@sentry/nextjs` `^10.74.0` -> `^10.75.0`, `@sentry/profiling-node` `10.74.0` -> `10.75.0` - a SemVer minor release, commit `21860abc`).  Handoff docs: `PLAN.md`, `STATUS.md`, `docs/EFFORT-LOG.md`, `docs/rollouts/2026-09-21-observability-sentry-10-75-bump.md`.  Classified runtime dependency-only (manifest/lockfile are Coolify `watch_paths`; weekday RTH latch applies on merge).  No source change required - nothing in `src/` references Sentry internals that changed between these minors.  Local gate (lint -> tsc -> test -> build) was run on the round-2 tree; the 7 `test/market-hours.test.ts` failures are a proven machine-timezone artifact (39/39 pass under `TZ=America/New_York` and `TZ=UTC`).  Required `verify` CI check is green on the current head and gates the merge.  Auto-merge armed with explicit docs-naming squash message.  Extra-ship no.  No Coolify Deploy.  Chronological round history in the rollout note.
 Rollout: `docs/rollouts/2026-09-21-observability-sentry-10-75-bump.md`.
 
 ## 2026-09-21 MUSE — next 16.3.5 bump, round-7 sweep (answer codex-autofix round-6 review)

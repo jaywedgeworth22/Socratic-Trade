@@ -127,10 +127,14 @@ fixture and correct the `types.ts` comment).
   resolved.  No further code action expected from this lane.
 - Dependabot owns the branch (`maintainerCanModify: false`); both rounds push the handoff records
   onto `dependabot/npm_and_yarn/jose-6.2.12` directly.
-- **On squash, keep the handoff-doc enumeration in the commit message.**  The routing finding
-  (c) was about commit-message provenance, and a squash that reverts the message to Dependabot's
-  generic "bump jose from 6.2.9 to 6.2.12" would re-create exactly what Codex flagged.  The squash
-  message should name `STATUS.md`, `docs/EFFORT-LOG.md`, `PLAN.md`, and this note.
+- **On squash, the handoff-doc enumeration survives — verified, not assumed.**  Finding (c) was
+  about commit-message provenance, and a squash that reduced the message to Dependabot's generic
+  "bump jose from 6.2.9 to 6.2.12" would re-create exactly what Codex flagged.  Checked the repo's
+  merge settings rather than guessing:  `squash_merge_commit_title` is `COMMIT_OR_PR_TITLE` (so
+  with 2+ commits the subject is the PR title, unchanged here) and `squash_merge_commit_message` is
+  `COMMIT_MESSAGES`, which concatenates **every** commit message into the squash body.  Both
+  `[codex-autofix]` commits enumerate `STATUS.md`, `docs/EFFORT-LOG.md`, `PLAN.md`, and this note,
+  so the landed squash body names them without any extra action.  No PR-body edit was needed.
 - **Every subsequent `jose` major/minor upgrade should revisit the `middleware.ts` Cloudflare
   Access path first**, not last — it is the only one of the three consumers that runs on a
   request-path auth gate and is the only one that would have been missed by an

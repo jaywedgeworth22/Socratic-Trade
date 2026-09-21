@@ -1,5 +1,23 @@
 # Current Status
 
+## 2026-09-21 MUSE — next 16.3.5 bump, round-5 sweep (merge main + close Codex's last two P1s)
+
+Round-5 of the PR #3442 lane, MUSE fleet PR-merge sweep.  Codex's two remaining P1s were both
+documentation-accuracy against `docs/rollouts/2026-09-21-next-16.3.5-bump.md`: (a) the round-4
+commit message never referenced the handoff docs it touched, and (b) the environmental-test
+paragraph claimed "the PR touches only `package.json` + `package-lock.json`" while the PR also
+carries the handoff docs.  Fixed: the "touches only" sentence is now explicitly scoped to the
+PR's dependency-diff portion (full inventory remains in the note's `## Changes Made`), and this
+commit's message enumerates the updated docs (`STATUS.md`, `docs/EFFORT-LOG.md`,
+`docs/rollouts/2026-09-21-next-16.3.5-bump.md`); the squash-merge message will keep that
+enumeration.  Also merged current `origin/main` (picks up #3445 jose 6.2.12, #3426, #3427) - the
+merge auto-resolved cleanly and both bumps are verified present in the merged manifest and
+lockfile (`next` 16.3.5, `jose` 6.2.12).  Round 5 is docs + main-merge only; no local re-run of
+the lint/tsc/test/build gates was needed since the dependency content is byte-identical to the
+round-4 verified state - the required `verify` CI check re-runs on push and is the authoritative
+gate.  Documentation only.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-21-next-16.3.5-bump.md`.
+
 ## 2026-09-21 CLAUDE — next 16.3.5 bump, round-4 autofix (correct the autofix round/count state)
 
 Codex's round-4 P1 on PR #3442 was against the rollout note's round-cap bullet: it claimed
@@ -61,6 +79,13 @@ patch (disk-LRU 0-byte image skip/reject, standalone server NFTs, CSP nonce on l
 scripts, `use cache` prerender signal retention) — no API or config migration, so no source
 changes were required.  Round 1 of the codex-autofix loop.  Extra-ship no.  No Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-21-next-16.3.5-bump.md`.
+## 2026-09-21 Autofix (codex-autofix) — `jose` 6.2.9 -> 6.2.12 handoff records (PR #3445)
+
+Dependabot bumped `jose` 6.2.9 -> 6.2.12 on branch `dependabot/npm_and_yarn/jose-6.2.12` (commit `d0c43f5a`), a three-release patch bump crossing `6.2.10`'s hardening batch, `6.2.11`'s JWE refactor, and `6.2.12`'s JWS/JWE core simplification.  This is a runtime dependency-only change:  `jose` is a production dependency and the lockfile moved with it, so both sit on the `watch_paths` runtime set and merge triggers a production image build (weekday RTH latch applies).  This lane authored no product source; it adds the required handoff records (this entry / `docs/EFFORT-LOG.md` / rollout note / `PLAN.md`) that Codex's review flagged as missing.
+
+**Round 2.**  Codex re-reviewed at `2d16771` and raised three follow-ups against the rollout note, all accepted.  (a) The recorded verification skipped `npm run lint` — the FIRST of the repo's four gates — so the full quartet has now been run in order.  (b) The note claimed "the two real `jose` call sites", which **undercounted them: the production Cloudflare Access path in `middleware.ts:28-29, 260-276` (`createRemoteJWKSet` from `jose/jwks/remote` + `jwtVerify` from `jose/jwt/verify`, again with no `algorithms` option) was omitted.**  Corrected to three production consumers — middleware (per-request auth gate, matcher covers nearly every route), the Apple sign-in route (`app/api/mobile/auth/apple/route.ts:27`), and the app session JWT (`src/lib/auth/session-token.ts:41`, HS256, already explicit).  `middleware.ts` is the only one Codex's concern actually bites:  it is unmocked — `test/middleware-auth.test.ts` drives it with real JOSE operations — and it passed **43/43** in isolation on installed 6.2.12.  A direct probe confirmed a no-`algorithms` RS256 JWKS verify with `issuer` + `audience` still succeeds, `jose/jwt/sign`, `jose/jwt/verify`, and `jose/jwks/remote` all still resolve in 6.2.12's `exports` map, and a negative control (wrong `audience`) is still rejected with `ERR_JWT_CLAIM_VALIDATION_FAILED`, so the policy was not silently loosened.  (c) The commit-message finding did not apply to `2d16771` as written (that message already carried a "Docs updated: STATUS.md, docs/EFFORT-LOG.md, PLAN.md, docs/rollouts/..." trailer); the round-2 commit message nonetheless enumerates them explicitly, and the squash message must keep that enumeration.
+
+Verification (repo order, lint first):  `npm run lint` PASS (0 errors / 819 grandfathered warnings, exit 0); `npx tsc --noEmit` PASS; `npm test` **fully green — 745 passed | 1 skipped (746 files), 8157 passed | 51 skipped (8208 tests)**, run with this seat's `ANTHROPIC_*` env scrubbed (round 1's 13 failures were entirely that seat env — the LLM key-routing family `chat-llm` / `framework-review` / `llm-provider` / `openrouter-credits`, none of which references `jose`; scrubbing the whole suite in round 2 cleared all 13, so no failure of any kind is attributable to this bump); `npm run build` PASS, and the build output lists `ƒ Proxy (Middleware)`, confirming `middleware.ts` is compiled into the production bundle.  No behavioral break.  Still open and deliberately out of scope:  the stale `ios/SocraticTradeTests/Fixtures/policy-contract.json` fixture plus the `src/lib/types.ts:1050` comment.  Rollout:  `docs/rollouts/2026-09-21-codex-autofix-jose-6-2-12.md`.
 
 ## 2026-09-18 GROK — #3385 sqliteYieldRetry remainder (scheduler writes + synthetic-stop delete/audit)
 

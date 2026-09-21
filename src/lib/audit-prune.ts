@@ -150,9 +150,16 @@ export function pruneAuditEvents(now: Date = new Date(), batchLimit: number = AU
   const stageSweep = sweepEmbedStage(now);
   result.embedStageExpired = stageSweep.expired;
   result.embedStageCapPruned = stageSweep.capPruned;
-  
-  result.portfolioSnapshotsPruned = sweepPortfolioSnapshots(now);
-  
+
+  // portfolio_snapshots retention — bounded LIMIT batch inside sweepPortfolioSnapshots so a
+  // first-ever backlog (hundreds of thousands of multi-kB JSON rows) drains across multiple
+  // daily passes instead of holding the SQLite write lock. Pass the remaining budget so this
+  // lane can't blow past the audit_events cap on a quiet day when only snapshots needed
+  // pruning.
+  if (remaining > 0) {
+    result.portfolioSnapshotsPruned = sweepPortfolioSnapshots(now, 90, Math.min(remaining, 5_000));
+  }
+
   return result;
 }
 

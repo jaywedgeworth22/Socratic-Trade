@@ -50,6 +50,44 @@ local gate re-run this round - dependency content unchanged from the CI-verified
 required `verify` CI check re-runs on push and is the authoritative gate.  Extra-ship no.
 Rollout: `docs/rollouts/2026-09-21-vitest-5-0-1-bump.md`.
 
+## 2026-09-21 MUSE — observability group: @sentry/nextjs + @sentry/profiling-node 10.74.0 -> 10.75.0 (PR #3443)
+
+**Current state.  Consolidated 2026-09-21 — the three per-round entries this effort used to
+carry here are collapsed into this one snapshot; the chronological review history now lives
+only in the rollout note.**
+
+Dependabot observability-group bump (`@sentry/nextjs` `^10.74.0` -> `^10.75.0`,
+`@sentry/profiling-node` `10.74.0` -> `10.75.0` — a SemVer **minor** release, not a patch —
+commit `21860abc`).  No source change required: nothing under `src/**` touches Sentry
+internals that moved between these minors.  Classified **runtime dependency-only** —
+`package.json` / `package-lock.json` are Coolify `watch_paths`, so the merge is a real
+(non-noop) image deploy subject to the weekday RTH image-build latch, not a docs-only push.
+
+Handoff records: `STATUS.md` (this entry), `PLAN.md`, the `docs/EFFORT-LOG.md` mirror row
+(`IN PR #3443`), and `docs/rollouts/2026-09-21-observability-sentry-10-75-bump.md`.
+
+Codex review history: eleven threads on this effort.  Every finding was accepted and fixed
+(none rejected), and every thread addressed in code is resolved.  Two recurring classes:
+(1) mandatory handoff records — STATUS/PLAN/EFFORT-LOG/rollout note must exist and be current
+at every commit boundary; (2) the landed squash message must name those docs.
+
+Squash message: auto-merge is armed (`SQUASH`) with an explicit `commitBody` naming all four
+handoff docs, verified live against `autoMergeRequest` on 2026-09-21 — the same mechanism
+that landed #3442 as `7aef5da5`.
+
+Verification: the full local gate was run in the mandated order on this tree; exact commands
+and results are in the rollout note's Verification State.  The required `verify` CI check
+re-runs on the pushed head and gates the merge (ruleset — `--admin` does not bypass it).
+
+**Blockers: none.**  This round's local `npm test` reported 13 failures, all confined to four
+LLM-credential files and all proven environmental, not a regression from this diff: those four
+files pass 60/60 with this session's `ANTHROPIC_API_KEY` unset (the same class recorded for the
+#3444 lane).  The `test/market-hours.test.ts` timezone failures seen in earlier rounds did not
+reproduce on this runner, which is UTC like the `verify` CI runners — independently confirming
+that earlier root cause.  Exact commands and results are in the rollout note.
+Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-21-observability-sentry-10-75-bump.md`.
+
 ## 2026-09-21 MUSE — next 16.3.5 bump, round-7 sweep (answer codex-autofix round-6 review)
 
 Round-7 of the PR #3442 lane.  Codex raised two final P1s on the round-6 push: (a) "remove the

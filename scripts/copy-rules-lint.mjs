@@ -49,19 +49,7 @@ export const EXCLUDE_DIR_SEGMENTS = new Set([
   "api" // route handlers — no rendered copy
 ]);
 
-/** Files this lint's FIX PASS is not allowed to touch (peer PRs #2795/#2793/#2828
- *  own these right now) — the scanner still counts violations in them so the
- *  backlog number stays honest, but they are reported separately. */
-export const PEER_LOCKED_FILES = new Set(
-  [
-    "app/console/components/chrome.tsx",
-    "app/console/ui/primitives.tsx",
-    "app/console/console.css",
-    "app/console/components/nav.tsx",
-    "app/console/guardrails/page.tsx",
-    "app/admin/page.tsx"
-  ].map((p) => path.join(REPO_ROOT, p))
-);
+export const PEER_LOCKED_FILES = new Set();
 
 function listFilesRecursive(dir, out = []) {
   let entries;

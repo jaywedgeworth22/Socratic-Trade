@@ -12,7 +12,7 @@
     "build:secrets": "node scripts/infisical-run.mjs -- npm run build",
     "start": "next start",
     "start:secrets": "node scripts/infisical-run.mjs -- npm run start",
-    "lint": "eslint .",
+    "lint": "eslint . && node scripts/copy-rules-lint.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",

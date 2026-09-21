@@ -253,7 +253,7 @@ function AccountScopedGuardrailsPage() {
               pctDef={DEF_BY_PATH.get("maxOrderPctOfNav")!}
               policy={policy}
               draft={draft}
-              hint="Choose one expression for the per-order opening cap. Switching modes clears the other value before save."
+              hint="Choose one expression for the per-order opening cap.  Switching modes clears the other value before save."
             />
             <CapUtilization
               band={undefined}
@@ -268,7 +268,7 @@ function AccountScopedGuardrailsPage() {
               pctDef={DEF_BY_PATH.get("maxDailyPctOfNav")!}
               policy={policy}
               draft={draft}
-              hint="Choose one daily opening budget. Percent is the account-relative default; switching modes clears the other value before save."
+              hint="Choose one daily opening budget.  Percent is the account-relative default; switching modes clears the other value before save."
             />
             <CapUtilization band={risk.dailyNotional} kind="money" daily label="Max Spend Per Day" />
           </div>
@@ -354,7 +354,7 @@ function AccountScopedGuardrailsPage() {
             <>
               <div className="con-card-title pt-3">Event Contracts Trading</div>
               <p className="mb-2 text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">
-                Fully Supported. This is a Kalshi event-contract account.
+                Fully Supported.  This is a Kalshi event-contract account.
               </p>
               {OPTIONS.map((def) => {
                 if (def.path !== "eventContractsEnabled" && def.path !== "kalshiMacroEnabled") return null;
@@ -404,7 +404,7 @@ function AccountScopedGuardrailsPage() {
       <Card title="Advanced rulebook" padded={false} collapsible defaultOpen={false}>
         <div className="px-4 pb-2">
           <p className="pt-2 text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">
-            Everything below ships with safe defaults — you never have to touch it. One rule everywhere: a cap that
+            Everything below ships with safe defaults — you never have to touch it.  One rule everywhere: a cap that
             demanded an exit can never block that exit.
           </p>
           <AdvancedGroup title="Exposure caps">
@@ -463,21 +463,21 @@ function AccountScopedGuardrailsPage() {
           </AdvancedGroup>
           <AdvancedGroup title="Tax rules">
             <p className="pt-2 text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">
-              The wash-sale guard itself (on/off, account type, rates) lives in the Tax treatment card above. These
+              The wash-sale guard itself (on/off, account type, rates) lives in the Tax treatment card above.  These
               rules tune what a rebuy lockout means for this account and how strict it is.
             </p>
             <div className="mt-2 rounded-control border border-[color:var(--con-line)] bg-[color:var(--con-surface-2)] px-3 py-2 text-[length:var(--con-fs-xs)] leading-relaxed text-[color:var(--con-muted)]">
               {isIra ? (
                 <>
                   <strong className="text-[color:var(--con-fg)]">IRA mode:</strong> same-account wash sales are not a
-                  decision gate here because an IRA has no taxable loss deduction to preserve. The relevant choice is
+                  decision gate here because an IRA has no taxable loss deduction to preserve.  The relevant choice is
                   whether this IRA should block or ignore a replacement buy after a taxable account sold the same symbol
                   at a loss.
                 </>
               ) : (
                 <>
                   <strong className="text-[color:var(--con-fg)]">Taxable mode:</strong> Block / Ask / Auto controls
-                  what happens when this taxable account wants to rebuy a locked symbol. IRA replacement buys use their
+                  what happens when this taxable account wants to rebuy a locked symbol.  IRA replacement buys use their
                   own IRA account setting instead.
                 </>
               )}
@@ -495,7 +495,7 @@ function AccountScopedGuardrailsPage() {
               <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                 {INDICES.map((idx) => {
                   const on = indices.includes(idx.id);
-                  const title = `Include ${idx.label} in the base scan universe. Overlapping S&P and Nasdaq families replace each other.`;
+                  const title = `Include ${idx.label} in the base scan universe.  Overlapping S&P and Nasdaq families replace each other.`;
                   return (
                     <label key={idx.id} title={title} className="flex cursor-pointer items-center gap-2 text-[length:var(--con-fs-sm)]">
                       <input
@@ -523,7 +523,7 @@ function AccountScopedGuardrailsPage() {
               </p>
             </div>
             <div className="grid gap-3 py-2 sm:grid-cols-2">
-              <Field label="Always include (symbols)" hint="Comma or space separated. Exempt from the universe floor." htmlFor="add-syms">
+              <Field label="Always include (symbols)" hint="Comma or space separated.  Exempt from the universe floor." htmlFor="add-syms">
                 <TextInput
                   id="add-syms"
                   title="Comma or space separated tickers that stay in the scan universe even if they miss the normal universe floor."
@@ -534,7 +534,7 @@ function AccountScopedGuardrailsPage() {
               <Field label="Never touch (blocklist)" hint="Blocking a stock never blocks selling it — exits are always allowed." htmlFor="block-syms">
                 <TextInput
                   id="block-syms"
-                  title="Comma or space separated tickers the strategy must not open. Exits are still allowed."
+                  title="Comma or space separated tickers the strategy must not open.  Exits are still allowed."
                   value={universeDraft.blocklist ?? (policy.blocklist ?? []).join(", ")}
                   onChange={(e) => setUniverseDraft((d) => ({ ...d, blocklist: e.target.value }))}
                 />
@@ -571,12 +571,12 @@ function AccountScopedGuardrailsPage() {
             <div className="max-w-xs py-2">
               <Field
                 label="Sell to Fund Buys"
-                hint="How to raise cash when intended buys exceed buying power. Off = Never."
+                hint="How to raise cash when intended buys exceed buying power.  Off = Never."
                 htmlFor="stf"
               >
                 <Select
                   id="stf"
-                  title="Choose how the strategy should raise cash when intended buys exceed buying power. Off means never sell just to fund buys."
+                  title="Choose how the strategy should raise cash when intended buys exceed buying power.  Off means never sell just to fund buys."
                   value={universeDraft.sellToFundBuy ?? policy.sellToFundBuy ?? "off"}
                   onChange={(e) => setUniverseDraft((d) => ({ ...d, sellToFundBuy: e.target.value }))}
                 >
@@ -694,7 +694,7 @@ function AutonomyCard() {
             ) : snapshot.policy.systemState === "active" ? (
               "Running; next run time not in this snapshot."
             ) : (
-              "Scheduled runs only while Running. Edit interval under Essentials → Schedule."
+              "Scheduled runs only while Running.  Edit interval under Essentials → Schedule."
             )}
           </p>
         </div>
@@ -736,7 +736,7 @@ function AutonomyCard() {
         </div>
       ) : (
         <p className="mb-4 text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">
-          Preflight looks clear for a manual Run Once (LLM key + account readiness). Scheduled autonomy still depends
+          Preflight looks clear for a manual Run Once (LLM key + account readiness).  Scheduled autonomy still depends
           on run state above.
         </p>
       )}
@@ -747,8 +747,8 @@ function AutonomyCard() {
           <div className="text-[length:var(--con-fs-sm)] font-semibold">Placement authority</div>
           <p className="mt-0.5 max-w-xl text-[length:var(--con-fs-xs)] leading-relaxed text-[color:var(--con-muted)]">
             {decide
-              ? "The strategy may place orders itself. Socratic overrides can challenge owner-preference gates when the agent gives a structured thesis; broker, account, tax-hard, and integrity refusals still block. Provider failures and unavailable adversarial review still route to you."
-              : "The strategy suggests and waits. Switch to Autopilot when this account should act without per-trade approval."}
+              ? "The strategy may place orders itself.  Socratic overrides can challenge owner-preference gates when the agent gives a structured thesis; broker, account, tax-hard, and integrity refusals still block.  Provider failures and unavailable adversarial review still route to you."
+              : "The strategy suggests and waits.  Switch to Autopilot when this account should act without per-trade approval."}
           </p>
         </div>
         {decide ? (

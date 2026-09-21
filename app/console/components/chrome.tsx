@@ -245,7 +245,7 @@ export function ScopeSelector({ snapshot }: { snapshot: DashboardSnapshot; compa
             className="con-menu-drop absolute left-0 top-[calc(100%+4px)] z-50 flex max-h-[min(70vh,480px)] w-[min(calc(100vw-48px),360px)] max-w-[calc(100vw-48px)] sm:w-[360px] sm:max-w-[360px] flex-col gap-2 overflow-y-auto rounded-card border border-[color:var(--con-line-strong)] bg-[color:var(--con-surface)] p-3 shadow-xl"
           >
             <p className="text-[length:var(--con-fs-xs)] leading-relaxed text-[color:var(--con-muted)]">
-              One account is loaded at a time. Switching rescopes everything — balances, guardrails, approvals, run
+              One account is loaded at a time.  Switching rescopes everything — balances, guardrails, approvals, run
               state, and decision history.
             </p>
             {ordered.length === 0 ? (
@@ -327,12 +327,12 @@ export function RunStateButton({ snapshot }: { snapshot: DashboardSnapshot }) {
   const label = state === "halted" ? "Start Agent" : state === "close_only" ? "Resume Agent" : "Stop Agent";
   const title =
     info.word === "Paused · market closed"
-      ? "The agent is on.  Scheduled runs wait for the next open.  Open this to stop it or change run state."
+      ? "The agent is on.  Scheduled runs wait for the next open.  Open this to stop it or change run state."
       : state === "halted"
-        ? "Open start options.  Scheduled runs stay off until you confirm Start Agent."
+        ? "Open start options.  Scheduled runs stay off until you confirm Start Agent."
         : state === "close_only"
-          ? "Open resume options.  You can resume full operation or change run state."
-          : "Stop the agent.  Stopping never sells anything.";
+          ? "Open resume options.  You can resume full operation or change run state."
+          : "Stop the agent.  Stopping never sells anything.";
   return (
     <>
       <button
@@ -409,7 +409,7 @@ function ControlSheet({
       body:
         snapshot.policy.strategyAuthority === "decide"
           ? "Runs resume on schedule and the strategy may place orders itself, inside your guardrails."
-          : "Runs resume on schedule. Every trade still waits for your approval.",
+          : "Runs resume on schedule.  Every trade still waits for your approval.",
       available: state !== "active",
       danger: false
     };
@@ -417,7 +417,7 @@ function ControlSheet({
         id: "stop",
         title: "STOP everything",
         body:
-          "Nothing buys, nothing sells — not even this app's automatic stop-losses, which pause too. Broker-held brackets keep resting at your broker. Your positions stay exactly as they are. Nothing is sold.",
+          "Nothing buys, nothing sells — not even this app's automatic stop-losses, which pause too.  Broker-held brackets keep resting at your broker.  Your positions stay exactly as they are.  Nothing is sold.",
         available: state !== "halted",
         danger: true
     };
@@ -425,7 +425,7 @@ function ControlSheet({
         id: "close_only",
         title: "Exit-only",
         body:
-          "No new buys. Protective sells and the app's stop monitor keep working. This is what the automatic circuit breakers choose.",
+          "No new buys.  Protective sells and the app's stop monitor keep working.  This is what the automatic circuit breakers choose.",
         available: state !== "close_only",
         danger: false
     };
@@ -433,7 +433,7 @@ function ControlSheet({
         id: "liquidating",
         title: "Wind Down",
         body:
-          "The strategy sells positions until the account is in cash. This SELLS things — it may realize losses and taxes.",
+          "The strategy sells positions until the account is in cash.  This SELLS things — it may realize losses and taxes.",
         available: state !== "liquidating",
         danger: true
     };
@@ -469,7 +469,7 @@ function ControlSheet({
       <p className="mb-4 text-[length:var(--con-fs-sm)] text-[color:var(--con-muted)]">
         {info.detail}
         {info.word === "Paused · market closed"
-          ? "  Stop Agent turns scheduled autonomy off.  The market being closed is not the same as the agent being stopped."
+          ? "  Stop Agent turns scheduled autonomy off.  The market being closed is not the same as the agent being stopped."
           : ""}
       </p>
 
@@ -481,12 +481,12 @@ function ControlSheet({
               <div className="flex items-center justify-between gap-3">
                 <span className={cx("font-semibold", o.id === "stop" && "text-[color:var(--con-neg)]")}>{o.title}</span>
                 {o.id === "stop" && (
-                  <Btn variant="danger" size="sm" disabled={busy !== null} onClick={() => void act("stop", stopEverything, "Stopped", "Nothing was sold. App-managed stops are paused; broker-held brackets keep resting.")}>
+                  <Btn variant="danger" size="sm" disabled={busy !== null} onClick={() => void act("stop", stopEverything, "Stopped", "Nothing was sold.  App-managed stops are paused; broker-held brackets keep resting.")}>
                     {busy === "stop" ? "Stopping…" : "Confirm: STOP"}
                   </Btn>
                 )}
                 {o.id === "close_only" && (
-                  <Btn variant="outline" size="sm" disabled={busy !== null} onClick={() => void act("close_only", () => setSystemState("close_only", snapshot.policy.connectedAccountId), "Exit-only", "No new buys. Protective exits keep working.")}>
+                  <Btn variant="outline" size="sm" disabled={busy !== null} onClick={() => void act("close_only", () => setSystemState("close_only", snapshot.policy.connectedAccountId), "Exit-only", "No new buys.  Protective exits keep working.")}>
                     {busy === "close_only" ? "Switching…" : "Confirm"}
                   </Btn>
                 )}
@@ -600,7 +600,7 @@ export function deriveRunBlock(snapshot: DashboardSnapshot): RunBlock | null {
     return {
       title: "No LLM key is configured",
       detail:
-        "Proposal generation is LLM-driven, so a manual run needs a working LLM provider key. Market data, positions, and guardrails all work without one — only runs and chat are gated.",
+        "Proposal generation is LLM-driven, so a manual run needs a working LLM provider key.  Market data, positions, and guardrails all work without one — only runs and chat are gated.",
       fixHref: "/console/connections#api-keys",
       fixLabel: "Open Connections → API keys"
     };
@@ -672,7 +672,7 @@ function classifyRunFailure(message: string, status?: number): RunBlock {
       title: "The system is stopped",
       detail: `${message} Start it (or switch to Exit-only) from the run-state chip in the top bar.`,
       note:
-        "While stopped, nothing buys or sells — and this app's automatic stop-losses are paused too. Broker-held brackets keep resting at your broker."
+        "While stopped, nothing buys or sells — and this app's automatic stop-losses are paused too.  Broker-held brackets keep resting at your broker."
     };
   }
   if (m.includes("already in progress")) {
@@ -687,7 +687,7 @@ function classifyRunFailure(message: string, status?: number): RunBlock {
     return {
       title: "The daily LLM budget is used up",
       detail: message,
-      note: "The budget ceiling lives in the strategy's tuning settings. Raising it raises what a day of runs can cost.",
+      note: "The budget ceiling lives in the strategy's tuning settings.  Raising it raises what a day of runs can cost.",
       fixHref: "/console/strategy",
       fixLabel: "Open Strategy"
     };
@@ -782,7 +782,7 @@ export function RunOnceButton({
         aria-label={iconOnly ? (running ? "Running…" : "Run Once") : undefined}
         title={
           preflight
-            ? `Blocked: ${preflight.title}. Click to see why and where to fix it.`
+            ? `Blocked: ${preflight.title}.  Click to see why and where to fix it.`
             : "Manual runs always ask first — they can only propose, never place on their own."
         }
       >
@@ -896,7 +896,7 @@ export function UserMenu({
         ref={triggerRef}
         type="button"
         onClick={() => (open ? close() : setOpen(true))}
-        title={`Signed in as ${user.email ?? who}. Click for account, theme, and sign out.`}
+        title={`Signed in as ${user.email ?? who}.  Click for account, theme, and sign out.`}
         aria-label={`Signed in as ${user.email ?? who} — account menu`}
         aria-expanded={open}
         aria-haspopup="menu"
@@ -953,7 +953,7 @@ export function UserMenu({
                 </div>
               </div>
               <p className="text-[length:var(--con-fs-xs)] leading-relaxed text-[color:var(--con-faint)]">
-                Signing out only ends this browser session. The strategy keeps its current run state on the server —
+                Signing out only ends this browser session.  The strategy keeps its current run state on the server —
                 it does not stop, start, or sell anything.
               </p>
               <div className="flex items-center gap-2">
@@ -973,7 +973,7 @@ export function UserMenu({
                 <a
                   href="/logout"
                   className="con-btn con-btn-outline"
-                  title="End this browser session and return to the sign-in page. Does not change the strategy's run state."
+                  title="End this browser session and return to the sign-in page.  Does not change the strategy's run state."
                 >
                   <LogOut size={14} />
                   Sign out
@@ -1035,7 +1035,7 @@ export function MobileFreshnessBar({
       {healthy ? (
         <span
           className="flex min-w-0 flex-1 items-center gap-2 truncate"
-          title={`Data as of ${fmtClock(fetchedAt)}. Refreshes about every 15 seconds. Opening orders only for the daily cap.`}
+          title={`Data as of ${fmtClock(fetchedAt)}.  Refreshes about every 15 seconds.  Opening orders only for the daily cap.`}
         >
           <span>Fresh</span>
           <span aria-hidden>·</span>
@@ -1046,10 +1046,10 @@ export function MobileFreshnessBar({
         </span>
       ) : (
         <>
-          <span title="When this console last fetched data. It refreshes about every 15 seconds.">
+          <span title="When this console last fetched data.  It refreshes about every 15 seconds.">
             Data as of {fetchedAt ? fmtClock(fetchedAt) : EM_DASH} · {freshnessLabel}
           </span>
-          <span className="con-num ml-auto flex items-center gap-1.5" title="Opening orders only. Exits never consume the daily cap.">
+          <span className="con-num ml-auto flex items-center gap-1.5" title="Opening orders only.  Exits never consume the daily cap.">
             <ShieldCheck size={12} />
             Deployed today: {fmtMoney(spend.usedNotional)}
           </span>
@@ -1105,7 +1105,7 @@ export function FreshnessStrip({
     // end on phones.
     <div className="hidden border-t border-[color:var(--con-line)] bg-[color:var(--con-surface)] text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)] lg:block">
       <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-4 gap-y-1 px-4 py-1.5">
-        <span title="When this console last fetched data. It refreshes about every 15 seconds.">
+        <span title="When this console last fetched data.  It refreshes about every 15 seconds.">
           Data as of {fetchedAt ? fmtClock(fetchedAt) : EM_DASH} · {freshnessLabel} · quotes may be delayed
         </span>
         <span title={streamTitle}>{streamLabel}</span>
@@ -1113,7 +1113,7 @@ export function FreshnessStrip({
         {scanAt && <span title={fmtExact(scanAt)}>Scan {timeAgo(scanAt)}</span>}
         {snapshot.marketSession && <span>Market: {snapshot.marketSession}</span>}
         {nextRun && snapshot.policy.systemState === "active" && <span title={fmtExact(nextRun)}>Next run {timeUntil(nextRun)}</span>}
-        <span className="con-num flex min-w-32 items-center gap-2" title="Opening orders only. Exits never consume the daily cap.">
+        <span className="con-num flex min-w-32 items-center gap-2" title="Opening orders only.  Exits never consume the daily cap.">
           <ShieldCheck size={12} />
           Deployed today: {fmtMoney(spend.usedNotional)}
           {typeof spend.capNotional === "number" ? ` of ${fmtMoneyWhole(spend.capNotional)}` : ""}

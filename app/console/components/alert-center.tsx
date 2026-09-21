@@ -13,7 +13,7 @@ import {
   setAlertConditionMute,
   ConsoleApiError
 } from "../lib/api";
-import { cx } from "../lib/format";
+import { cx, SENTENCE_GAP } from "../lib/format";
 import { notificationStatusLabel, notificationTypeLabel } from "../lib/labels";
 import { useConsoleData } from "../lib/useConsoleData";
 import { Ago, Btn, Card, Chip, Empty, TextInput } from "../ui/primitives";
@@ -677,7 +677,7 @@ function RagInfoSheet() {
     <div className="flex flex-col gap-4">
       <p className="text-[length:var(--con-fs-sm)] leading-relaxed text-[color:var(--con-muted)]">
         Retrieval-Augmented Generation is the system that pulls SEC filings, earnings transcripts,
-        and other corpus documents into strategy-run prompts.  It is not a stock ticker; the alerts
+        and other corpus documents into strategy-run prompts.{SENTENCE_GAP}It is not a stock ticker; the alerts
         below it describe ingest, retrieval, and provider-health events for THIS account's universe.
       </p>
       <div className="grid gap-2">
@@ -688,7 +688,7 @@ function RagInfoSheet() {
       </div>
       <p className="text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">
         Live metrics are not yet wired here — follow-up lane will surface per-account universe
-        size, last ingest timestamp, and the last retrieval-call site (strategy run id).  Until
+        size, last ingest timestamp, and the last retrieval-call site (strategy run id).{SENTENCE_GAP}Until
         then, the active alerts above tell you which lane is degraded.
       </p>
     </div>

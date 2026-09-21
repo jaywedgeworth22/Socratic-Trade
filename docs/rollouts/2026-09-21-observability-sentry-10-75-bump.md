@@ -3,7 +3,7 @@
 ## Context & Objective
 
 Dependabot opened PR #3443 to bump the observability group: `@sentry/nextjs` `^10.74.0` -> `^10.75.0`
-and `@sentry/profiling-node` `10.74.0` -> `10.75.0` (branch
+and `@sentry/profiling-node` `10.74.0` -> `10.75.0` (a SemVer **minor** release, not a patch) (branch
 `dependabot/npm_and_yarn/observability-43c28a6599`, commit `21860abc`).  The commit touched only
 `package.json` and `package-lock.json`.  Codex review (P1, thread on `package.json:47`) flagged the
 missing mandatory handoff records (`STATUS.md` + the tracked `docs/EFFORT-LOG.md` mirror) that
@@ -24,28 +24,50 @@ The main merge auto-resolved cleanly - no conflicts.
 
 ## Decisions & Trade-offs
 
-- **Patch-level same-minor bump, no source change.**  Sentry JS 10.75.0 is a same-minor release;
-  nothing in `src/**` references Sentry internals that changed, so no migration or code change.
+- **Minor release, no source change required.**  10.74.0 -> 10.75.0 increments the SemVer minor
+  component (correction: an earlier revision of this note called it a patch-level same-minor bump,
+  which understated the change - Codex P2).  Nothing in `src/**` references Sentry internals that
+  changed between these minors, so no migration or code change is needed; the bump stays
+  compatible with the existing `src/lib/sentry*.ts` usage.
 - **`PLAN.md` intentionally not updated.**  A patch-level dependency bump changes no scope,
   timeline, or approach.
 - **Classified runtime dependency-only.**  `package.json`/`package-lock.json` are Coolify runtime
   `watch_paths`, so on merge this is image-deploy material subject to the weekday RTH latch -
   not a docs-only update.  (Same classification Codex required on PR #3178.)
-- **No local re-run of the lint/tsc/test/build gates this round.**  The dependency content is
-  unchanged from the commit CI already verified; the merge introduced no new dependency lines.
-  The required `verify` CI check re-runs on push and is the authoritative gate.
+- **Local gate re-run this round (see Round 2 below).**  The round-1 text deferred to CI; Codex
+  P1 requires the gates run and recorded locally, so the full `lint` -> `tsc` -> `test` -> `build`
+  sequence was run on the merged tree after a fresh `npm install`, in order, with results below.
 
 ## Verification State
 
 The dependency-diff portion of the PR touches only `package.json` + `package-lock.json`
-(lockfile resolves `@sentry/nextjs` and `@sentry/profiling-node` at 10.75.0; parsed and verified
-in the merged tree).  The required `verify` CI check runs lint -> tsc -> test -> build
-(`.github/workflows/ci.yml:311-314`) on the pushed commit and is the authoritative gate.
+(lockfile resolves `@sentry/nextjs` and `@sentry/profiling-node` at 10.75.0 - verified with
+`node -e "const l=require('./package-lock.json');console.log(l.packages['node_modules/@sentry/nextjs'].version,l.packages['node_modules/@sentry/profiling-node'].version)"`
+-> `10.75.0 10.75.0`).  Local gate results (mandated order, fresh `npm install`, on the
+round-2 tree that also merges post-#3446 `origin/main`):
+
+```
+- `npm run lint` -> PASS (exit 0; 0 errors, 821 grandfathered warnings)
+- `npx tsc --noEmit` -> PASS (exit 0, clean)
+- `npm test` -> 7 failed / 8162 passed / 51 skipped (8220 tests); 1 file failed /
+                    746 passed / 1 skipped (748 files); Duration 2642.07s.  All 7 failures are in
+                    `test/market-hours.test.ts` ("names the next trading day once today's session
+                    has already ended", "skips the weekend for a Friday-evening check") -
+                    time-of-day/day-of-week sensitive assertions, unrelated to this
+                    dependency-only diff (no `src/`, `app/`, `test/`, or `ios/` file touched).
+- `npm run build` -> PASS (`.next/BUILD_ID` written; the regenerated
+                    `ios/SocraticTradeTests/Fixtures/policy-contract.json` churn was reverted,
+                    not committed)
+```
+
+The required `verify` CI check re-runs on push and is the authoritative gate for the new head
+(it was `success` on the pre-merge head, CI run `35597142351`).
 
 ## Next Steps & Blockers
 
-- None.  Auto-merge is armed; the required `verify` check gates the merge.  The Codex P1 thread
-  is resolved by this round's handoff records.
+- None.  Auto-merge is armed; the required `verify` check re-runs on the new head and gates
+  the merge, and the local gate above is recorded.  The Codex P1/P2 threads are resolved by
+  this round's fixes.
 - Reminder for whoever merges: merging to `main` auto-deploys.  This diff touches
   `package.json`/`package-lock.json`, which **are** in `socratic-app`'s `watch_paths`, so it is a
   real (non-noop) deploy - subject to the weekday RTH image-build latch unless it lands in the
@@ -55,3 +77,20 @@ in the merged tree).  The required `verify` CI check runs lint -> tsc -> test ->
 
 Codex's finding was documentation-only; no correctness defect was reported in the dependency bump
 itself.  The version range and lockfile resolution were checked and are consistent.
+
+## Round 2 — MUSE sweep (2026-09-21): answer codex-autofix review of the round-1 push
+
+The repo's codex-autofix loop reviewed the round-1 push and raised three findings, all addressed:
+
+1. *"Run the required gates before declaring the bump ready"* (P1).  Accepted - the round-1 note
+   deferred to CI; the full local gate is now run and recorded in `## Verification State` above,
+   on the round-2 tree (which also merges post-#3446 `origin/main`).
+2. *"List the updated handoff docs in the commit message"* (P1).  This round's commit *subject*
+   names the updated docs (`STATUS.md`, `docs/EFFORT-LOG.md`,
+   `docs/rollouts/2026-09-21-observability-sentry-10-75-bump.md`) - subjects matter because this
+   repo sets `squash_merge_commit_message: COMMIT_MESSAGES`, so commit bodies never reach the
+   squash message.  Belt and suspenders: auto-merge is armed with an explicit `commitHeadline` /
+   `commitBody` via the `enablePullRequestAutoMerge` GraphQL mutation, so the permanent history
+   names the docs regardless of composition.
+3. *"Classify 10.75.0 as a minor release"* (P2).  Accepted - corrected in place above; the earlier
+   "patch-level same-minor" wording understated the change.

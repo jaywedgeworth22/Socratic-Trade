@@ -51,9 +51,15 @@ round-2 tree that also merges post-#3446 `origin/main`):
 - `npx tsc --noEmit` -> PASS (exit 0, clean)
 - `npm test` -> 7 failed / 8162 passed / 51 skipped (8220 tests); 1 file failed /
                     746 passed / 1 skipped (748 files); Duration 2642.07s.  All 7 failures are in
-                    `test/market-hours.test.ts` ("names the next trading day once today's session
-                    has already ended", "skips the weekend for a Friday-evening check") -
-                    time-of-day/day-of-week sensitive assertions, unrelated to this
+                    `test/market-hours.test.ts` (the `previousTradingDayStart` /
+                    `nextTradingDayStart` / `nextMarketOpenHint` suites).  Root cause is
+                    environmental, proven 2026-09-21: the functions return ET-midnight
+                    instants while the tests assert on *local-time* date components
+                    (`getFullYear()/getMonth()/getDate()`); on the Mac's America/Chicago
+                    clock ET midnight is 23:00 the prior local day, so the assertions
+                    shift by one.  Re-ran the file under `TZ=America/New_York` and
+                    `TZ=UTC`: 39/39 pass in both.  CI runners are UTC and the required
+                    `verify` check is green on this tree.  Unrelated to this
                     dependency-only diff (no `src/`, `app/`, `test/`, or `ios/` file touched).
 - `npm run build` -> PASS (`.next/BUILD_ID` written; the regenerated
                     `ios/SocraticTradeTests/Fixtures/policy-contract.json` churn was reverted,
@@ -65,9 +71,14 @@ The required `verify` CI check re-runs on push and is the authoritative gate for
 
 ## Next Steps & Blockers
 
-- None.  Auto-merge is armed; the required `verify` check re-runs on the new head and gates
-  the merge, and the local gate above is recorded.  The Codex P1/P2 threads are resolved by
-  this round's fixes.
+- No code blockers.  The local `npm test` shows 7 failures that are proven
+  machine-timezone artifacts (39/39 pass under `TZ=America/New_York` and `TZ=UTC`;
+  see Verification State), and the authoritative required `verify` CI check is
+  green on this head.  Auto-merge is armed and gates on `verify`.
+- Round-3 doc fixes (Codex P1s 2026-09-21 14:35/14:39Z): this note now carries the
+  mandatory `PLAN.md` entry reference and the corrected timezone-root-cause
+  attribution above, replacing the earlier vague "time-sensitive" wording and the
+  bare "None" blockers line.
 - Reminder for whoever merges: merging to `main` auto-deploys.  This diff touches
   `package.json`/`package-lock.json`, which **are** in `socratic-app`'s `watch_paths`, so it is a
   real (non-noop) deploy - subject to the weekday RTH image-build latch unless it lands in the

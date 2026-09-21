@@ -1,5 +1,22 @@
 # Current Status
 
+## 2026-09-21 MUSE — observability group Sentry 10.75.0 bump, round-3 sweep (answer Codex re-review)
+
+Round-3 of the PR #3443 lane.  Codex re-reviewed the round-2 push and raised two new P1s:
+(a) "add the mandatory PLAN.md update" - accepted; a PLAN.md entry for this bump is now at
+the top of PLAN.md (the round-2 "intentionally untouched" rationale was wrong per AGENTS.md,
+which requires a PLAN.md entry at every commit boundary); (b) "do not clear blockers while
+the required test gate fails" - accepted in documentation form: the 7 local npm test
+failures in test/market-hours.test.ts are now root-caused precisely instead of hand-waved.
+They are a machine-timezone artifact - the functions return ET-midnight instants while the
+tests assert on local-time date components, so on the Mac's America/Chicago clock the
+assertions shift by one day; the file passes 39/39 under TZ=America/New_York and TZ=UTC,
+and CI (UTC) verify is green on this head.  The rollout note's Verification State and Next
+Steps & Blockers sections record this exactly.  Auto-merge stays armed with the explicit
+docs-naming squash message; required checks gate the merge.  Extra-ship no.  No Coolify
+Deploy.
+Rollout: `docs/rollouts/2026-09-21-observability-sentry-10-75-bump.md`.
+
 ## 2026-09-21 MUSE — observability group Sentry 10.75.0 bump, round-2 sweep (answer codex-autofix review)
 
 Round-2 of the PR #3443 lane.  The codex-autofix loop reviewed the round-1 push and raised three

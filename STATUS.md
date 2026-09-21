@@ -1,5 +1,19 @@
 # Current Status
 
+## 2026-09-21 CLAUDE — next 16.3.5 bump, round-2 autofix (verification-order fix in the rollout note)
+
+Codex's round-2 P1 on PR #3442 was against `docs/rollouts/2026-09-21-next-16.3.5-bump.md`, not
+against code: the `## Verification State` block listed `npx tsc --noEmit` before `npm run lint`,
+while `AGENTS.md` mandates `lint` -> `tsc` -> `test` -> `build`.  Documentation-accuracy defect
+only.  Re-ran all four in the prescribed order — `npm run lint` exit 0 (819 problems, 0 errors),
+`npx tsc --noEmit` exit 0 clean, `npm test` exit 1 (13 failed / 8144 passed / 51 skipped, the
+known sandbox LLM-key leak in the same 4 files; those 4 re-run with the ambient key unset give
+4 files / 60 passed / 0 failed), `npm run build` exit 0 — and rewrote the note to record that
+order.  Also corrected an inaccurate round-cap claim in the same note (61 autofix commits in
+branch history, but exactly 1 authored on this PR).  No source, dependency, or lockfile change.
+Round 2 of the codex-autofix loop.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-21-next-16.3.5-bump.md`.
+
 ## 2026-09-21 CLAUDE — next 16.3.4 -> 16.3.5 bump handoff docs (PR #3442, codex-autofix)
 
 Dependabot bump of `next` `^16.3.4` -> `^16.3.5` (next-react group) in PR #3442 touched only

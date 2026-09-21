@@ -5,10 +5,23 @@
 Dependabot bumped `jose` 6.2.9 → 6.2.12 (PR #3445, branch `dependabot/npm_and_yarn/jose-6.2.12`,
 commit `d0c43f5a`) — a three-release patch bump crossing `6.2.10`'s security-hardening batch,
 `6.2.11`'s JWE refactor, and `6.2.12`'s JWS/JWE core simplification plus AES-GCM/JWKS performance
-work.  Codex review (one thread, not outdated) flagged that the commit touched only `package.json`
-and `package-lock.json`, leaving `STATUS.md` and the tracked `docs/EFFORT-LOG.md` unchanged, which
-the repo's binding pre-commit protocol requires so the production snapshot and cross-agent ledger
-stay current.  This round adds those handoff records so PR #3445 clears the review gate.
+work.  Codex's first review raised one thread (which is now resolved) flagging that the commit
+touched only `package.json` and `package-lock.json`, leaving `STATUS.md` and the tracked
+`docs/EFFORT-LOG.md` unchanged, which the repo's binding pre-commit protocol requires so the
+production snapshot and cross-agent ledger stay current.  Round 1 adds those handoff records so
+PR #3445 clears the review gate.
+
+**Round 2 (same day, the `[codex-autofix]` commit that follows `2d16771` on the same branch).**  Codex re-reviewed at `2d16771`
+and raised three follow-ups, all on this note rather than on product code.  All three were accepted
+and are reflected in the sections below:  (a) the verification log here skipped `npm run lint`, the
+first of the repo's four required gates — it has now been run and recorded in order; (b) this note
+asserted "the two real `jose` call sites", which **omitted the production Cloudflare Access path in
+`middleware.ts`** — corrected to three consumers with the middleware's own test result; (c) the
+commit-message finding is addressed in the commit message of this round, which enumerates the
+handoff docs (the prior `[codex-autofix]` commit at `2d16771` already carried a
+"Docs updated: STATUS.md, docs/EFFORT-LOG.md, PLAN.md, docs/rollouts/…" trailer, so the finding did
+not apply to it as written; the round-2 commit makes the enumeration unambiguous and the squash
+message should carry it).
 
 ## Changes Made
 
@@ -28,16 +41,31 @@ The only code-adjacent work this round was verification, below; no product sourc
   set.  Merging to `main` therefore triggers a production image build, subject to the weekday RTH
   latch (`HOTFIX=1` / `RTH_DEPLOY_OVERRIDE=1` to override during 09:30–16:00 ET).  The handoff
   records say runtime dependency-only for that reason; they do not claim "no runtime code changed".
-- **Verified the two real `jose` call sites by probe rather than trusting the unit suite.**  The
-  6.2.10 release shipped hardening — `jwt: enforce explicit verification policies`,
-  `jwt: prevent replacing protected headers`, `jws: reject mixed payload encoding modes`.  The Apple
-  sign-in route (`app/api/mobile/auth/apple/route.ts:27`) calls `jwtVerify` with `issuer` +
-  `audience` and **no** `algorithms` option, and `test/apple-auth-route.test.ts` mocks `jose`
-  wholesale (`vi.mock("jose", …)`), so the suite structurally cannot catch a behavior change there.
+- **Verified all three real `jose` call sites (the first pass of this note undercounted them at two
+  — Codex was right).**  The 6.2.10 release shipped hardening — `jwt: enforce explicit verification
+  policies`, `jwt: prevent replacing protected headers`, `jws: reject mixed payload encoding
+  modes`.  The production consumers on `main` are:
+  1. **Cloudflare Access assertion verification — `middleware.ts:28-29, 260-276`.**  Imports
+     `createRemoteJWKSet` from `jose/jwks/remote` and `jwtVerify` from `jose/jwt/verify`, then calls
+     `jwtVerify(assertion, jwks, { issuer, audience })` — again **no** `algorithms` option.  This is
+     a request-path auth gate on every request when `CF_ACCESS_TRUST_EMAIL_HEADER` +
+     `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD` are all set, so of the three it is the one a
+     verification-policy regression could hurt most.  Unlike the Apple route it is **not** mocked —
+     `test/middleware-auth.test.ts` drives it with real JOSE operations (`generateKeyPair` /
+     `exportJWK` / `SignJWT` from the `jose` barrel), including a real signature-mismatch rejection
+     case.  Ran it in isolation against installed 6.2.12: **43/43 passed**.
+  2. **Apple sign-in route — `app/api/mobile/auth/apple/route.ts:2, 27`.**  Calls `jwtVerify` with
+     `issuer` + `audience` and no `algorithms` option.  `test/apple-auth-route.test.ts` mocks `jose`
+     wholesale (`vi.mock("jose", …)`), so the suite structurally cannot catch a behavior change
+     there — this is why the direct probe below matters.
+  3. **App session JWT — `src/lib/auth/session-token.ts:2-3, 41`.**  HS256 via the `jose/jwt/sign` +
+     `jose/jwt/verify` subpaths, with `algorithms: ["HS256"]` (already explicit).
   Probed the installed 6.2.12 directly: an RS256 JWT verified against a JWKS with no `algorithms`
-  option succeeds, and the HS256 subpath verify used by `src/lib/auth/session-token.ts:41`
-  (`algorithms: ["HS256"]`) succeeds.  Subpath exports `jose/jwt/sign` and `jose/jwt/verify` still
-  resolve in 6.2.12's `exports` map.  No behavioral break at either site.
+  option succeeds, and the HS256 subpath verify succeeds.  Subpath exports `jose/jwt/sign`,
+  `jose/jwt/verify`, and `jose/jwks/remote` all still resolve in 6.2.12's `exports` map (which
+  carries `./jwt/*` and `./jwks/*` wildcards).  A negative control confirmed the policy is still
+  enforced rather than silently loosened — a wrong `audience` is rejected with
+  `ERR_JWT_CLAIM_VALIDATION_FAILED`.  No behavioral break at any of the three sites.
 - **Reverted an unrelated lockfile artifact.**  Running `npm install` on this seat stripped `libc`
   fields from hundreds of `package-lock.json` entries — an npm-version artifact of the local
   toolchain, not part of the Dependabot bump.  `package-lock.json` was restored to the Dependabot
@@ -47,31 +75,41 @@ The only code-adjacent work this round was verification, below; no product sourc
 
 ## Verification State
 
+The repo requires all four gates in order, lint first.  Round 2 ran the full quartet:
+
 ```bash
-npm install             # deps present for the trio (node_modules/jose resolves to 6.2.12)
-node ./jose-probe.mjs   # PASS — no-algorithms JWKS RS256 verify ok; HS256 subpath verify ok
-npx tsc --noEmit        # PASS (exit 0)
-npm test                # 8144 passed / 13 failed / 51 skipped (746 files) — failures are seat-env artifacts, see below
-npm run build           # PASS (exit 0)
-# Confirmation that the 13 failures are the seat env, not this bump:
+npm ci --no-audit --no-fund   # lockfile-exact install; package-lock.json unchanged after (verified)
+npm run lint                  # PASS — 0 errors / 819 grandfathered warnings, exit 0
+npx tsc --noEmit              # PASS (exit 0)
 env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_BASE_URL \
     -u ANTHROPIC_CUSTOM_HEADERS -u ANTHROPIC_MODEL \
-  npx vitest run test/llm-provider.test.ts test/chat-llm.test.ts \
-                 test/framework-review.test.ts test/openrouter-credits.test.ts
-                        # 4 files passed, 60/60 tests passed
+  npm test                    # PASS — 745 passed | 1 skipped (746 files); 8157 passed | 51 skipped (8208 tests); exit 0
+npm run build                 # PASS (exit 0); build output lists "ƒ Proxy (Middleware)", so middleware.ts is compiled in
 ```
 
-The probe script was a temporary scratch file and is not part of the diff.
+Targeted evidence for the three `jose` consumers:
 
-**On the 13 test failures.**  Every one is in the LLM key-routing family (`test/chat-llm.test.ts`,
-`test/framework-review.test.ts`, `test/llm-provider.test.ts`, `test/openrouter-credits.test.ts`),
-asserting on which provider a credential routes to.  This cloud seat injects `ANTHROPIC_API_KEY` /
-`ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL`, which those tests read, so they resolve providers
-differently than a clean CI runner.  Three independent facts establish these are not caused by this
-bump:  (1) none of the four files references `jose` at all; (2) all 60 of their tests pass with the
-seat's `ANTHROPIC_*` variables unset (command above); (3) this is the same failure class the
-2026-09-07 codex-autofix round on PR #3178 documented on this runner.  The repo `verify` CI gate runs
-without those secrets and is authoritative.
+```bash
+npx vitest run test/middleware-auth.test.ts   # 43/43 passed — real JOSE ops through the CF Access path
+node ./jose-probe-mw.mjs                      # no-algorithms RS256 JWKS verify w/ issuer+audience: OK
+                                              # jose/jwks/remote export type: function
+                                              # wrong audience -> ERR_JWT_CLAIM_VALIDATION_FAILED (policy intact)
+```
+
+Both probe scripts (`jose-probe.mjs` in round 1, `jose-probe-mw.mjs` in round 2) were temporary
+scratch files and are not part of the diff.
+
+**On the test-suite result, corrected in round 2.**  Round 1 ran `npm test` with the seat's
+`ANTHROPIC_*` variables in scope and got 8144 passed / **13 failed** / 51 skipped.  Every failure was
+in the LLM key-routing family (`test/chat-llm.test.ts`, `test/framework-review.test.ts`,
+`test/llm-provider.test.ts`, `test/openrouter-credits.test.ts`), which reads `ANTHROPIC_API_KEY` /
+`ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL` and therefore routes providers differently on this seat
+than on a clean CI runner.  Three facts established those were not caused by this bump:  none of the
+four files references `jose`;  all 60 of their tests pass with the seat's `ANTHROPIC_*` unset;  and
+the 2026-09-07 codex-autofix round on PR #3178 documented the same class on this runner.  Round 2
+ran the **whole** suite with that env scrubbed and it is **fully green — 8157 passed, 0 failed** — so
+the 13 are confirmed purely seat-environment artifacts and no failure of any kind is attributable to
+this dependency bump.  The CI `verify` gate runs without those secrets and is authoritative.
 
 **Unrelated drift found and deliberately not fixed here.**  Running `npm test` rewrites
 `ios/SocraticTradeTests/Fixtures/policy-contract.json`:  `test/policy-ios-contract-fixture.test.ts:82`
@@ -85,7 +123,18 @@ fixture and correct the `types.ts` comment).
 
 ## Next Steps & Blockers
 
-- Auto-merge (squash) lands PR #3445 once the repo `verify` gate passes and the Codex thread is
+- Auto-merge (squash) lands PR #3445 once the repo `verify` gate passes and the Codex threads are
   resolved.  No further code action expected from this lane.
-- Dependabot owns the branch (`maintainerCanModify: false`); this round pushes the handoff records
+- Dependabot owns the branch (`maintainerCanModify: false`); both rounds push the handoff records
   onto `dependabot/npm_and_yarn/jose-6.2.12` directly.
+- **On squash, keep the handoff-doc enumeration in the commit message.**  The routing finding
+  (c) was about commit-message provenance, and a squash that reverts the message to Dependabot's
+  generic "bump jose from 6.2.9 to 6.2.12" would re-create exactly what Codex flagged.  The squash
+  message should name `STATUS.md`, `docs/EFFORT-LOG.md`, `PLAN.md`, and this note.
+- **Every subsequent `jose` major/minor upgrade should revisit the `middleware.ts` Cloudflare
+  Access path first**, not last — it is the only one of the three consumers that runs on a
+  request-path auth gate and is the only one that would have been missed by an
+  "auth routes" inventory that stopped at `app/api/**`.
+- Still open, deliberately not fixed here:  the stale `ios/SocraticTradeTests/Fixtures/policy-contract.json`
+  fixture and the `src/lib/types.ts:1050` doc comment (see above).  Out of scope for a `jose`
+  patch bump.

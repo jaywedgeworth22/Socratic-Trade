@@ -12,6 +12,33 @@ bump only, no workflow logic or source change; not Coolify deploy material.  Req
 re-run on push and are the authoritative gate.  Extra-ship no.
 Rollout: `docs/rollouts/2026-09-21-claude-code-action-1-0-230-bump.md`.
 
+## 2026-09-21 MUSE — @datadog/browser-rum 7.13.0 bump, round-2 sweep (main merge + commit-message P1)
+
+Round-2 of the PR #3446 lane, MUSE fleet PR-merge sweep.  Codex's remaining P1 was that the
+round-1 commit message never referenced the handoff files it added.  This commit's message
+enumerates the updated docs (`STATUS.md`, `docs/EFFORT-LOG.md`, `PLAN.md`,
+`docs/rollouts/2026-09-21-datadog-browser-rum-7.13-bump.md`), and the squash-merge message will
+keep that enumeration so the permanent history names them.  Also merged current `origin/main`
+(picks up #3445 jose 6.2.12, #3426, #3427) - clean auto-merge, `@datadog/browser-rum` verified at
+`^7.13.0` (lock 7.13.0) in the merged manifest/lockfile.  Docs + merge only; the required
+`verify` CI check re-runs on push and is the authoritative gate.  Extra-ship no.  No Coolify
+Deploy.
+Rollout: `docs/rollouts/2026-09-21-datadog-browser-rum-7.13-bump.md`.
+
+## 2026-09-21 FIXER — @datadog/browser-rum 7.9.0 → 7.13.0 bump: handoff records added (PR #3446)
+
+Dependabot's `^7.9.0` → `^7.13.0` bump changed only `package.json` + `package-lock.json`, so it carried
+none of the mandatory handoff records; Codex flagged that as P1 on `package.json:39`.  This
+`[codex-autofix]` round adds `STATUS.md`, `docs/EFFORT-LOG.md`, the `PLAN.md` scope note, and
+`docs/rollouts/2026-09-21-datadog-browser-rum-7.13-bump.md`.  Same-major bump (browser-rum /
+browser-core / browser-rum-core 7.13.0, transitive `@datadog/js-core` 0.0.10 → 0.0.14), so no source
+change was needed: the only call site `src/lib/datadog-rum.ts:24` is a dynamic import cast to a local
+3-method `RumSdk` type using only long-stable `init` options, and it is already fail-soft
+(`try`/`catch` → `console.warn`; `addError` never throws).  Classified **runtime** dependency-only
+(`package.json`/lockfile are Coolify `watch_paths`), **not** docs-only.  No live effect: RUM send
+stays dark (`DD_RUM_ENABLED=false`, RUM app `is_active=false` — do not enable it here).  No Coolify
+Deploy from this lane.
+Rollout: `docs/rollouts/2026-09-21-datadog-browser-rum-7.13-bump.md`.
 ## 2026-09-21 Autofix (codex-autofix) — `jose` 6.2.9 -> 6.2.12 handoff records (PR #3445)
 
 Dependabot bumped `jose` 6.2.9 -> 6.2.12 on branch `dependabot/npm_and_yarn/jose-6.2.12` (commit `d0c43f5a`), a three-release patch bump crossing `6.2.10`'s hardening batch, `6.2.11`'s JWE refactor, and `6.2.12`'s JWS/JWE core simplification.  This is a runtime dependency-only change:  `jose` is a production dependency and the lockfile moved with it, so both sit on the `watch_paths` runtime set and merge triggers a production image build (weekday RTH latch applies).  This lane authored no product source; it adds the required handoff records (this entry / `docs/EFFORT-LOG.md` / rollout note / `PLAN.md`) that Codex's review flagged as missing.

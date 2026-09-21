@@ -16,8 +16,8 @@ the PR can land.
 ## Changes Made
 
 - `STATUS.md` — new dated snapshot entry for the bump and this sweep round.
-- `docs/EFFORT-LOG.md` — row not added (file is 1MB, exceeds GitHub API limits for
-  programmatic update; to be added manually).
+- `docs/EFFORT-LOG.md` — row added at the top of the file (round 5, via a full git clone;
+  the earlier GitHub-API size limit was a tooling limitation, not a file problem).
 - `docs/rollouts/2026-09-21-claude-code-action-1-0-230-bump.md` — this note.
 - `.github/workflows/codex-autofix.yml` — the Dependabot commit `18476568` itself (pinned SHA
   updated to the 1.0.230 release) plus the main-merge (picks up #3445 jose 6.2.12, #3426, #3427).
@@ -93,3 +93,14 @@ completed/success, `gitleaks` completed/success, `check-pin` completed/success,
 (`STATUS.md`, `docs/EFFORT-LOG.md`,
 `docs/rollouts/2026-09-21-claude-code-action-1-0-230-bump.md`).
 
+## Round 5 — MUSE sweep (2026-09-21): add the EFFORT-LOG row
+
+Codex's P1 on the round-4 push (thread `PRRT_kwDOS7mOVM6kerKs`) was correct: the note's
+`## Changes Made` block said the `docs/EFFORT-LOG.md` row was "to be added manually" while the
+armed auto-merge body already claimed the file was updated.  The row is now added at the top of
+`docs/EFFORT-LOG.md` (in the `[Socratic.Trade][MUSE]` in-progress/current-state style used by the
+other sweep lanes), written via a full git clone — the GitHub Data API blob fetch that failed was
+a tooling limitation on this ~1MB file, not a reason to skip the record.  The `## Changes Made`
+bullet above is corrected to match.  `STATUS.md` is untouched this round; the merged Sentry
+10.75.0 snapshot from round 4 is preserved.  Docs only; authoritative gate is `verify` CI on
+push.  Extra-ship no.

@@ -419,7 +419,24 @@ struct LoginView: View {
                 let code = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "code" })?.value,
                 !code.isEmpty
             else {
-                Task { @MainActor in store.error = "Invalid callback URL from web sign-in." }
+                // 2026-09-20 MM (#3226 #3): the OAuth provider (Google / GitHub / Apple) can
+                // return a redirect without `code` and with `error` + `error_description` when
+                // the user denied consent, the account is blocked, or the IdP itself failed.
+                // The original "Invalid callback URL from web sign-in." hid every one of those
+                // behind a single opaque message — surface the provider's explanation instead.
+                Task { @MainActor in
+                    let queryItems = URLComponents(url: callbackURL ?? URL(string: "about:blank")!,
+                                                   resolvingAgainstBaseURL: false)?.queryItems ?? []
+                    let providerError = queryItems.first(where: { $0.name == "error" })?.value
+                    let providerDescription = queryItems.first(where: { $0.name == "error_description" })?.value
+                    if let providerDescription, !providerDescription.isEmpty {
+                        store.error = "Sign-in was cancelled: \(providerDescription)"
+                    } else if let providerError, !providerError.isEmpty {
+                        store.error = "Sign-in failed: \(providerError)"
+                    } else {
+                        store.error = "Invalid callback URL from web sign-in."
+                    }
+                }
                 return
             }
             Task { @MainActor in

@@ -752,6 +752,15 @@ class TradierBrokerGateway implements BrokerGateway {
           const close = optionalNumber(q.close);
           const ask = optionalNumber(q.ask);
           const bid = optionalNumber(q.bid);
+          const prevClose = optionalNumber(q.prevclose);
+          const open = optionalNumber(q.open);
+          const high = optionalNumber(q.high);
+          const low = optionalNumber(q.low);
+          const change = optionalNumber(q.change);
+          const changePct = optionalNumber(q.change_percentage);
+          const bidSize = optionalNumber(q.bidsize);
+          const askSize = optionalNumber(q.asksize);
+          const companyName = optionalString(q.description);
           quotes[symbol] = {
             symbol,
             price: last ?? close ?? ask ?? bid ?? 0,
@@ -759,7 +768,17 @@ class TradierBrokerGateway implements BrokerGateway {
             ask,
             volume: optionalNumber(q.volume),
             asOf: optionalIso(q.trade_date ?? q.bid_date),
-            provider: "tradier"
+            provider: "tradier",
+            ...(prevClose !== undefined && prevClose > 0 ? { prevClose } : {}),
+            ...(open !== undefined && open > 0 ? { open } : {}),
+            ...(high !== undefined && high > 0 ? { high } : {}),
+            ...(low !== undefined && low > 0 ? { low } : {}),
+            ...(close !== undefined && close > 0 ? { close } : {}),
+            ...(change !== undefined ? { change } : {}),
+            ...(changePct !== undefined ? { changePct } : {}),
+            ...(bidSize !== undefined && bidSize > 0 ? { bidSize } : {}),
+            ...(askSize !== undefined && askSize > 0 ? { askSize } : {}),
+            ...(companyName ? { companyName } : {})
           };
         }
       } catch (error) {

@@ -32,6 +32,11 @@ export interface YahooFinanceQuote {
   beta?: number;
   fiftyTwoWeekHigh?: number;
   fiftyTwoWeekLow?: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  change?: number;
+  changePct?: number;
 }
 
 function optionalFinite(value: unknown): number | undefined {
@@ -166,8 +171,18 @@ async function fetchYahooQuoteChunk(chunk: string[]): Promise<Map<string, YahooF
           bid?: number;
           ask?: number;
           regularMarketPreviousClose?: number;
+          regularMarketOpen?: number;
+          regularMarketDayHigh?: number;
+          regularMarketDayLow?: number;
           regularMarketVolume?: number;
           regularMarketTime?: number;
+          regularMarketChange?: number;
+          regularMarketChangePercent?: number;
+          shortName?: string;
+          longName?: string;
+          trailingPE?: number;
+          fiftyTwoWeekHigh?: number;
+          fiftyTwoWeekLow?: number;
         }>;
       };
     };
@@ -180,6 +195,18 @@ async function fetchYahooQuoteChunk(chunk: string[]): Promise<Map<string, YahooF
       const price = Number(item.regularMarketPrice);
       if (!Number.isFinite(price) || price <= 0) continue;
       const prevClose = item.regularMarketPreviousClose ? Number(item.regularMarketPreviousClose) : price;
+      const open = optionalPositive(item.regularMarketOpen);
+      const high = optionalPositive(item.regularMarketDayHigh);
+      const low = optionalPositive(item.regularMarketDayLow);
+      const change = optionalFinite(item.regularMarketChange);
+      const changePct = optionalFinite(item.regularMarketChangePercent);
+      const companyName = [item.longName, item.shortName]
+        .find((v): v is string => typeof v === "string" && v.trim().length > 0)
+        ?.trim();
+      const peRatio = optionalPositive(item.trailingPE);
+      const fiftyTwoWeekHigh = optionalPositive(item.fiftyTwoWeekHigh);
+      const fiftyTwoWeekLow = optionalPositive(item.fiftyTwoWeekLow);
+
       // Track each side independently so a one-sided quote keeps its REAL side (a real bid must not
       // be blanket-tagged synthetic just because the ask had to be derived, and vice versa).
       const syntheticBid = !(item.bid && item.bid > 0);
@@ -198,6 +225,15 @@ async function fetchYahooQuoteChunk(chunk: string[]): Promise<Map<string, YahooF
         prevClose,
         volume,
         asOf,
+        ...(open !== undefined ? { open } : {}),
+        ...(high !== undefined ? { high } : {}),
+        ...(low !== undefined ? { low } : {}),
+        ...(change !== undefined ? { change } : {}),
+        ...(changePct !== undefined ? { changePct } : {}),
+        ...(companyName ? { companyName } : {}),
+        ...(peRatio !== undefined ? { peRatio } : {}),
+        ...(fiftyTwoWeekHigh !== undefined ? { fiftyTwoWeekHigh } : {}),
+        ...(fiftyTwoWeekLow !== undefined ? { fiftyTwoWeekLow } : {}),
         // Side-specific synthetic flags set EXPLICITLY (true AND false) so a consumer that falls back
         // to the coarse `syntheticSpread` when a side flag is absent (e.g. market.ts) never mislabels
         // a real side: a one-sided quote's real side now carries an explicit `false`, so the fallback

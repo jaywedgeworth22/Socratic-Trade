@@ -70,6 +70,10 @@ CI `verify` check is **green on the current head** (`50c18910`): `verify` comple
 `check-pin` success.  The commit subject/body name the updated handoff docs.  Action-pin bump
 only, no workflow logic or source change; not Coolify deploy material.  Extra-ship no.
 Rollout: `docs/rollouts/2026-09-21-claude-code-action-1-0-230-bump.md`.
+## 2026-09-21 Antigravity — Complete and fill out data cascade with multi-provider feeds
+
+Completed expansion of quote data contracts across `BrokerQuote`, `MarketQuote`, and `MarketQuoteSummary` in `src/lib/types.ts` with `prevClose`, `open`, `high`, `low`, `vwap`, `change`, `changePct`, and bid/ask sizes. Un-truncated upstream parsers for Tradier, Robinhood, Alpaca Snapshot, and Yahoo Batch. Wired real-time quote providers Finnhub (`/quote`) and Tiingo (`/iex`) into `src/lib/quotes-cascade.ts` ahead of delayed Yahoo fallback. Implemented multi-provider field-level coalescing (`mergeBrokerQuoteFields`) to backfill missing fields without overwriting authoritative execution venue prices. Dynamically recalculate `intradayChangePct` and `netChange` in `mergeQuoteData` and persist resolved fields asynchronously to `symbol_field_latest`. All 4 local gates passed cleanly (lint, tsc, vitest 8184 passed, full build). PR opening. Rollout: `docs/rollouts/2026-09-21-fill-out-data-cascade.md`.
+
 ## 2026-09-21 Antigravity — Quote cascade freshness & event-loop stall performance repair
 
 Diagnosed and resolved ST quote staleness root cause where live broker two-sided NBBO quotes lacked `fetchedAt` timestamps across cascade levels and `quoteAgeSecForStalenessGate` penalized non-delayed quotes with older last-trade `asOf` prints.  Wired `fetchFreshQuotesCascade` into `/api/quote`, `src/lib/dashboard.ts`, and `app/api/watchlist/route.ts` as resilient fallback.  Isolated SEC RAG ingestion and managed vector reconciliation during RTH trading hours and added cooperative event loop yields around heavy Cheerio HTML parses to prevent main-thread stalls (26s–362s).  Tests passing across quote cascade and RTH worker suites.  Running verification gate.  Rollout: `docs/rollouts/2026-09-21-quote-cascade-freshness-and-performance.md`.

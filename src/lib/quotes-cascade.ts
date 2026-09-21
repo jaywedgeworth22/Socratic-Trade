@@ -15,6 +15,7 @@ import {
   isDelayedYahooFallbackQuote,
   isYahooFallbackProvider
 } from "./quote-delayed-fallback";
+import { upsertSymbolFieldLatest, type SymbolFieldLatestRecord } from "./db-fundamentals";
 import type { BrokerQuote, ConnectedAccount, TradingPolicy } from "./types";
 
 /**
@@ -31,6 +32,291 @@ function firstNumber(obj: any, keys: string[]): number | undefined {
     }
   }
   return undefined;
+}
+
+/**
+ * Merges fields between an existing quote and an incoming quote.
+ *
+ * Rules:
+ * 1. If target is venue-authoritative (e.g. Tradier paper sandbox), target's
+ *    price, asOf, provider, and venuePriceAuthoritative flag are preserved.
+ *    Missing descriptive fields (prevClose, open, high, low, vwap, bid, ask, etc.)
+ *    are backfilled from incoming.
+ * 2. If incoming is venue-authoritative and target is not, incoming takes precedence.
+ * 3. Otherwise, the quote with a valid price and fresher `asOf` wins the primary
+ *    price and provider, while missing fields are backfilled from the other quote.
+ */
+export function mergeBrokerQuoteFields(
+  target?: BrokerQuote,
+  incoming?: BrokerQuote
+): BrokerQuote | undefined {
+  if (!target && !incoming) return undefined;
+  if (!target) return incoming ? { ...incoming } : undefined;
+  if (!incoming) return { ...target };
+
+  // Case 1: Target is venuePriceAuthoritative
+  if (target.venuePriceAuthoritative && !incoming.venuePriceAuthoritative) {
+    return {
+      ...incoming,
+      ...target,
+      price: target.price,
+      asOf: target.asOf,
+      provider: target.provider,
+      fetchedAt: target.fetchedAt ?? incoming.fetchedAt,
+      venuePriceAuthoritative: true,
+      bid: target.bid ?? incoming.bid,
+      ask: target.ask ?? incoming.ask,
+      volume: target.volume ?? incoming.volume,
+      prevClose: target.prevClose ?? incoming.prevClose,
+      open: target.open ?? incoming.open,
+      high: target.high ?? incoming.high,
+      low: target.low ?? incoming.low,
+      close: target.close ?? incoming.close,
+      vwap: target.vwap ?? incoming.vwap,
+      change: target.change ?? incoming.change,
+      changePct: target.changePct ?? incoming.changePct,
+      bidSize: target.bidSize ?? incoming.bidSize,
+      askSize: target.askSize ?? incoming.askSize,
+      companyName: target.companyName ?? incoming.companyName,
+      netChange: target.netChange ?? incoming.netChange
+    };
+  }
+
+  // Case 2: Incoming is venuePriceAuthoritative
+  if (incoming.venuePriceAuthoritative && !target.venuePriceAuthoritative) {
+    return {
+      ...target,
+      ...incoming,
+      price: incoming.price,
+      asOf: incoming.asOf,
+      provider: incoming.provider,
+      fetchedAt: incoming.fetchedAt ?? target.fetchedAt,
+      venuePriceAuthoritative: true,
+      bid: incoming.bid ?? target.bid,
+      ask: incoming.ask ?? target.ask,
+      volume: incoming.volume ?? target.volume,
+      prevClose: incoming.prevClose ?? target.prevClose,
+      open: incoming.open ?? target.open,
+      high: incoming.high ?? target.high,
+      low: incoming.low ?? target.low,
+      close: incoming.close ?? target.close,
+      vwap: incoming.vwap ?? target.vwap,
+      change: incoming.change ?? target.change,
+      changePct: incoming.changePct ?? target.changePct,
+      bidSize: incoming.bidSize ?? target.bidSize,
+      askSize: incoming.askSize ?? target.askSize,
+      companyName: incoming.companyName ?? target.companyName,
+      netChange: incoming.netChange ?? target.netChange
+    };
+  }
+
+  // Case 3: General case (neither or both are venue-authoritative)
+  const targetTime = target.asOf ? new Date(target.asOf).getTime() : 0;
+  const incomingTime = incoming.asOf ? new Date(incoming.asOf).getTime() : 0;
+  const targetHasPrice = typeof target.price === "number" && target.price > 0;
+  const incomingHasPrice = typeof incoming.price === "number" && incoming.price > 0;
+
+  const preferIncoming =
+    (!targetHasPrice && incomingHasPrice) ||
+    (incomingHasPrice && incomingTime > targetTime);
+
+  const primary = preferIncoming ? incoming : target;
+  const secondary = preferIncoming ? target : incoming;
+
+  const hasBid = primary.bid !== undefined;
+  const hasAsk = primary.ask !== undefined;
+
+  return {
+    ...secondary,
+    ...primary,
+    bid: primary.bid ?? secondary.bid,
+    ask: primary.ask ?? secondary.ask,
+    volume: primary.volume ?? secondary.volume,
+    prevClose: primary.prevClose ?? secondary.prevClose,
+    open: primary.open ?? secondary.open,
+    high: primary.high ?? secondary.high,
+    low: primary.low ?? secondary.low,
+    close: primary.close ?? secondary.close,
+    vwap: primary.vwap ?? secondary.vwap,
+    change: primary.change ?? secondary.change,
+    changePct: primary.changePct ?? secondary.changePct,
+    bidSize: primary.bidSize ?? secondary.bidSize,
+    askSize: primary.askSize ?? secondary.askSize,
+    companyName: primary.companyName ?? secondary.companyName,
+    netChange: primary.netChange ?? secondary.netChange,
+    syntheticBid: hasBid ? primary.syntheticBid : secondary.syntheticBid,
+    syntheticAsk: hasAsk ? primary.syntheticAsk : secondary.syntheticAsk,
+    syntheticSpread:
+      hasBid && hasAsk
+        ? primary.syntheticSpread
+        : (primary.syntheticSpread ?? secondary.syntheticSpread),
+    delayedFallback: primary.delayedFallback ?? (preferIncoming ? secondary.delayedFallback : undefined)
+  };
+}
+
+export async function fetchFinnhubQuote(
+  symbol: string,
+  apiKey: string,
+  keySource: string = "env",
+  userId?: string,
+  signal?: AbortSignal
+): Promise<BrokerQuote | undefined> {
+  const res = await fetchWithRetry(
+    `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${encodeURIComponent(apiKey)}`,
+    { signal },
+    { service: "finnhub", keySource, userId }
+  );
+  if (!res.ok) return undefined;
+  const q = (await res.json()) as Record<string, unknown>;
+  const c = firstNumber(q, ["c"]);
+  if (!(typeof c === "number" && c > 0)) return undefined;
+  const pc = firstNumber(q, ["pc"]);
+  const o = firstNumber(q, ["o"]);
+  const h = firstNumber(q, ["h"]);
+  const l = firstNumber(q, ["l"]);
+  const d = firstNumber(q, ["d"]);
+  const dp = firstNumber(q, ["dp"]);
+  const t = firstNumber(q, ["t"]);
+  const asOf = typeof t === "number" && t > 0 ? new Date(t * 1000).toISOString() : undefined;
+
+  return {
+    symbol,
+    price: c,
+    prevClose: typeof pc === "number" && pc > 0 ? pc : undefined,
+    open: typeof o === "number" && o > 0 ? o : undefined,
+    high: typeof h === "number" && h > 0 ? h : undefined,
+    low: typeof l === "number" && l > 0 ? l : undefined,
+    change: typeof d === "number" ? d : undefined,
+    changePct: typeof dp === "number" ? dp : undefined,
+    asOf,
+    provider: "finnhub",
+    fetchedAt: new Date().toISOString()
+  };
+}
+
+export async function fetchTiingoQuote(
+  symbol: string,
+  apiKey: string,
+  keySource: string = "env",
+  userId?: string,
+  signal?: AbortSignal
+): Promise<BrokerQuote | undefined> {
+  const ticker = symbol.toLowerCase();
+  const res = await fetchWithRetry(
+    `https://api.tiingo.com/iex/${encodeURIComponent(ticker)}?token=${encodeURIComponent(apiKey)}`,
+    {
+      headers: { Authorization: `Token ${apiKey}`, Accept: "application/json" },
+      signal
+    },
+    { service: "tiingo", keySource, userId }
+  );
+  if (!res.ok) return undefined;
+  const payload = await res.json();
+  const arr = Array.isArray(payload) ? payload : [payload];
+  if (arr.length === 0 || !arr[0] || typeof arr[0] !== "object") return undefined;
+  const q = arr[0] as Record<string, unknown>;
+
+  const price = firstNumber(q, ["tngoLast", "lastPrice", "last", "mid"]);
+  const bid = firstNumber(q, ["bidPrice"]);
+  const ask = firstNumber(q, ["askPrice"]);
+  const resolvedPrice = price ?? (bid && ask ? (bid + ask) / 2 : undefined);
+  if (!(typeof resolvedPrice === "number" && resolvedPrice > 0)) return undefined;
+
+  const bidSize = firstNumber(q, ["bidSize"]);
+  const askSize = firstNumber(q, ["askSize"]);
+  const volume = firstNumber(q, ["volume"]);
+  const prevClose = firstNumber(q, ["prevClose"]);
+  const open = firstNumber(q, ["open"]);
+  const high = firstNumber(q, ["high"]);
+  const low = firstNumber(q, ["low"]);
+  const timestamp =
+    typeof q.timestamp === "string"
+      ? q.timestamp
+      : typeof q.lastSaleTimestamp === "string"
+        ? q.lastSaleTimestamp
+        : typeof q.quoteTimestamp === "string"
+          ? q.quoteTimestamp
+          : undefined;
+
+  let change: number | undefined;
+  let changePct: number | undefined;
+  if (prevClose && prevClose > 0) {
+    change = Math.round((resolvedPrice - prevClose) * 100) / 100;
+    changePct = Math.round(((resolvedPrice - prevClose) / prevClose) * 10000) / 100;
+  }
+
+  return {
+    symbol,
+    price: resolvedPrice,
+    bid: typeof bid === "number" && bid > 0 ? bid : undefined,
+    ask: typeof ask === "number" && ask > 0 ? ask : undefined,
+    bidSize: typeof bidSize === "number" && bidSize > 0 ? bidSize : undefined,
+    askSize: typeof askSize === "number" && askSize > 0 ? askSize : undefined,
+    volume: typeof volume === "number" && volume > 0 ? volume : undefined,
+    prevClose: typeof prevClose === "number" && prevClose > 0 ? prevClose : undefined,
+    open: typeof open === "number" && open > 0 ? open : undefined,
+    high: typeof high === "number" && high > 0 ? high : undefined,
+    low: typeof low === "number" && low > 0 ? low : undefined,
+    change,
+    changePct,
+    asOf: timestamp,
+    provider: "tiingo",
+    fetchedAt: new Date().toISOString()
+  };
+}
+
+export function syncQuotesToFieldStore(quotes: Record<string, BrokerQuote>): void {
+  try {
+    const records: SymbolFieldLatestRecord[] = [];
+    for (const [symbol, quote] of Object.entries(quotes)) {
+      if (!quote) continue;
+      const asOf = quote.asOf || quote.fetchedAt || new Date().toISOString();
+      const fetchedAt = quote.fetchedAt || new Date().toISOString();
+      const source = quote.provider || "quote-cascade";
+
+      if (typeof quote.price === "number" && Number.isFinite(quote.price)) {
+        records.push({ symbol, field: "price", valueJson: JSON.stringify(quote.price), source, asOf, fetchedAt });
+      }
+      if (typeof quote.bid === "number" && Number.isFinite(quote.bid)) {
+        records.push({ symbol, field: "bid", valueJson: JSON.stringify(quote.bid), source, asOf, fetchedAt });
+      }
+      if (typeof quote.ask === "number" && Number.isFinite(quote.ask)) {
+        records.push({ symbol, field: "ask", valueJson: JSON.stringify(quote.ask), source, asOf, fetchedAt });
+      }
+      if (typeof quote.volume === "number" && Number.isFinite(quote.volume)) {
+        records.push({ symbol, field: "volume", valueJson: JSON.stringify(quote.volume), source, asOf, fetchedAt });
+      }
+      if (typeof quote.prevClose === "number" && Number.isFinite(quote.prevClose)) {
+        records.push({ symbol, field: "prevClose", valueJson: JSON.stringify(quote.prevClose), source, asOf, fetchedAt });
+      }
+      if (typeof quote.vwap === "number" && Number.isFinite(quote.vwap)) {
+        records.push({ symbol, field: "vwap", valueJson: JSON.stringify(quote.vwap), source, asOf, fetchedAt });
+      }
+      if (typeof quote.open === "number" && Number.isFinite(quote.open)) {
+        records.push({ symbol, field: "open", valueJson: JSON.stringify(quote.open), source, asOf, fetchedAt });
+      }
+      if (typeof quote.high === "number" && Number.isFinite(quote.high)) {
+        records.push({ symbol, field: "high", valueJson: JSON.stringify(quote.high), source, asOf, fetchedAt });
+      }
+      if (typeof quote.low === "number" && Number.isFinite(quote.low)) {
+        records.push({ symbol, field: "low", valueJson: JSON.stringify(quote.low), source, asOf, fetchedAt });
+      }
+      if (typeof quote.change === "number" && Number.isFinite(quote.change)) {
+        records.push({ symbol, field: "change", valueJson: JSON.stringify(quote.change), source, asOf, fetchedAt });
+      }
+      if (typeof quote.changePct === "number" && Number.isFinite(quote.changePct)) {
+        records.push({ symbol, field: "changePct", valueJson: JSON.stringify(quote.changePct), source, asOf, fetchedAt });
+      }
+      if (typeof quote.companyName === "string" && quote.companyName.trim()) {
+        records.push({ symbol, field: "companyName", valueJson: JSON.stringify(quote.companyName.trim()), source, asOf, fetchedAt });
+      }
+    }
+    if (records.length > 0) {
+      upsertSymbolFieldLatest(records);
+    }
+  } catch {
+    // Non-blocking sync; do not fail quote resolution if DB write fails
+  }
 }
 
 /**
@@ -304,21 +590,10 @@ export async function fetchFreshQuotesCascade(
 
   const updateBestQuote = (symbol: string, quote: BrokerQuote) => {
     const existing = bestQuotes[symbol];
-    if (!existing) {
-      bestQuotes[symbol] = quote;
-      return;
-    }
-    // Never demote a venue-authoritative quote in favor of a fresher external print.
-    if (existing.venuePriceAuthoritative && !quote.venuePriceAuthoritative) return;
-    if (quote.venuePriceAuthoritative && !existing.venuePriceAuthoritative) {
-      bestQuotes[symbol] = quote;
-      return;
-    }
-    // Prefer newer asOf; if equal timestamps, prefer a provider that is not an explicit delayed tag
-    const existingTime = existing.asOf ? new Date(existing.asOf).getTime() : 0;
-    const newTime = quote.asOf ? new Date(quote.asOf).getTime() : 0;
-    if (newTime > existingTime) {
-      bestQuotes[symbol] = quote;
+    const merged = existing ? mergeBrokerQuoteFields(existing, quote)! : quote;
+    bestQuotes[symbol] = merged;
+    if (result[symbol]) {
+      result[symbol] = mergeBrokerQuoteFields(result[symbol], quote)!;
     }
   };
 
@@ -438,14 +713,25 @@ export async function fetchFreshQuotesCascade(
                 price: resolvedPrice,
                 bid: data.bid,
                 ask: data.ask,
+                bidSize: data.bidSize,
+                askSize: data.askSize,
                 volume: data.volume,
+                prevClose: data.prevClose,
+                open: data.open,
+                high: data.high,
+                low: data.low,
+                vwap: data.vwap,
+                netChange: data.netChange,
+                change: data.netChange,
+                changePct: data.intradayChangePct,
+                companyName: data.companyName,
                 asOf: data.asOf,
                 provider: "alpaca-snapshot",
                 fetchedAt: stampIngest()
               };
               updateBestQuote(symbol, q);
               if (isQuoteFresh(q, nowMs, maxAgeMs)) {
-                result[symbol] = q;
+                result[symbol] = bestQuotes[symbol] ?? q;
               }
             }
           }
@@ -457,7 +743,63 @@ export async function fetchFreshQuotesCascade(
     }
   }
 
-  // --- LEVEL 3: Yahoo Finance Batch API ---
+  // --- LEVEL 3: Finnhub Real-time Quote API ---
+  throwIfCascadeAborted(signal);
+  if (pendingSymbols.length > 0 && allowExternal) {
+    try {
+      const finnhub = resolveApiKeyWithSource("finnhub", userId);
+      if (finnhub.key) {
+        await Promise.all(
+          pendingSymbols.map(async (symbol) => {
+            try {
+              const q = await fetchFinnhubQuote(symbol, finnhub.key!, finnhub.source, userId, signal);
+              if (q) {
+                updateBestQuote(symbol, q);
+                if (isQuoteFresh(q, nowMs, maxAgeMs)) {
+                  result[symbol] = bestQuotes[symbol] ?? q;
+                }
+              }
+            } catch (err) {
+              console.warn(`[quotes-cascade] Level 3 (Finnhub) fetch failed for ${symbol}:`, err);
+            }
+          })
+        );
+        pendingSymbols = pendingSymbols.filter((s) => !result[s]);
+      }
+    } catch (error) {
+      console.warn("[quotes-cascade] Level 3 (Finnhub) fetch failed:", error instanceof Error ? error.message : error);
+    }
+  }
+
+  // --- LEVEL 4: Tiingo IEX Real-time Quote API ---
+  throwIfCascadeAborted(signal);
+  if (pendingSymbols.length > 0 && allowExternal) {
+    try {
+      const tiingo = resolveApiKeyWithSource("tiingo", userId);
+      if (tiingo.key) {
+        await Promise.all(
+          pendingSymbols.map(async (symbol) => {
+            try {
+              const q = await fetchTiingoQuote(symbol, tiingo.key!, tiingo.source, userId, signal);
+              if (q) {
+                updateBestQuote(symbol, q);
+                if (isQuoteFresh(q, nowMs, maxAgeMs)) {
+                  result[symbol] = bestQuotes[symbol] ?? q;
+                }
+              }
+            } catch (err) {
+              console.warn(`[quotes-cascade] Level 4 (Tiingo) fetch failed for ${symbol}:`, err);
+            }
+          })
+        );
+        pendingSymbols = pendingSymbols.filter((s) => !result[s]);
+      }
+    } catch (error) {
+      console.warn("[quotes-cascade] Level 4 (Tiingo) fetch failed:", error instanceof Error ? error.message : error);
+    }
+  }
+
+  // --- LEVEL 5: Yahoo Finance Batch API ---
   throwIfCascadeAborted(signal);
   if (pendingSymbols.length > 0 && allowExternal) {
     try {
@@ -473,6 +815,13 @@ export async function fetchFreshQuotesCascade(
               bid: data.bid,
               ask: data.ask,
               volume: data.volume,
+              prevClose: data.prevClose,
+              open: data.open,
+              high: data.high,
+              low: data.low,
+              change: data.change,
+              changePct: data.changePct,
+              companyName: data.companyName,
               asOf: data.asOf,
               provider: "yahoo-finance-batch",
               syntheticBid: data.syntheticBid,
@@ -482,18 +831,18 @@ export async function fetchFreshQuotesCascade(
             };
             updateBestQuote(symbol, q);
             if (isQuoteFresh(q, nowMs, maxAgeMs)) {
-              result[symbol] = q;
+              result[symbol] = bestQuotes[symbol] ?? q;
             }
           }
         }
       }
       pendingSymbols = pendingSymbols.filter((s) => !result[s]);
     } catch (error) {
-      console.warn("[quotes-cascade] Level 3 (Yahoo Finance Batch) fetch failed:", error instanceof Error ? error.message : error);
+      console.warn("[quotes-cascade] Level 5 (Yahoo Finance Batch) fetch failed:", error instanceof Error ? error.message : error);
     }
   }
 
-  // --- LEVEL 4: Yahoo Finance Single Quote API ---
+  // --- LEVEL 6: Yahoo Finance Single Quote API ---
   throwIfCascadeAborted(signal);
   if (pendingSymbols.length > 0 && allowExternal) {
     try {
@@ -510,6 +859,13 @@ export async function fetchFreshQuotesCascade(
               bid: quote.bid,
               ask: quote.ask,
               volume: quote.volume,
+              prevClose: quote.prevClose,
+              open: quote.open,
+              high: quote.high,
+              low: quote.low,
+              change: quote.change,
+              changePct: quote.changePct,
+              companyName: quote.companyName,
               asOf: quote.asOf,
               provider: "yahoo-finance-single",
               syntheticBid: quote.syntheticBid,
@@ -519,18 +875,18 @@ export async function fetchFreshQuotesCascade(
             };
             updateBestQuote(symbol, q);
             if (isQuoteFresh(q, nowMs, maxAgeMs)) {
-              result[symbol] = q;
+              result[symbol] = bestQuotes[symbol] ?? q;
             }
           }
         }
       }
       pendingSymbols = pendingSymbols.filter((s) => !result[s]);
     } catch (error) {
-      console.warn("[quotes-cascade] Level 4 (Yahoo Finance Single Chart) fetch failed:", error instanceof Error ? error.message : error);
+      console.warn("[quotes-cascade] Level 6 (Yahoo Finance Single Chart) fetch failed:", error instanceof Error ? error.message : error);
     }
   }
 
-  // --- LEVEL 5: ROIC.ai Profile API ---
+  // --- LEVEL 7: ROIC.ai Profile API ---
   throwIfCascadeAborted(signal);
   if (pendingSymbols.length > 0 && allowExternal) {
     try {
@@ -550,29 +906,31 @@ export async function fetchFreshQuotesCascade(
                 if (p && typeof p === "object") {
                   const price = firstNumber(p, ["price"]);
                   if (typeof price === "number" && price > 0) {
+                    const companyName = typeof p.companyName === "string" ? p.companyName : undefined;
                     const q: BrokerQuote = {
                       symbol,
                       price,
+                      companyName,
                       asOf: new Date().toISOString(),
                       provider: "roic",
                       fetchedAt: stampIngest()
                     };
                     updateBestQuote(symbol, q);
                     if (isQuoteFresh(q, nowMs, maxAgeMs)) {
-                      result[symbol] = q;
+                      result[symbol] = bestQuotes[symbol] ?? q;
                     }
                   }
                 }
               }
             } catch (err) {
-              console.warn(`[quotes-cascade] Level 5 (ROIC) fetch failed for ${symbol}:`, err);
+              console.warn(`[quotes-cascade] Level 7 (ROIC) fetch failed for ${symbol}:`, err);
             }
           })
         );
         pendingSymbols = pendingSymbols.filter((s) => !result[s]);
       }
     } catch (error) {
-      console.warn("[quotes-cascade] Level 5 (ROIC) fetch failed:", error instanceof Error ? error.message : error);
+      console.warn("[quotes-cascade] Level 7 (ROIC) fetch failed:", error instanceof Error ? error.message : error);
     }
   }
 
@@ -597,5 +955,6 @@ export async function fetchFreshQuotesCascade(
     }
   }
 
+  syncQuotesToFieldStore(result);
   return result;
 }

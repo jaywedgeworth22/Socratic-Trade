@@ -380,6 +380,96 @@ describe("mergeQuoteData", () => {
     expect(merged.topCandidates[0]!.sources?.ask).toBe("yahoo-finance-synthetic");
     expect(merged.quotesBySymbol.AAPL!.sources?.price).toBe("yahoo-finance");
   });
+
+  it("recalculates intradayChangePct and netChange when fresh quote and prevClose are merged", () => {
+    const scan: MarketScan = {
+      source: "nasdaq-delayed-screener",
+      generatedAt: "2026-06-19T00:00:00.000Z",
+      scannedSymbols: 1,
+      returnedQuotes: 1,
+      topCandidates: [quote({ symbol: "AAPL", price: 100, intradayChangePct: 0, netChange: 0 })],
+      sectorBySymbol: {},
+      quotesBySymbol: { AAPL: quote({ symbol: "AAPL", price: 100, intradayChangePct: 0, netChange: 0 }) },
+      cacheTtlMs: 300_000,
+      cached: false,
+      warnings: []
+    };
+
+    const merged = mergeQuoteData(scan, {
+      AAPL: {
+        price: 105,
+        prevClose: 100,
+        open: 101,
+        high: 106,
+        low: 100.5,
+        vwap: 103.5,
+        companyName: "Apple Inc.",
+        provider: "alpaca"
+      }
+    });
+
+    const cand = merged.topCandidates[0];
+    expect(cand.price).toBe(105);
+    expect(cand.prevClose).toBe(100);
+    expect(cand.intradayChangePct).toBe(5.0);
+    expect(cand.netChange).toBe(5.0);
+    expect(cand.open).toBe(101);
+    expect(cand.high).toBe(106);
+    expect(cand.low).toBe(100.5);
+    expect(cand.vwap).toBe(103.5);
+    expect(cand.companyName).toBe("Apple Inc.");
+
+    const summary = merged.quotesBySymbol.AAPL;
+    expect(summary.intradayChangePct).toBe(5.0);
+    expect(summary.netChange).toBe(5.0);
+    expect(summary.prevClose).toBe(100);
+    expect(summary.open).toBe(101);
+    expect(summary.high).toBe(106);
+    expect(summary.low).toBe(100.5);
+    expect(summary.vwap).toBe(103.5);
+    expect(summary.companyName).toBe("Apple Inc.");
+  });
+
+  it("populates newly discovered symbols from quoteData with full quote metrics", () => {
+    const scan: MarketScan = {
+      source: "nasdaq-delayed-screener",
+      generatedAt: "2026-06-19T00:00:00.000Z",
+      scannedSymbols: 1,
+      returnedQuotes: 1,
+      topCandidates: [quote({ symbol: "AAPL" })],
+      sectorBySymbol: {},
+      quotesBySymbol: { AAPL: quote({ symbol: "AAPL" }) },
+      cacheTtlMs: 300_000,
+      cached: false,
+      warnings: []
+    };
+
+    const merged = mergeQuoteData(scan, {
+      MSFT: {
+        symbol: "MSFT",
+        price: 300,
+        prevClose: 295,
+        open: 296,
+        high: 302,
+        low: 294,
+        vwap: 298.5,
+        companyName: "Microsoft Corp",
+        provider: "finnhub"
+      }
+    });
+
+    expect(merged.quotesBySymbol.MSFT).toBeDefined();
+    const msft = merged.quotesBySymbol.MSFT;
+    expect(msft.price).toBe(300);
+    expect(msft.prevClose).toBe(295);
+    expect(msft.open).toBe(296);
+    expect(msft.high).toBe(302);
+    expect(msft.low).toBe(294);
+    expect(msft.vwap).toBe(298.5);
+    expect(msft.companyName).toBe("Microsoft Corp");
+    expect(msft.intradayChangePct).toBe(1.69);
+    expect(msft.netChange).toBe(5);
+  });
 });
 
 describe("mergeGroupedBarData", () => {

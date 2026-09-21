@@ -974,6 +974,30 @@ export interface BrokerQuote {
    * continue.  (Codex P1 review on the quote cascade.)
    */
   venueDelayedTape?: boolean;
+  /** Previous session closing price. Used for intraday price change and % change calculations. */
+  prevClose?: number;
+  /** Today's session opening price. */
+  open?: number;
+  /** Today's session high price. */
+  high?: number;
+  /** Today's session low price. */
+  low?: number;
+  /** Last trade close / regular market close price. */
+  close?: number;
+  /** Session volume-weighted average price (VWAP). */
+  vwap?: number;
+  /** Net price change from previous close. */
+  change?: number;
+  /** Net price change alias matching MarketQuoteSummary. */
+  netChange?: number;
+  /** Percentage price change from previous close. */
+  changePct?: number;
+  /** Quoted bid size (shares or lots, venue-specific). */
+  bidSize?: number;
+  /** Quoted ask size (shares or lots, venue-specific). */
+  askSize?: number;
+  /** Issuer / company name reported by exchange or venue. */
+  companyName?: string;
 }
 
 /**
@@ -1959,7 +1983,7 @@ export interface SocraticDecisionTrace {
 // single-source tooltips in the market scan table.
 export type EnrichmentSources = Partial<
   Record<
-    "price" | "bid" | "ask" | "intradayChangePct" | "asOf" | "sentiment" | "peRatio" | "analystRating" | "sector" | "industry" | "volume" | "dividendYield" | "eps" | "companyName" | "pbRatio" | "shortPercentOfFloat" | "beta" | "fiftyTwoWeekHigh" | "fiftyTwoWeekLow" | "insiderSentiment" | "fcfYield" | "debtToEquity" | "epsGrowth" | "senateTrades" | "daysToEarnings" | "institutionOwnershipPct" | "nearTheMoneyIv" | "putCallRatio" | "vwap" | "targetMean" | "targetHigh" | "targetLow" | "targetMedian" | "returnOnEquity" | "returnOnAssets" | "revenueGrowth" | "freeCashFlowYield" | "grossProfitMargin" | "congressTradesQuiver" | "insiderTradesQuiver" | "govContractsQuiver" | "lobbyingQuiver" | "patentsQuiver" | "sharesOutstanding" | "headlines",
+    "price" | "bid" | "ask" | "prevClose" | "intradayChangePct" | "asOf" | "sentiment" | "peRatio" | "analystRating" | "sector" | "industry" | "volume" | "dividendYield" | "eps" | "companyName" | "pbRatio" | "shortPercentOfFloat" | "beta" | "fiftyTwoWeekHigh" | "fiftyTwoWeekLow" | "insiderSentiment" | "fcfYield" | "debtToEquity" | "epsGrowth" | "senateTrades" | "daysToEarnings" | "institutionOwnershipPct" | "nearTheMoneyIv" | "putCallRatio" | "vwap" | "targetMean" | "targetHigh" | "targetLow" | "targetMedian" | "returnOnEquity" | "returnOnAssets" | "revenueGrowth" | "freeCashFlowYield" | "grossProfitMargin" | "congressTradesQuiver" | "insiderTradesQuiver" | "govContractsQuiver" | "lobbyingQuiver" | "patentsQuiver" | "sharesOutstanding" | "headlines",
     string
   >
 >;
@@ -1991,6 +2015,10 @@ export interface MarketQuote {
   sharesOutstanding?: number;
   intradayChangePct: number;
   netChange?: number;
+  prevClose?: number;
+  open?: number;
+  high?: number;
+  low?: number;
   sector?: string;
   industry?: string;
   positionMarketValue: number;
@@ -2319,6 +2347,11 @@ export interface MarketQuoteSummary {
   factorBreakdown?: MarketFactorBreakdown;
   headlines?: string[];
   intradayChangePct?: number;
+  netChange?: number;
+  prevClose?: number;
+  open?: number;
+  high?: number;
+  low?: number;
   volume?: number;
   sectorRelStrength?: number;
   sources?: EnrichmentSources;

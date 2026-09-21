@@ -18,7 +18,7 @@
   "llmReasoningEffort": "medium",
   "learningReviewEnabled": false,
   "learningReviewMode": "decide",
-  "learningReviewModel": "claude-fable-5",
+  "learningReviewModel": "claude-fable-latest",
   "learningReviewMinNewLessons": 5,
   "learningReviewMaxWaitDays": 7,
   "outcomeGradingMode": "raw",

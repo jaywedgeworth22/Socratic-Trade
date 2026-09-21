@@ -83,6 +83,10 @@ export function parseRobinhoodQuotes(raw: Record<string, unknown> | unknown): Re
     (entries as Array<Record<string, unknown>>).map((item) => {
       const q = (item.quote ?? item) as Record<string, unknown>;
       const symbol = normalizeSymbol(String(q.symbol ?? item.symbol));
+      const prevClose = optionalNumber(q.previous_close ?? q.adjusted_previous_close);
+      const bidSize = optionalNumber(q.bid_size);
+      const askSize = optionalNumber(q.ask_size);
+      const volume = optionalNumber(q.volume);
       return [
         symbol,
         {
@@ -91,7 +95,11 @@ export function parseRobinhoodQuotes(raw: Record<string, unknown> | unknown): Re
           bid: optionalNumber(q.bid_price ?? q.bid),
           ask: optionalNumber(q.ask_price ?? q.ask),
           asOf: optionalString(q.venue_last_trade_time ?? q.as_of ?? item.as_of),
-          provider: "robinhood"
+          provider: "robinhood",
+          ...(prevClose !== undefined && prevClose > 0 ? { prevClose } : {}),
+          ...(bidSize !== undefined && bidSize > 0 ? { bidSize } : {}),
+          ...(askSize !== undefined && askSize > 0 ? { askSize } : {}),
+          ...(volume !== undefined && volume > 0 ? { volume } : {})
         } satisfies BrokerQuote
       ];
     })

@@ -17,6 +17,7 @@ import {
   withinBudget
 } from "@/lib/quote-cascade-budget";
 import { fetchYahooFinanceQuote } from "@/lib/yahoo-finance";
+import { fetchFreshQuotesCascade } from "@/lib/quotes-cascade";
 
 export const dynamic = "force-dynamic";
 
@@ -78,13 +79,62 @@ export async function GET(request: Request) {
         richPeek = { status: "failed", error };
       }
     );
-    const fastPromise = fetchYahooFinanceQuote(symbol)
-      .then((quote): EnrichmentOutcome =>
-        quote
-          ? { status: "ready", data: fastQuoteEnrichment(quote) }
-          : { status: "failed", error: new Error("no current quote returned") }
-      )
-      .catch((error) => ({ status: "failed" as const, error }));
+    const fastPromise: Promise<EnrichmentOutcome> = (async (): Promise<EnrichmentOutcome> => {
+      const yahooQuotePromise = fetchYahooFinanceQuote(symbol).catch(() => undefined);
+      const liveQuotePromise = (async () => {
+        if (!userId) return undefined;
+        try {
+          const quotes = await fetchFreshQuotesCascade([symbol], userId, undefined, undefined, { signal: budget.signal });
+          const q = quotes[symbol];
+          return q && typeof q.price === "number" && q.price > 0 && !q.delayedFallback ? q : undefined;
+        } catch {
+          return undefined;
+        }
+      })();
+
+      const [yahooQuote, liveQuote] = await Promise.all([yahooQuotePromise, liveQuotePromise]);
+      if (liveQuote && typeof liveQuote.price === "number" && yahooQuote) {
+        const livePrice = liveQuote.price;
+        const base = fastQuoteEnrichment(yahooQuote);
+        const intradayChangePct =
+          yahooQuote.prevClose > 0
+            ? Math.round(((livePrice - yahooQuote.prevClose) / yahooQuote.prevClose) * 10_000) / 100
+            : base.intradayChangePct;
+        return {
+          status: "ready",
+          data: {
+            ...base,
+            price: livePrice,
+            ...(liveQuote.volume && liveQuote.volume > 0 ? { volume: liveQuote.volume } : {}),
+            ...(intradayChangePct !== undefined ? { intradayChangePct } : {}),
+            asOf: liveQuote.asOf ?? liveQuote.fetchedAt ?? base.asOf,
+            sources: {
+              ...base.sources,
+              price: liveQuote.provider ?? "quotes-cascade",
+              ...(liveQuote.asOf ? { asOf: liveQuote.provider ?? "quotes-cascade" } : {})
+            }
+          }
+        };
+      }
+      if (yahooQuote) {
+        return { status: "ready", data: fastQuoteEnrichment(yahooQuote) };
+      }
+      if (liveQuote) {
+        return {
+          status: "ready",
+          data: {
+            price: liveQuote.price,
+            ...(liveQuote.volume && liveQuote.volume > 0 ? { volume: liveQuote.volume } : {}),
+            asOf: liveQuote.asOf ?? liveQuote.fetchedAt,
+            sources: {
+              price: liveQuote.provider ?? "quotes-cascade",
+              ...(liveQuote.asOf ? { asOf: liveQuote.provider ?? "quotes-cascade" } : {})
+            }
+          }
+        };
+      }
+      return { status: "failed", error: new Error("no current quote returned") };
+    })().catch((error) => ({ status: "failed" as const, error }));
     const yahooPromise: Promise<EnrichmentOutcome> = enrichYahooFinanceSymbol(symbol)
       .then((data) => ({ status: "ready" as const, data }))
       .catch((error) => ({ status: "failed" as const, error }));

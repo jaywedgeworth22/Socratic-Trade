@@ -36,6 +36,7 @@ import { currentMarketSession } from "./market-hours";
 import { isUnusableEmptyMarketScan } from "./scan-singleflight";
 import { normalizeSymbol } from "./money";
 import { isDelayedYahooFallbackQuote } from "./quote-delayed-fallback";
+import { fetchFreshQuotesCascade } from "./quotes-cascade";
 import {
   calculatePnl,
   getPerformanceSummary,
@@ -567,6 +568,27 @@ async function computeDashboardSnapshot(userId: string = "local", currentUser?: 
                 timedOutSections
               )
             : {};
+          const missingPriceSymbols = priceSymbols.filter(
+            (s) => !quotes[s] || typeof quotes[s]?.price !== "number" || quotes[s]!.price! <= 0
+          );
+          if (missingPriceSymbols.length > 0) {
+            try {
+              const fallbackQuotes: Record<string, BrokerQuote> = await withDeadline<Record<string, BrokerQuote>>(
+                fetchFreshQuotesCascade(missingPriceSymbols, userId, targetAccountNumber),
+                EQUITY_QUOTES_MS,
+                () => ({}),
+                "fetchFreshQuotesCascade",
+                timedOutSections
+              );
+              for (const s of missingPriceSymbols) {
+                if (fallbackQuotes[s] && typeof fallbackQuotes[s].price === "number" && fallbackQuotes[s].price > 0) {
+                  quotes[s] = fallbackQuotes[s];
+                }
+              }
+            } catch (err) {
+              console.warn("[dashboard] fetchFreshQuotesCascade fallback error:", err);
+            }
+          }
           currentPrices = Object.fromEntries(
             Object.values(quotes)
               .filter((quote) => typeof quote.price === "number" && quote.price > 0)

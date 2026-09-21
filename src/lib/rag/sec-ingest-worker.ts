@@ -15,6 +15,7 @@ import { hasRagIngestPointsBudget, ragIngestPointsBudgetDeferUntil } from "../ra
 import { vectorWriteBackend } from "../vector-store/qdrant-write";
 import { politeFetchText } from "../web-sources/http";
 import { timeSync, yieldEventLoop } from "../slow-sync-guard";
+import { shouldDeferRagIngestDuringRth } from "../sqlite-event-loop";
 import { parseFilingHtml } from "../web-sources/sec-parser";
 import { ingestCompanyFacts, parseAndSaveForm4 } from "../web-sources/sec-facts";
 import { storeDocument, classifyEmbedFailure } from "../vector-db";
@@ -95,6 +96,7 @@ export class SecIngestWorker {
       // skips ticks, so an Admin > Operations flip resumes ingest within one interval + knob-cache
       // TTL — no redeploy.  Cheap: the knob read is cached (~15s) between ticks.
       if (!secIngestWorkerEnabled()) return;
+      if (process.env.NODE_ENV !== "test" && shouldDeferRagIngestDuringRth()) return;
       if (this.tickInFlight) return;
       this.tickInFlight = true;
       void this.runTick()
@@ -115,10 +117,14 @@ export class SecIngestWorker {
 
   /** One polling pass. Public (like `processTask`) so tests can drive a single tick
    *  deterministically instead of racing the 5s interval. */
-  async runTick() {
+  async runTick(options?: { allowRth?: boolean }) {
     // Live b3b83913: 78 ftsMirrorSlice ticks (6–13s) starved gather/Green.  Do not claim
     // more ingest / FTS work while a Manual Run once or strategy run is on this loop.
     if (hasInFlightStrategyWork()) return;
+
+    // Defend event loop during active market hours (RTH). Multi-megabyte SEC HTML parsing
+    // and vector embedding pin the Node thread, delaying quote cascades and trade execution.
+    if (!options?.allowRth && process.env.NODE_ENV !== "test" && shouldDeferRagIngestDuringRth()) return;
 
     // Monthly write-unit PACE guard. This queue IS the bulk/backfill lane, so it is the one
     // producer the pace guard throttles: when the month-end projection exceeds
@@ -279,11 +285,14 @@ export class SecIngestWorker {
       if (documentName.endsWith(".xml")) {
         sections = [{ itemCode: "0", itemTitle: "XML Document", text: content }];
       } else {
+        // Yield before and after heavy Cheerio parsing so I/O, health checks, and timers can breathe
+        await yieldEventLoop();
         // Form-aware title canonicalization: only a proven 10-K gets the 10-K
         // Item-code -> title map; other forms keep raw parsed titles.
         const parsed = parseFilingHtml(content, {
           formType: typeof task.payload.docType === "string" ? task.payload.docType : undefined
         });
+        await yieldEventLoop();
         sections = parsed.sections;
       }
       await writeLocalArtifact(task.cik, task.accession, sequence, "sections.json", JSON.stringify(sections));

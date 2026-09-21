@@ -122,6 +122,9 @@ export async function reconcileManagedVectorRecordsIfDue(now = Date.now()): Prom
 
   const run = (async (): Promise<ManagedVectorReconcileRun | null> => {
     try {
+      // Defer heavy whole-index vector inventory during Regular Trading Hours (RTH):
+      if (process.env.NODE_ENV !== "test" && shouldDeferRagIngestDuringRth(new Date(now))) return null;
+
       // Live `9d71dda4`: thousands of Pinecone list/fetch ran in the same
       // window as gather.  Pause whole-index inventory while a run/request is
       // queued or running.  Do not consume the attempt marker so the next

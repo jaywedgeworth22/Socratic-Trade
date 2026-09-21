@@ -507,10 +507,46 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+/** Tokens that look like a ticker (all-caps 1-10 chars) but are actually system identifiers
+ *  that should never be linked to a symbol drilldown drawer.  `symbolFromTitle` skips every
+ *  match in this set so an alert titled "Usage limit hit: openrouter RAG ingest hit daily
+ *  cap" no longer surfaces a "RAG" symbol button that opens a phantom SymbolDrilldown for
+ *  the AI feature.  Includes LLM/data-provider names that share the casing pattern of real
+ *  tickers (RAG, FMP, VOYAGE, OPENROUTER, ALPACA, TRADIER) and common infra acronyms
+ *  (API, DB, CPU, GPU, MCP, LLM, HTTP, URL, SQL, SSH, TLS, VPN, CDN, AWS, GCP, AZ).
+ *  Exported so the alerts console can render a non-clickable Chip for the same set
+ *  (alert-center.tsx: renderSymbolChip). */
+export const SYSTEM_SYMBOLS: ReadonlySet<string> = new Set([
+  // The AI feature itself (Retrieval-Augmented Generation) — surfaced as "RAG" in alerts.
+  "RAG",
+  // Data + AI provider / service names
+  "FMP", "ALPACA", "ALPAC", "TRADIER", "POLYGON", "VOYAGE", "OPENROUTER",
+  "OPENAI", "ANTHROPIC", "GEMINI", "COHERE", "MISTRAL", "DEEPSEEK",
+  // Infra acronyms that would otherwise be rendered as if they were tickers
+  "API", "DB", "CPU", "GPU", "RAM", "MCP", "LLM", "HTTP", "HTTPS",
+  "URL", "URI", "SQL", "SSH", "TLS", "SSL", "VPN", "CDN", "AWS", "GCP", "AZ"
+]);
+
+/** True when `value` is a system identifier that must never be treated as a tradable symbol.
+ *  Returns false for undefined / empty / lowercase / numeric input. */
+export function isSystemSymbol(value: string | undefined | null): value is string {
+  if (!value) return false;
+  const upper = value.trim().toUpperCase();
+  if (!upper) return false;
+  return SYSTEM_SYMBOLS.has(upper);
+}
+
 function symbolFromTitle(title?: string): string | undefined {
   if (!title) return undefined;
-  const match = title.match(/\b[A-Z][A-Z0-9.-]{0,9}\b/);
-  return match?.[0];
+  // Pull every all-caps token 1-10 chars and pick the first one that isn't a known system
+  // identifier.  A naive single-match regex used to swallow "RAG" from the RAG-ingest alert
+  // title and route the user into a phantom SymbolDrilldown for the AI feature.
+  const matches = title.match(/\b[A-Z][A-Z0-9.-]{0,9}\b/g);
+  if (!matches) return undefined;
+  for (const candidate of matches) {
+    if (!isSystemSymbol(candidate)) return candidate;
+  }
+  return undefined;
 }
 
 function normalizeSymbol(symbol?: string): string | undefined {

@@ -952,7 +952,7 @@ struct AccountSettingsView: View {
                 }
                 .accessibilityHint("Opens the website in Safari")
             }
-            Link("Open Connections", destination: URL(string: "https://socratictrade.com/console/connections")!)
+            Link("Open Connections", destination: MobileAPIClient.configuredBaseURL.appendingPathComponent("console/connections"))
         }
     }
 
@@ -1012,8 +1012,8 @@ struct AccountSettingsView: View {
     private var legalSection: some View {
         Section {
             LabeledContent("Notice", value: "Not investment advice.  You set authority.")
-            Link("Terms", destination: URL(string: "https://socratictrade.com/terms-and-conditions")!)
-            Link("Privacy", destination: URL(string: "https://socratictrade.com/privacy-policy")!)
+            Link("Terms", destination: MobileAPIClient.configuredBaseURL.appendingPathComponent("terms-and-conditions"))
+            Link("Privacy", destination: MobileAPIClient.configuredBaseURL.appendingPathComponent("privacy-policy"))
         } header: {
             Text("Legal")
         } footer: {

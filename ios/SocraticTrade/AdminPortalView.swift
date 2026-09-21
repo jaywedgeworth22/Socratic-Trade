@@ -230,14 +230,14 @@ enum AdminPortalPage: String, CaseIterable, Identifiable, Hashable {
     }
 
     var pageURL: URL {
-        URL(string: "https://socratictrade.com\(path)")!
+        URL(string: MobileAPIClient.configuredBaseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + (path.hasPrefix("/") ? path : "/" + path))!
     }
 }
 
 // Internal (not private) so the unit suite can pin the navigation fence.
 struct AdminPortalWebView: UIViewRepresentable {
-    static let portalURL = URL(string: "https://socratictrade.com/admin")!
-    static let allowedHost = "socratictrade.com"
+    static var portalURL: URL { MobileAPIClient.configuredBaseURL.appendingPathComponent("admin") }
+    static var allowedHost: String { MobileAPIClient.configuredBaseURL.host ?? "socratictrade.com" }
     static let nativeMessageName = "socraticNative"
 
     var pageURL: URL
@@ -460,10 +460,10 @@ struct AdminPortalWebView: UIViewRepresentable {
             webView?.load(URLRequest(url: url))
         }
 
-        /// Main-frame: https + socratictrade.com + /admin (or the session-expiry bounce).
+        /// Main-frame: configured scheme + host + /admin (or the session-expiry bounce).
         /// Subframes / assets: any same-host path so `/_next` and `/api/*` can load.
         static func isAllowed(_ url: URL, isMainFrame: Bool = true) -> Bool {
-            guard url.scheme == "https", url.host == AdminPortalWebView.allowedHost else { return false }
+            guard url.scheme == MobileAPIClient.configuredBaseURL.scheme, url.host == AdminPortalWebView.allowedHost else { return false }
             if !isMainFrame { return true }
             let path = url.path
             if path == "/admin" || path.hasPrefix("/admin/") { return true }

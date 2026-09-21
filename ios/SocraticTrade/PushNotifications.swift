@@ -251,7 +251,7 @@ final class PushNotificationCoordinator: NSObject, ObservableObject {
     /// Guards the one-time prompt so re-entering Proposals does not re-ask.
     private var hasRequestedAuthorizationThisLaunch = false
 
-    init(client: MobileAPIClient = MobileAPIClient(baseURL: MobileAPIClient.productionBaseURL)) {
+    init(client: MobileAPIClient = MobileAPIClient(baseURL: MobileAPIClient.configuredBaseURL)) {
         self.client = client
         super.init()
     }

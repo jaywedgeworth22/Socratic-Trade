@@ -4,7 +4,7 @@ import Foundation
 extension MobileStore {
     static var preview: MobileStore {
         MobileStore(
-            client: MobileAPIClient(baseURL: URL(string: "https://socratictrade.com")!),
+            client: MobileAPIClient(baseURL: MobileAPIClient.configuredBaseURL),
             previewSnapshot: PreviewFixtures.snapshot
         )
     }

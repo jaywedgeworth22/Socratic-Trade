@@ -58,7 +58,13 @@ struct MobileAPIClient {
     /// The one origin this app talks to.  Shared so the push coordinator (which cannot be
     /// handed the store's client) targets the same host — and therefore the same
     /// `HTTPCookieStorage.shared` session — instead of a second hardcoded string that can drift.
-    static let productionBaseURL = URL(string: "https://socratictrade.com")!
+    static var configuredBaseURL: URL {
+        guard let urlString = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String,
+              let url = URL(string: urlString) else {
+            return URL(string: "https://socratictrade.com")!
+        }
+        return url
+    }
 
     let baseURL: URL
     var session: URLSession = .shared

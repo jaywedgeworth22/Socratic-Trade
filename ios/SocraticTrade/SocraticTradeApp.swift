@@ -22,7 +22,7 @@ struct SocraticTradeApp: App {
         #if DEBUG
         if isScreenshotMode { return MobileStore.preview }
         #endif
-        return MobileStore(client: MobileAPIClient(baseURL: MobileAPIClient.productionBaseURL))
+        return MobileStore(client: MobileAPIClient(baseURL: MobileAPIClient.configuredBaseURL))
     }
 
     init() {
@@ -233,8 +233,8 @@ struct LegalConsentSheet: View {
                     .foregroundStyle(.secondary)
 
                 HStack(spacing: 16) {
-                    Link("Terms", destination: URL(string: "https://socratictrade.com/terms-and-conditions")!)
-                    Link("Privacy", destination: URL(string: "https://socratictrade.com/privacy-policy")!)
+                    Link("Terms", destination: MobileAPIClient.configuredBaseURL.appendingPathComponent("terms-and-conditions"))
+                    Link("Privacy", destination: MobileAPIClient.configuredBaseURL.appendingPathComponent("privacy-policy"))
                 }
                 .font(.appSubheadline)
 

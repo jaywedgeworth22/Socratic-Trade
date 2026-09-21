@@ -313,8 +313,8 @@ struct LoginView: View {
             .padding(.leading, -Self.lockOutdent)
 
             HStack(spacing: 16) {
-                Link("Terms", destination: URL(string: "https://socratictrade.com/terms-and-conditions")!)
-                Link("Privacy", destination: URL(string: "https://socratictrade.com/privacy-policy")!)
+                Link("Terms", destination: MobileAPIClient.configuredBaseURL.appendingPathComponent("terms-and-conditions"))
+                Link("Privacy", destination: MobileAPIClient.configuredBaseURL.appendingPathComponent("privacy-policy"))
             }
             .font(.system(size: 10))
             // A Link is a Button underneath, so it picked up the same bordered system style
@@ -380,7 +380,7 @@ struct LoginView: View {
             store.error = "Could not securely start web sign-in.  Try again."
             return
         }
-        guard var callbackComponents = URLComponents(string: "https://socratictrade.com/api/mobile/auth-redirect") else {
+        guard var callbackComponents = URLComponents(url: MobileAPIClient.configuredBaseURL.appendingPathComponent("api/mobile/auth-redirect"), resolvingAgainstBaseURL: false) else {
             store.error = "Could not prepare web sign-in."
             return
         }
@@ -392,7 +392,7 @@ struct LoginView: View {
         // on /access-denied?error=Configuration (middleware translates it for older
         // builds; new builds go straight to the initiator).
         guard let callbackURL = callbackComponents.url,
-              var components = URLComponents(string: "https://socratictrade.com/api/mobile/auth-start") else {
+              var components = URLComponents(url: MobileAPIClient.configuredBaseURL.appendingPathComponent("api/mobile/auth-start"), resolvingAgainstBaseURL: false) else {
             store.error = "Could not prepare web sign-in."
             return
         }
@@ -647,7 +647,7 @@ private final class WebAuthContextProvider: NSObject, ASWebAuthenticationPresent
 #Preview("Login") {
     LoginView()
         .environmentObject(
-            MobileStore(client: MobileAPIClient(baseURL: URL(string: "https://socratictrade.com")!))
+            MobileStore(client: MobileAPIClient(baseURL: MobileAPIClient.configuredBaseURL))
         )
 }
 #endif

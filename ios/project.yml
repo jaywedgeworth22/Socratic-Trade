@@ -15,7 +15,13 @@ options:
 
 settings:
   base:
-    SWIFT_VERSION: "5.9"
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+  configs:
+    Debug:
+      API_BASE_URL: "http://127.0.0.1:8792"
+    Release:
+      API_BASE_URL: "https://socratictrade.com"
     # RECORD OF WHAT SHIPPED, not the source of truth for what ships next.
     # The ship script passes MARKETING_VERSION / CURRENT_PROJECT_VERSION on the
     # xcodebuild command line, so these values never decide a build; App Store
@@ -90,6 +96,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         SENTRY_DSN: $(SENTRY_DSN)
+        API_BASE_URL: $(API_BASE_URL)
         CFBundleDisplayName: Socratic Trade
         LSApplicationCategoryType: public.app-category.finance
         ITSAppUsesNonExemptEncryption: false

@@ -32,6 +32,10 @@ import type { Provider } from "next-auth/providers";
 import { canonicalizeLegacyAuthEnv } from "../public-origin";
 import { isAppleWebAuthConfigured, resolveAppleClientSecret } from "./apple-web";
 import { normalizeAuthEmail, selectVerifiedGitHubEmail, type GitHubEmail } from "./github-email";
+import { cookies } from "next/headers";
+import { getDrizzle } from "../db/client";
+import { sessions } from "../db/schema";
+import { randomUUID } from "node:crypto";
 import { decodeSessionToken, encodeSessionToken } from "./session-token";
 
 type EmailProfile = Profile & {
@@ -193,7 +197,35 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (account?.provider) token.loginProvider = account.provider;
       // Bind account recreation to an actual provider sign-in, not JWT rolling refresh. The
       // middleware forwards this trusted claim so a pre-deletion cookie cannot clear a tombstone.
-      if (account?.provider) token.loginAt = Date.now();
+
+      if (account?.provider) {
+        token.loginAt = Date.now();
+        token.sessionId = randomUUID();
+        let mobileNonce = null;
+        try {
+          const cookieStore = await cookies();
+          const challenge = cookieStore.get("__Secure-mobile-challenge");
+          if (challenge?.value) {
+            mobileNonce = challenge.value;
+            cookieStore.delete("__Secure-mobile-challenge");
+          }
+        } catch (err) {}
+        
+        try {
+          const db = getDrizzle();
+          const expiresAt = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
+          db.insert(sessions).values({
+            id: token.sessionId,
+            email: token.email || "unknown",
+            created_at: new Date().toISOString(),
+            expires_at: expiresAt.toString(),
+            mobile_nonce: mobileNonce
+          }).run();
+        } catch (err) {
+          console.error("Failed to insert session", err);
+        }
+      }
+
       return token;
     },
     // Expose display identity on the `session` object returned by `auth()`.

@@ -14,6 +14,9 @@ import {
   AUTHENTICATED_SESSION_ISSUED_AT_HEADER
 } from "./auth/strip-identity";
 import { resolveAuthenticatedAccountGeneration } from "./user-write-fence";
+import { getDrizzle } from "./db/client";
+import { sessions } from "./db/schema";
+import { eq } from "drizzle-orm";
 
 /** Header set by middleware after resolving identity. Client-supplied copies are stripped first. */
 export const AUTHENTICATED_EMAIL_HEADER = "x-authenticated-user-email";
@@ -50,6 +53,22 @@ export function resolveRequestUser(request: Request): ResolvedRequestUser {
   const email = request.headers.get(AUTHENTICATED_EMAIL_HEADER);
   const identitySource = request.headers.get(AUTHENTICATED_IDENTITY_SOURCE_HEADER);
   assertIdentityAllowedInLiveBootstrap(email, identitySource);
+
+  const sessionId = request.headers.get("x-authenticated-session-id");
+  if (sessionId) {
+    try {
+      const db = getDrizzle();
+      const record = db.select().from(sessions).where(eq(sessions.id, sessionId)).get();
+      if (!record || record.revoked_at) {
+        // Session missing or revoked
+        return { userId: DEFAULT_REQUEST_USER_ID };
+      }
+    } catch {
+      // db error, fail closed
+      return { userId: DEFAULT_REQUEST_USER_ID };
+    }
+  }
+
   const resolved = resolveRequestUserFromEmail(email);
   const issuedAt = request.headers.get(AUTHENTICATED_SESSION_ISSUED_AT_HEADER);
   if (

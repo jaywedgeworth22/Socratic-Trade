@@ -29,3 +29,12 @@ export const marketDataDemands = sqliteTable("market_data_demands", {
 }, (t) => [
   unique().on(t.kind, t.symbol, t.user_id)
 ]);
+
+export const sessions = sqliteTable("sessions", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull(),
+  created_at: text("created_at").notNull(),
+  expires_at: text("expires_at").notNull(),
+  revoked_at: text("revoked_at"),
+  mobile_nonce: text("mobile_nonce"),
+});

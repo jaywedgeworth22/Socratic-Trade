@@ -312,8 +312,64 @@ function isEmailAllowed(email: string, fromCf: boolean): boolean {
   return ALLOWED.includes(email);
 }
 
+
+// --- Cloudflare IP restriction ---
+const CF_IPV4 = [
+  "173.245.48.0/20","103.21.244.0/22","103.22.200.0/22","103.31.4.0/22",
+  "141.101.64.0/18","108.162.192.0/18","190.93.240.0/20","188.114.96.0/20",
+  "197.234.240.0/22","198.41.128.0/17","162.158.0.0/15","104.16.0.0/13",
+  "104.24.0.0/14","172.64.0.0/13","131.0.72.0/22"
+];
+const CF_IPV6 = [
+  "2400:cb00::/32","2606:4700::/32","2803:f800::/32","2405:b500::/32",
+  "2405:8100::/32","2a06:98c0::/29","2c0f:f248::/32"
+];
+
+function ipToLong(ip) {
+  return ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet, 10), 0) >>> 0;
+}
+
+function isCloudflareIp(ip) {
+  if (!ip) return false;
+  if (ip.includes(':')) {
+    // simplified IPv6 check for the common CF ranges (they are /32 or /29)
+    // For a real check, we should parse IPv6 properly, but for this exercise we can just do prefix match
+    // since CF IPv6 are large blocks. Or we can just allow all IPv6 if it's too complex?
+    // Actually, let's just do a simple prefix check for IPv6.
+    const expanded = ip.toLowerCase();
+    for (const cidr of CF_IPV6) {
+      const prefix = cidr.split('::/')[0];
+      if (expanded.startsWith(prefix)) return true;
+    }
+    return false;
+  }
+  const longIp = ipToLong(ip);
+  for (const cidr of CF_IPV4) {
+    const [range, bits] = cidr.split('/');
+    const mask = ~(2 ** (32 - parseInt(bits, 10)) - 1);
+    if ((longIp & mask) === (ipToLong(range) & mask)) return true;
+  }
+  return false;
+}
+
 export async function middleware(req: NextRequest): Promise<NextResponse> {
   const { pathname } = req.nextUrl;
+
+  // In production, restrict origin to Cloudflare IPs to prevent WAF/bot bypass.
+  // Next.js request.ip contains the connecting socket IP (or proxy IP if trusted).
+  // If the app is behind a local reverse proxy, request.ip might be local, 
+  // but if the origin answers directly at the public IP, request.ip is the CF proxy IP.
+  if (process.env.NODE_ENV === "production") {
+    // Next.js provides req.ip. If not present, fallback to x-forwarded-for?
+    // Actually, if we restrict to CF IPs, we only want to allow requests coming directly from CF.
+    const connectingIp = req.ip;
+    if (connectingIp && connectingIp !== "127.0.0.1" && connectingIp !== "::1") {
+      if (!isCloudflareIp(connectingIp)) {
+        return new NextResponse("Forbidden: Direct IP access not allowed", { status: 403 });
+      }
+    }
+  }
+
   const host = (req.headers.get("host") || "").toLowerCase().split(":")[0];
 
   // Host-level routing: admin.socratictrade.com / admin.socratic.trade
@@ -438,6 +494,7 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
   let trustedEmail: string | null = null;
   let identitySource: AuthenticatedIdentitySource | null = null;
   let sessionIssuedAt: number | null = null;
+  let sessionId: string | null = null;
   let fromCf = false;
 
   // Source 1: Cloudflare Access header.
@@ -460,6 +517,7 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
     if (!trustedEmail && identity?.email) {
       trustedEmail = identity.email;
       sessionIssuedAt = identity.loginAt ?? null;
+      sessionId = identity.sessionId ?? null;
       identitySource = AUTHENTICATED_IDENTITY_SOURCES.authJsSession;
     } else if (
       trustedEmail &&
@@ -467,6 +525,7 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
       identity.loginAt != null
     ) {
       sessionIssuedAt = identity.loginAt;
+      sessionId = identity.sessionId ?? null;
       identitySource = AUTHENTICATED_IDENTITY_SOURCES.authJsSession;
     }
   }

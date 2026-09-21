@@ -2,6 +2,7 @@ import { signIn } from "@/lib/auth/auth";
 import { sameOriginCallback } from "@/lib/mobile-auth-start";
 import { resolvePublicAppOrigin } from "@/lib/public-origin";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -36,6 +37,10 @@ export async function GET(request: Request) {
   // (client-influenceable) — see src/lib/mobile-auth-start.ts.
   const origin = resolvePublicAppOrigin(request);
   const provider = url.searchParams.get("provider") ?? "";
+  const codeChallenge = new URL(callbackUrl).searchParams.get("code_challenge");
+  if (codeChallenge) {
+    (await cookies()).set("__Secure-mobile-challenge", codeChallenge, { httpOnly: true, secure: process.env.NODE_ENV === "production", path: "/", maxAge: 600 });
+  }
   const callbackUrl = sameOriginCallback(url.searchParams.get("callbackUrl"), origin);
   const loginFallback = new URL(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`, origin);
 

@@ -3267,6 +3267,24 @@ const MIGRATIONS: Migration[] = [
       );
     }
   }
+,
+  {
+    version: 89,
+    name: "create_sessions_table",
+    up: (database) => {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS sessions (
+          id TEXT PRIMARY KEY,
+          email TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          revoked_at TEXT,
+          mobile_nonce TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_sessions_email ON sessions (email);
+      `);
+    }
+  }
 ];
 
 /**

@@ -2,6 +2,10 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { pickSessionCookie } from "@/lib/auth/session-cookie-names";
 import { createMobileAuthHandoff } from "@/lib/mobile-auth-handoff";
+import { decodeSessionToken } from "@/lib/auth/session-token";
+import { getDrizzle } from "@/lib/db/client";
+import { sessions } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 
 export const runtime = "nodejs";
 
@@ -25,6 +29,34 @@ export async function GET(request: Request) {
     errorCallback.searchParams.set("error", "MobileAuthFailed");
     return NextResponse.redirect(errorCallback);
   }
+
+  const authSecret = process.env.AUTH_SECRET || "";
+  let payload = null;
+  try {
+    payload = await decodeSessionToken({ token: sessionCookie.value, secret: authSecret, salt: sessionCookie.name });
+  } catch {}
+  
+  if (!payload || !payload.sessionId) {
+    const errorCallback = new URL("socratictrade://auth");
+    errorCallback.searchParams.set("error", "MobileAuthFailed");
+    return NextResponse.redirect(errorCallback);
+  }
+  
+  let validChallenge = false;
+  try {
+    const db = getDrizzle();
+    const record = db.select().from(sessions).where(eq(sessions.id, payload.sessionId)).get();
+    if (record && !record.revoked_at && record.mobile_nonce === codeChallenge) {
+      validChallenge = true;
+    }
+  } catch {}
+
+  if (!validChallenge) {
+    const errorCallback = new URL("socratictrade://auth");
+    errorCallback.searchParams.set("error", "MobileAuthInvalidCallback");
+    return NextResponse.redirect(errorCallback);
+  }
+
 
   const code = createMobileAuthHandoff({
     sessionToken: sessionCookie.value,

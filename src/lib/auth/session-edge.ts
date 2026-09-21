@@ -14,6 +14,7 @@ export interface VerifiedSessionIdentity {
   email: string;
   /** Explicit login callback time in milliseconds; unlike JWT iat, this is not rolled on refresh. */
   loginAt?: number;
+  sessionId?: string;
 }
 
 /**
@@ -64,10 +65,12 @@ export async function getSessionIdentity(
     const payload = await decodeSessionToken({ token, secret: authSecret, salt });
     const email = payload?.email;
     const loginAt = payload?.loginAt;
+    const sessionId = payload?.sessionId;
     if (typeof email === "string" && email.includes("@")) {
       return {
         email: email.trim().toLowerCase(),
-        ...(typeof loginAt === "number" && Number.isFinite(loginAt) ? { loginAt } : {})
+        ...(typeof loginAt === "number" && Number.isFinite(loginAt) ? { loginAt } : {}),
+        ...(typeof sessionId === "string" ? { sessionId } : {})
       };
     }
     return null;

@@ -19,6 +19,7 @@ export async function POST(request: Request) {
     const body = await readJsonWithLimit(request, APPLE_AUTH_MAX_BYTES);
     const identityToken = (body as { identityToken?: unknown })?.identityToken;
     const name = (body as { name?: unknown })?.name;
+    const nonce = (body as { nonce?: unknown })?.nonce;
 
     if (!identityToken || typeof identityToken !== "string") {
       return NextResponse.json({ error: "Missing or invalid identityToken" }, { status: 400 });
@@ -29,6 +30,12 @@ export async function POST(request: Request) {
       audience: resolveAppleClientIds()
     });
 
+    if (typeof nonce === "string" && nonce.trim() !== "") {
+      const expectedNonce = require("node:crypto").createHash("sha256").update(nonce).digest("hex");
+      if (payload.nonce !== expectedNonce && payload.nonce !== nonce) {
+        return NextResponse.json({ error: "Nonce mismatch." }, { status: 400 });
+      }
+    }
     const email = payload.email as string | undefined;
     if (!email) {
       return NextResponse.json({ error: "Apple token did not contain an email address." }, { status: 400 });

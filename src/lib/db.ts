@@ -3266,6 +3266,16 @@ const MIGRATIONS: Migration[] = [
            ON document_chunks_fts_index (symbol, source, accession)`
       );
     }
+  },
+  {
+    version: 89,
+    name: "audit_events_kind_created_at",
+    up: (database) => {
+      if (!tableExists(database, "audit_events")) return;
+      database.exec(
+        `CREATE INDEX IF NOT EXISTS idx_audit_events_kind_created_at ON audit_events (kind, created_at DESC)`
+      );
+    }
   }
 ];
 

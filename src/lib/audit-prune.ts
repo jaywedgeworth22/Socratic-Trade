@@ -60,6 +60,7 @@ export interface AuditPruneResult {
   embedStageExpired: number;
   /** embed_stage rows removed oldest-first by the defensive 2 GiB size cap (one audit row). */
   embedStageCapPruned: number;
+  portfolioSnapshots: number;
 }
 
 export function pruneAuditEvents(now: Date = new Date(), batchLimit: number = AUDIT_PRUNE_BATCH_LIMIT): AuditPruneResult {
@@ -75,7 +76,8 @@ export function pruneAuditEvents(now: Date = new Date(), batchLimit: number = AU
     providerDispatch: 0,
     providerOutbox: 0,
     embedStageExpired: 0,
-    embedStageCapPruned: 0
+    embedStageCapPruned: 0,
+    portfolioSnapshots: 0
   };
 
   result.auditObservability = db
@@ -107,6 +109,14 @@ export function pruneAuditEvents(now: Date = new Date(), batchLimit: number = AU
     result.providerOutbox = db
       .prepare(`DELETE FROM provider_usage_outbox WHERE id IN (SELECT id FROM provider_usage_outbox WHERE created_at < ? LIMIT ?)`)
       .run(provCutoff, remaining).changes;
+    remaining -= result.providerOutbox;
+  }
+  if (remaining > 0) {
+    // portfolio_snapshots are kept for AUDIT_PRUNE_DEFAULT_DAYS since they are needed for trading performance evaluation
+    result.portfolioSnapshots = db
+      .prepare(`DELETE FROM portfolio_snapshots WHERE id IN (SELECT id FROM portfolio_snapshots WHERE created_at < ? LIMIT ?)`)
+      .run(defCutoff, remaining).changes;
+    remaining -= result.portfolioSnapshots;
   }
 
   // embed_stage retention + defensive size cap (db-embed-stage.ts). Steady state deletes

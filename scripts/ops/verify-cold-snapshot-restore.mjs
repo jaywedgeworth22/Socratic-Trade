@@ -134,7 +134,22 @@ function signedRequest(cfg, method, key, query) {
   };
 }
 
-function loadConfig(env) {
+function loadConfig(env, provider) {
+  if (provider === "b2") {
+    const bucket = env.AWS_S3_BUCKET_NAME?.trim() ?? "";
+    const endpoint = env.AWS_S3_ENDPOINT?.trim() ?? "";
+    const accessKeyId = env.AWS_ACCESS_KEY_ID?.trim() ?? "";
+    const secretAccessKey = env.AWS_SECRET_ACCESS_KEY?.trim() ?? "";
+    if (!bucket || !endpoint || !accessKeyId || !secretAccessKey) return null;
+    return {
+      bucket,
+      host: endpoint.replace(/^https?:\/\//, "").replace(/\/+$/, ""),
+      region: env.AWS_REGION?.trim() || "auto",
+      accessKeyId,
+      secretAccessKey,
+      provider
+    };
+  }
   const bucket = env.AWS_R2_HISTORIC_BUCKET_NAME?.trim() ?? "";
   const endpoint = env.AWS_R2_HISTORIC_ENDPOINT?.trim() ?? "";
   const accessKeyId = env.AWS_R2_HISTORIC_ACCESS_KEY_ID?.trim() ?? "";
@@ -146,14 +161,15 @@ function loadConfig(env) {
     region: env.AWS_R2_HISTORIC_REGION?.trim() || "auto",
     accessKeyId,
     secretAccessKey,
+    provider
   };
 }
 
-async function listKeys(cfg) {
+async function listKeys(cfg, prefix) {
   const objects = [];
   let continuation;
   for (let page = 0; page < 20; page++) {
-    const query = { "list-type": "2", prefix: COLD_SNAPSHOT_PREFIX };
+    const query = { "list-type": "2", prefix };
     if (continuation) query["continuation-token"] = continuation;
     const { url, headers } = signedRequest(cfg, "GET", null, query);
     const res = await fetch(url, { method: "GET", headers, signal: AbortSignal.timeout(CONTROL_TIMEOUT_MS) });

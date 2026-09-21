@@ -1,5 +1,28 @@
 # Current Status
 
+## 2026-09-21 codex-autofix — PR #3444 round 3: correct the head attribution for the green CI run
+
+Codex reviewed head `e892f938` and raised one new P1 against the round-2 rollout note: it said the
+green CI run was "on this head" while the same note identifies run `35597169588` as belonging to
+the **pre-merge** head and says verification on the new head still needs to rerun.  **Accepted -
+the finding is factually correct**, confirmed against the Actions API (`35597169588` ->
+headSha `60425558`; the merged head `e892f938` run `35613276167` was still pending).  Fix is
+documentation-only - no code, dependency, or lockfile change in this round.  `## Verification
+State` in the rollout note now lists CI results in a per-head table with an explicit `verify`
+conclusion column and states that a green run on a superseded head does not verify the head that
+replaced it; `## Round 2` item 3 no longer calls the green run one "on this head".  Round-cap
+check, measured over this PR's own commits (`git rev-list origin/main..HEAD`): **0** messages
+contain the literal `[codex-autofix]` marker; **1** (`4e2b806f`, the round-2 MUSE commit) mentions
+`codex-autofix` in its body without the bracketed marker.  Either way this is far under the cap of
+10.  (Full branch history contains ~62 such commits, but those live on `origin/main` and are not
+this PR's rounds.)  Branch was already level with
+`origin/main` (`git rev-list --count HEAD..origin/main` = 0), so no merge was needed.
+Local gate re-run in the mandated order on the round-3 tree: `npm run lint` exit 0 (821 problems /
+0 errors), `npx tsc --noEmit` exit 0, `npm test` 13 failed / 8156 passed / 51 skipped (748 files)
+- all 13 failures are the four known LLM-credential files and are environmental (this session
+exports `ANTHROPIC_API_KEY`; re-running just those four with the key unset gives 60/60 passed),
+`npm run build` exit 0.  Extra-ship no.  Rollout: `docs/rollouts/2026-09-21-vitest-5-0-1-bump.md`.
+
 ## 2026-09-21 MUSE — testing group vitest 5.0.1 bump, round-2 sweep (answer codex-autofix review)
 
 Round-2 of the PR #3444 lane.  The codex-autofix loop reviewed the round-1 push and raised three

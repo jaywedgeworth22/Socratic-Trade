@@ -59,7 +59,7 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
 
-      - uses: anthropics/claude-code-action@4036a180cf690f49529f5d8c79c998855287f590 # v1
+      - uses: anthropics/claude-code-action@7b0b255830a1fab6e602658672acad11c12d841d # v1
         # Routed to DeepSeek via its Anthropic-compatible endpoint to control cost:
         # this action drives the Claude Code CLI in a 60-turn loop, and on Opus 4.8
         # that was ~$15/day. The CLI honors ANTHROPIC_BASE_URL / _AUTH_TOKEN / _MODEL,

@@ -90,6 +90,51 @@ final class MobileModelsTests: XCTestCase {
         XCTAssertEqual(snapshot.readiness.systemState, "active")
     }
 
+    // 2026-09-20 MM (#3226): money-path collections (positions, orders, pendingProposals)
+    // must drop a malformed element (counted) instead of blanking the whole snapshot.  The
+    // drop marks `partialData = true` so the caller can refuse to render a confident view.
+    func testMalformedPositionDropsThatItemAndMarksPartial() throws {
+        let json = #"""
+        {"readiness":{"hasAccount":true,"hasUniverse":true,"systemState":"active","strategyAuthority":"decide","commandBacklog":{"queued":0,"running":0}},
+         "policy":{"systemState":"active","strategyAuthority":"decide"},
+         "positions":[
+            {"symbol":"AAPL","quantity":10,"marketValue":1500,"averageCost":100},
+            {"symbol":"NOT-A-POSITION","junk":true},
+            {"symbol":"GOOG","quantity":2,"marketValue":3000,"averageCost":1500}
+         ]}
+        """#
+        let snapshot = try JSONDecoder().decode(MobileSnapshot.self, from: Data(json.utf8))
+        // The well-formed items survive.
+        XCTAssertEqual(snapshot.positions.map(\.symbol), ["AAPL", "GOOG"])
+        // One item was dropped and the drop was counted.
+        XCTAssertEqual(snapshot.partialDropCounts.positions, 1)
+        XCTAssertTrue(snapshot.partialData)
+    }
+
+    func testAllMoneyPathCollectionsMalformedStillDecodes() throws {
+        // Every element of every money-path collection is broken.  The snapshot still
+        // decodes with empty arrays + partial-data flag set.
+        let json = #"""
+        {"readiness":{"hasAccount":true,"hasUniverse":true,"systemState":"active","strategyAuthority":"decide","commandBacklog":{"queued":0,"running":0}},
+         "policy":{"systemState":"active","strategyAuthority":"decide"},
+         "positions":[{"junk":1}],
+         "orders":[{"junk":2}],
+         "pendingProposals":[{"junk":3}]}
+        """#
+        let snapshot = try JSONDecoder().decode(MobileSnapshot.self, from: Data(json.utf8))
+        XCTAssertTrue(snapshot.positions.isEmpty)
+        XCTAssertTrue(snapshot.orders.isEmpty)
+        XCTAssertTrue(snapshot.pendingProposals.isEmpty)
+        XCTAssertEqual(snapshot.partialDropCounts.total, 3)
+        XCTAssertTrue(snapshot.partialData)
+    }
+
+    func testCleanSnapshotHasPartialDataFalse() throws {
+        let snapshot = try JSONDecoder().decode(MobileSnapshot.self, from: Data(fullSnapshotJSON.utf8))
+        XCTAssertFalse(snapshot.partialData)
+        XCTAssertEqual(snapshot.partialDropCounts.total, 0)
+    }
+
     func testMissingReadinessRejectsTheSnapshot() {
         let json = #"{"policy":{"systemState":"active","strategyAuthority":"decide"}}"#
         XCTAssertThrowsError(try JSONDecoder().decode(MobileSnapshot.self, from: Data(json.utf8)))

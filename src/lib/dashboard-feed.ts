@@ -531,8 +531,16 @@ function notificationSide(payload: Record<string, unknown>): string | undefined 
 
 function symbolFromTitle(title?: string): string | undefined {
   if (!title) return undefined;
-  const match = title.match(/\b[A-Z][A-Z0-9.-]{0,9}\b/);
-  return match?.[0];
+  // Same denylist filter as dashboard-ui.ts: never treat a system identifier (RAG, FMP,
+  // OPENROUTER, …) as a tradable symbol even though it matches the all-caps token regex.
+  // Reuses the exported SYSTEM_SYMBOLS + isSystemSymbol from dashboard-ui so the two feed
+  // paths cannot drift out of sync.
+  const matches = title.match(/\b[A-Z][A-Z0-9.-]{0,9}\b/g);
+  if (!matches) return undefined;
+  for (const candidate of matches) {
+    if (!isSystemSymbol(candidate)) return candidate;
+  }
+  return undefined;
 }
 
 function normalizeSymbol(symbol?: string): string | undefined {
@@ -831,7 +839,7 @@ function brokerOrderTitle(order: EquityOrder): string {
   return `Order Submitted: ${side} ${symbol}`;
 }
 
-import { feedStatusLabel, formatNotificationDisplay, notificationStatusLabel, notificationTypeLabel } from "./dashboard-ui";
+import { feedStatusLabel, formatNotificationDisplay, isSystemSymbol, notificationStatusLabel, notificationTypeLabel } from "./dashboard-ui";
 
 const KNOWN_GLOBAL_AUDIT_KINDS = new Set([
   "vector_store",

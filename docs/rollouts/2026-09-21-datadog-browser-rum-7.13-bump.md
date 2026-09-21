@@ -105,3 +105,18 @@ this build, so no restore was needed.
 ## Blockers
 
 - None.
+
+## Round 2 — MUSE PR-merge sweep (2026-09-21)
+
+Codex's remaining P1 on this PR was that the round-1 commit message described only the
+dependency bump and never referenced the handoff files it added (`STATUS.md`, `docs/EFFORT-LOG.md`,
+`PLAN.md`, this note).  Two-part response: (a) this round's commit message enumerates the updated
+docs explicitly, and (b) the squash-merge message will keep that enumeration so the permanent
+history names every handoff file, per the AGENTS.md requirement that every commit message
+identify which docs were updated.
+
+This round also merges current `origin/main` (picks up #3445 jose 6.2.12, #3426, #3427).  The merge
+auto-resolved cleanly; `@datadog/browser-rum` is verified at `^7.13.0` (lock 7.13.0) in the merged
+`package.json` / `package-lock.json`.  Documentation + main-merge only — no dependency or source
+change beyond the merge, so no local re-run of the lint/tsc/test/build gates; the required
+`verify` CI check re-runs on push and is the authoritative gate.  Extra-ship no.  No Coolify Deploy.

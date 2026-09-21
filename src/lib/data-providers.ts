@@ -254,6 +254,13 @@ export type EnrichmentSourcedField =
   | "price"
   | "bid"
   | "ask"
+  | "bidSize"
+  | "askSize"
+  | "prevClose"
+  | "open"
+  | "high"
+  | "low"
+  | "netChange"
   | "intradayChangePct"
   | "vwap"
   | "asOf"
@@ -1706,6 +1713,13 @@ export class CascadingEnrichmentProvider implements MarketEnrichmentProvider {
         takeScalar("price", name, r.price);
         takeScalar("bid", name, r.bid);
         takeScalar("ask", name, r.ask);
+        takeScalar("bidSize", name, r.bidSize);
+        takeScalar("askSize", name, r.askSize);
+        takeScalar("prevClose", name, r.prevClose);
+        takeScalar("open", name, r.open);
+        takeScalar("high", name, r.high);
+        takeScalar("low", name, r.low);
+        takeScalar("netChange", name, r.netChange);
         takeScalar("intradayChangePct", name, r.intradayChangePct);
         takeScalar("vwap", name, r.vwap);
         takeScalar("asOf", name, r.asOf);
@@ -1979,6 +1993,13 @@ const EMPTY_SOURCED: Record<EnrichmentSourcedField, true> = {
   price: true,
   bid: true,
   ask: true,
+  bidSize: true,
+  askSize: true,
+  prevClose: true,
+  open: true,
+  high: true,
+  low: true,
+  netChange: true,
   intradayChangePct: true,
   vwap: true,
   asOf: true,

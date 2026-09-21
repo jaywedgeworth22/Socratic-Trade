@@ -145,6 +145,56 @@ describe("cascade merge provenance stamps", () => {
   });
 });
 
+describe("cascade merge arbitrates the new quote fields", () => {
+  it("takeScalars bidSize/askSize/prevClose/open/high/low/netChange with source + observations", async () => {
+    // Codex P1 review on #3449: these fields were populated by providers but
+    // dropped by the cascade merge (never takeScalar'd). They must reach the
+    // merged enrichment with per-field source and observations.
+    const provider: MarketEnrichmentProvider = {
+      name: "test-quote-provider",
+      configured: true,
+      async enrich() {
+        const data: Record<string, SymbolEnrichment> = {
+          AAPL: {
+            price: 150,
+            bid: 149.9,
+            ask: 150.1,
+            bidSize: 100,
+            askSize: 200,
+            prevClose: 148,
+            open: 149,
+            high: 151,
+            low: 147.5,
+            netChange: 2,
+            asOf: "2026-09-21T14:00:00.000Z"
+          }
+        };
+        return data;
+      }
+    };
+
+    const { CascadingEnrichmentProvider } = await import("../src/lib/data-providers");
+    const cascade = new CascadingEnrichmentProvider([provider]);
+    const merged = await cascade.enrich(["AAPL"]);
+
+    for (const field of ["bidSize", "askSize", "prevClose", "open", "high", "low", "netChange"] as const) {
+      expect((merged.AAPL as any)[field]).toBeDefined();
+      expect(merged.AAPL.sources?.[field]).toBe("test-quote-provider");
+      expect(merged.AAPL.fieldObservations?.[field]?.source).toBe("test-quote-provider");
+      expect(merged.AAPL.fieldObservations?.[field]?.fetchedAt).toBeTruthy();
+    }
+    expect(merged.AAPL.bidSize).toBe(100);
+    expect(merged.AAPL.askSize).toBe(200);
+    expect(merged.AAPL.prevClose).toBe(148);
+    expect(merged.AAPL.open).toBe(149);
+    expect(merged.AAPL.high).toBe(151);
+    expect(merged.AAPL.low).toBe(147.5);
+    expect(merged.AAPL.netChange).toBe(2);
+    // Provider-supplied asOf is preserved on the observations (not fabricated).
+    expect(merged.AAPL.fieldObservations?.prevClose?.asOf).toBe("2026-09-21T14:00:00.000Z");
+  });
+});
+
 describe("cascade merge preserves provider-supplied asOf", () => {
   it("carries a provider fieldDates / record asOf through to the observation instead of the cascade clock", async () => {
     const dir = mkdtempSync(join(tmpdir(), `prov-cascade-asof-${randomUUID()}-`));

@@ -1664,6 +1664,13 @@ export function applyEnrichment(quote: MarketQuote, extra: SymbolEnrichment): Ma
     price: extra.price && extra.price > 0 ? extra.price : quote.price,
     bid: enrichmentBid ? extra.bid : quote.bid,
     ask: enrichmentAsk ? extra.ask : quote.ask,
+    bidSize: extra.bidSize && extra.bidSize > 0 ? extra.bidSize : quote.bidSize,
+    askSize: extra.askSize && extra.askSize > 0 ? extra.askSize : quote.askSize,
+    prevClose: extra.prevClose && extra.prevClose > 0 ? extra.prevClose : quote.prevClose,
+    open: extra.open && extra.open > 0 ? extra.open : quote.open,
+    high: extra.high && extra.high > 0 ? extra.high : quote.high,
+    low: extra.low && extra.low > 0 ? extra.low : quote.low,
+    netChange: typeof extra.netChange === "number" ? extra.netChange : quote.netChange,
     // Enrichment providers supply REAL bid/ask (exchange/broker); clear the synthetic flag when they
     // override a side. When enrichment doesn't provide bid/ask, the original flag is preserved by spread.
     syntheticBid: enrichmentBid ? false : quote.syntheticBid,

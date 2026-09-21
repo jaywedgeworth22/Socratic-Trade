@@ -4,13 +4,16 @@ import {
   fetchFinnhubQuote,
   fetchFreshQuotesCascade,
   fetchTiingoQuote,
+  isCascadeFieldComplete,
   isQuoteFresh,
   isTwoSidedLiveNbbo,
   isUsableBrokerQuote,
   mergeBrokerQuoteFields,
   quoteAgeSecForStalenessGate,
-  resolveVenueQuoteMode
+  resolveVenueQuoteMode,
+  syncQuotesToFieldStore
 } from "../src/lib/quotes-cascade";
+import { admitProviderRequests, resetProviderQuotaState } from "../src/lib/provider-rate-limit";
 import type { BrokerQuote } from "../src/lib/types";
 
 // Mock the modules that interface with external networks or DB
@@ -44,7 +47,8 @@ vi.mock("../src/lib/data-providers", () => ({
       return mockEnrich(symbols);
     }
   },
-  fetchWithRetry: (...args: unknown[]) => mockFetchWithRetry(...args)
+  fetchWithRetry: (...args: unknown[]) => mockFetchWithRetry(...args),
+  apiKeyFingerprint: async (key: string) => `fp:${key}`
 }));
 
 const mockUpsertSymbolFieldLatest = vi.fn();
@@ -336,7 +340,18 @@ describe("fetchFreshQuotesCascade", () => {
     const freshIso = new Date(now - 60 * 1000).toISOString(); // 1 minute old — within 120s
 
     const brokerQuotes: Record<string, BrokerQuote> = {
-      AAPL: { symbol: "AAPL", price: 150, bid: 149.9, ask: 150.1, asOf: freshIso, provider: "alpaca" }
+      AAPL: {
+        symbol: "AAPL",
+        price: 150,
+        bid: 149.9,
+        ask: 150.1,
+        prevClose: 148,
+        open: 149,
+        high: 151,
+        low: 147.5,
+        asOf: freshIso,
+        provider: "alpaca"
+      }
     };
     mockGetEquityQuotes.mockResolvedValue(brokerQuotes);
 
@@ -356,7 +371,18 @@ describe("fetchFreshQuotesCascade", () => {
     const olderTradeIso = new Date(now - 150 * 1000).toISOString(); // 150s old trade print
 
     mockGetEquityQuotes.mockResolvedValue({
-      MSFT: { symbol: "MSFT", price: 300, bid: 299.95, ask: 300.05, asOf: olderTradeIso, provider: "alpaca" }
+      MSFT: {
+        symbol: "MSFT",
+        price: 300,
+        bid: 299.95,
+        ask: 300.05,
+        prevClose: 298,
+        open: 299,
+        high: 301,
+        low: 297.5,
+        asOf: olderTradeIso,
+        provider: "alpaca"
+      }
     });
 
     const result = await fetchFreshQuotesCascade(["MSFT"], "local", "ACC123");
@@ -397,6 +423,10 @@ describe("fetchFreshQuotesCascade", () => {
   });
 
   it("on realtime venues, does NOT stop on a ~15-minute delayed broker quote — continues to Alpaca snapshot", async () => {
+    // NOTE: the Alpaca quote below is field-complete (prevClose + OHLC) so this
+    // test keeps its original intent — Alpaca stops the cascade. A
+    // field-incomplete Alpaca quote would (correctly, per the #3449 P1 review)
+    // let the cascade continue to Finnhub/Tiingo/Yahoo.
     const now = Date.now();
     const delayedIso = new Date(now - 15 * 60 * 1000).toISOString();
     const liveIso = new Date(now - 20 * 1000).toISOString();
@@ -405,7 +435,17 @@ describe("fetchFreshQuotesCascade", () => {
       MSFT: { symbol: "MSFT", price: 300, asOf: delayedIso, provider: "tradier" }
     });
     mockEnrich.mockResolvedValue({
-      MSFT: { price: 305, asOf: liveIso, bid: 304, ask: 306, volume: 1000 }
+      MSFT: {
+        price: 305,
+        asOf: liveIso,
+        bid: 304,
+        ask: 306,
+        volume: 1000,
+        prevClose: 300,
+        open: 301,
+        high: 306,
+        low: 300.5
+      }
     });
 
     const result = await fetchFreshQuotesCascade(["MSFT"], "local", "ACC123");
@@ -467,8 +507,20 @@ describe("fetchFreshQuotesCascade", () => {
     mockGetEquityQuotes.mockResolvedValue({
       MSFT: { symbol: "MSFT", price: 300, asOf: staleIso, provider: "alpaca" }
     });
+    // NOTE: field-complete (prevClose + OHLC) so this test keeps its original
+    // intent — Alpaca stops the cascade here.
     mockEnrich.mockResolvedValue({
-      MSFT: { price: 305, asOf: freshIso, bid: 304, ask: 306, volume: 1000 }
+      MSFT: {
+        price: 305,
+        asOf: freshIso,
+        bid: 304,
+        ask: 306,
+        volume: 1000,
+        prevClose: 300,
+        open: 301,
+        high: 306,
+        low: 300.5
+      }
     });
 
     const result = await fetchFreshQuotesCascade(["MSFT"], "local", "ACC123");
@@ -528,7 +580,9 @@ describe("fetchFreshQuotesCascade", () => {
     expect(mockEnrich).not.toHaveBeenCalled();
   });
 
-  it("resolves quote at Level 3 (Finnhub) when Level 1 and Level 2 miss", async () => {
+  it("does NOT stop at Level 3 (Finnhub) on a field-incomplete quote — the cascade continues for backfill", async () => {
+    // Codex P1 review on #3449: a fresh price without a book must not stop the
+    // cascade; later levels get the chance to backfill the missing fields.
     const now = Date.now();
     const freshSeconds = Math.floor((now - 30 * 1000) / 1000);
 
@@ -553,11 +607,51 @@ describe("fetchFreshQuotesCascade", () => {
     });
 
     const result = await fetchFreshQuotesCascade(["NVDA"], "local", "ACC123");
+    // Finnhub supplies no bid/ask: field-incomplete, so the cascade continued…
+    expect(mockFetchYahooFinanceQuotesBatch).toHaveBeenCalled();
+    // …but the Finnhub quote is still returned via the best-quote fallback.
     expect(result.NVDA).toBeDefined();
     expect(result.NVDA?.price).toBe(180.5);
     expect(result.NVDA?.provider).toBe("finnhub");
     expect(result.NVDA?.prevClose).toBe(178.0);
-    expect(result.NVDA?.change).toBe(2.5);
+  });
+
+  it("does NOT stop on a fresh broker quote missing prevClose/OHLC — Alpaca backfills the fields", async () => {
+    // The review's core case: the common fresh-broker path must not truncate
+    // multi-provider coalescing.
+    const now = Date.now();
+    const brokerIso = new Date(now - 10 * 1000).toISOString();
+    const alpacaIso = new Date(now - 60 * 1000).toISOString();
+
+    mockGetEquityQuotes.mockResolvedValue({
+      XOM: { symbol: "XOM", price: 110.5, bid: 110.4, ask: 110.6, asOf: brokerIso, provider: "alpaca" }
+    });
+    mockEnrich.mockResolvedValue({
+      XOM: {
+        price: 110.45,
+        bid: 110.35,
+        ask: 110.55,
+        prevClose: 108.0,
+        open: 109.0,
+        high: 111.0,
+        low: 108.5,
+        volume: 5_000_000,
+        asOf: alpacaIso
+      }
+    });
+
+    const result = await fetchFreshQuotesCascade(["XOM"], "local", "ACC123");
+
+    // The cascade continued past the field-incomplete broker quote…
+    expect(mockEnrich).toHaveBeenCalledWith(["XOM"]);
+    // …and the merged result kept the fresher broker price while backfilling
+    // the missing fields from Alpaca. Field-complete now: Yahoo never ran.
+    expect(result.XOM.price).toBe(110.5);
+    expect(result.XOM.provider).toBe("alpaca");
+    expect(result.XOM.prevClose).toBe(108.0);
+    expect(result.XOM.open).toBe(109.0);
+    expect(result.XOM.high).toBe(111.0);
+    expect(result.XOM.low).toBe(108.5);
     expect(mockFetchYahooFinanceQuotesBatch).not.toHaveBeenCalled();
   });
 
@@ -620,10 +714,50 @@ describe("fetchFreshQuotesCascade", () => {
 
     await fetchFreshQuotesCascade(["AAPL"], "local", "ACC123");
     expect(mockUpsertSymbolFieldLatest).toHaveBeenCalled();
-    const callArgs = mockUpsertSymbolFieldLatest.mock.calls[0][0];
-    expect(callArgs.some((r: any) => r.symbol === "AAPL" && r.field === "price")).toBe(true);
-    expect(callArgs.some((r: any) => r.symbol === "AAPL" && r.field === "prevClose")).toBe(true);
-    expect(callArgs.some((r: any) => r.symbol === "AAPL" && r.field === "vwap")).toBe(true);
+    const callArgs = mockUpsertSymbolFieldLatest.mock.calls[0][0] as { symbol: string; field: string }[];
+    expect(callArgs.some((r) => r.symbol === "AAPL" && r.field === "price")).toBe(true);
+    expect(callArgs.some((r) => r.symbol === "AAPL" && r.field === "prevClose")).toBe(true);
+    expect(callArgs.some((r) => r.symbol === "AAPL" && r.field === "vwap")).toBe(true);
+  });
+});
+
+describe("isCascadeFieldComplete", () => {
+  const complete: BrokerQuote = {
+    symbol: "AAPL",
+    price: 150,
+    bid: 149.9,
+    ask: 150.1,
+    prevClose: 148,
+    open: 149,
+    high: 151,
+    low: 147.5
+  };
+
+  it("accepts a quote with price, two-sided book, prevClose and OHLC", () => {
+    expect(isCascadeFieldComplete(complete)).toBe(true);
+  });
+
+  it("rejects a quote missing prevClose", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { prevClose, ...rest } = complete;
+    expect(isCascadeFieldComplete(rest)).toBe(false);
+  });
+
+  it("rejects a quote missing the book", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { bid, ask, ...rest } = complete;
+    expect(isCascadeFieldComplete(rest)).toBe(false);
+  });
+
+  it("rejects a quote missing OHLC", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { open, ...rest } = complete;
+    expect(isCascadeFieldComplete(rest)).toBe(false);
+  });
+
+  it("rejects a quote with no usable price", () => {
+    expect(isCascadeFieldComplete({ symbol: "AAPL" })).toBe(false);
+    expect(isCascadeFieldComplete({ ...complete, price: 0 })).toBe(false);
   });
 });
 
@@ -725,6 +859,41 @@ describe("mergeBrokerQuoteFields", () => {
     expect(merged?.companyName).toBe("Apple Inc.");
   });
 
+  it("records per-field provenance: the winner stamps price, the backfiller stamps its fields", () => {
+    // Codex P1 review on #3449: persistence must attribute each field to the
+    // provider that actually supplied it.
+    const older: BrokerQuote = {
+      symbol: "AAPL",
+      price: 150,
+      bid: 149.9,
+      ask: 150.1,
+      asOf: "2026-09-21T10:00:00.000Z",
+      fetchedAt: "2026-09-21T10:00:05.000Z",
+      provider: "alpaca"
+    };
+    const newer: BrokerQuote = {
+      symbol: "AAPL",
+      price: 152,
+      prevClose: 148,
+      asOf: "2026-09-21T10:05:00.000Z",
+      fetchedAt: "2026-09-21T10:05:05.000Z",
+      provider: "finnhub"
+    };
+
+    const merged = mergeBrokerQuoteFields(older, newer);
+    expect(merged).toBeDefined();
+    // Newer wins the primary price/provider…
+    expect(merged?.price).toBe(152);
+    expect(merged?.fieldProvenance?.price?.provider).toBe("finnhub");
+    expect(merged?.fieldProvenance?.price?.asOf).toBe("2026-09-21T10:05:00.000Z");
+    expect(merged?.fieldProvenance?.prevClose?.provider).toBe("finnhub");
+    // …while the older quote's backfilled book keeps ITS provider/timestamps.
+    expect(merged?.bid).toBe(149.9);
+    expect(merged?.fieldProvenance?.bid?.provider).toBe("alpaca");
+    expect(merged?.fieldProvenance?.bid?.asOf).toBe("2026-09-21T10:00:00.000Z");
+    expect(merged?.fieldProvenance?.ask?.provider).toBe("alpaca");
+  });
+
   it("incoming venue-authoritative quote supersedes non-authoritative target", () => {
     const target: BrokerQuote = {
       symbol: "TSLA",
@@ -744,6 +913,59 @@ describe("mergeBrokerQuoteFields", () => {
     expect(merged?.price).toBe(248);
     expect(merged?.provider).toBe("tradier");
     expect(merged?.venuePriceAuthoritative).toBe(true);
+  });
+});
+
+describe("syncQuotesToFieldStore field provenance", () => {
+  it("persists each field with its own provider/timestamps, not the merged quote-level stamps", () => {
+    mockUpsertSymbolFieldLatest.mockClear();
+    const quote: BrokerQuote = {
+      symbol: "AAPL",
+      price: 180.5,
+      bid: 180.4,
+      ask: 180.6,
+      prevClose: 178,
+      asOf: "2026-09-21T14:00:00.000Z",
+      fetchedAt: "2026-09-21T14:00:05.000Z",
+      provider: "finnhub",
+      fieldProvenance: {
+        price: { provider: "finnhub", asOf: "2026-09-21T14:00:00.000Z", fetchedAt: "2026-09-21T14:00:05.000Z" },
+        prevClose: { provider: "finnhub", asOf: "2026-09-21T14:00:00.000Z", fetchedAt: "2026-09-21T14:00:05.000Z" },
+        bid: { provider: "alpaca-snapshot", asOf: "2026-09-21T13:59:00.000Z", fetchedAt: "2026-09-21T13:59:30.000Z" },
+        ask: { provider: "alpaca-snapshot", asOf: "2026-09-21T13:59:00.000Z", fetchedAt: "2026-09-21T13:59:30.000Z" }
+      }
+    };
+
+    syncQuotesToFieldStore({ AAPL: quote });
+
+    expect(mockUpsertSymbolFieldLatest).toHaveBeenCalled();
+    const records = mockUpsertSymbolFieldLatest.mock.calls[0][0] as any[];
+    const byField = Object.fromEntries(records.map((r) => [r.field, r]));
+    // The backfilled bid keeps the broker's stamps — not Finnhub's.
+    expect(byField.bid.source).toBe("alpaca-snapshot");
+    expect(byField.bid.asOf).toBe("2026-09-21T13:59:00.000Z");
+    expect(byField.bid.fetchedAt).toBe("2026-09-21T13:59:30.000Z");
+    // The winning price keeps Finnhub's stamps.
+    expect(byField.price.source).toBe("finnhub");
+    expect(byField.price.asOf).toBe("2026-09-21T14:00:00.000Z");
+  });
+
+  it("falls back to quote-level stamps when a field has no provenance receipt", () => {
+    mockUpsertSymbolFieldLatest.mockClear();
+    const quote: BrokerQuote = {
+      symbol: "AAPL",
+      price: 180.5,
+      asOf: "2026-09-21T14:00:00.000Z",
+      fetchedAt: "2026-09-21T14:00:05.000Z",
+      provider: "finnhub"
+    };
+
+    syncQuotesToFieldStore({ AAPL: quote });
+
+    const records = mockUpsertSymbolFieldLatest.mock.calls[0][0] as any[];
+    const price = records.find((r) => r.field === "price");
+    expect(price.source).toBe("finnhub");
+    expect(price.asOf).toBe("2026-09-21T14:00:00.000Z");
   });
 });
 
@@ -815,5 +1037,30 @@ describe("fetchFinnhubQuote and fetchTiingoQuote", () => {
     expect(quote?.changePct).toBe(1.05);
     expect(quote?.provider).toBe("tiingo");
     expect(quote?.asOf).toBe("2026-09-21T14:30:00.000Z");
+  });
+
+  it("fetchTiingoQuote passes retries: 0 so no uncounted retry escapes the quota", async () => {
+    mockFetchWithRetry.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [{ ticker: "AAPL", tngoLast: 220.5, timestamp: "2026-09-21T14:30:00.000Z" }]
+    });
+
+    await fetchTiingoQuote("AAPL", "fake_key", "env", "local");
+
+    expect(mockFetchWithRetry).toHaveBeenCalled();
+    const options = mockFetchWithRetry.mock.calls[0][2] as any;
+    expect(options.retries).toBe(0);
+  });
+
+  it("fetchTiingoQuote skips the upstream call when the tiingo quota is exhausted", async () => {
+    // The data-providers mock fingerprints keys as `fp:${key}`.
+    admitProviderRequests("tiingo", "fp:quota_key", 50); // exhaust the 50/hour bucket
+    try {
+      const quote = await fetchTiingoQuote("AAPL", "quota_key", "env", "local");
+      expect(quote).toBeUndefined();
+      expect(mockFetchWithRetry).not.toHaveBeenCalled();
+    } finally {
+      resetProviderQuotaState("tiingo");
+    }
   });
 });

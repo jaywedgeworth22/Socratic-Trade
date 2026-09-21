@@ -8,7 +8,8 @@ import {
 } from "./db";
 import { getBrokerGateway } from "./broker";
 import { DEFAULT_POLICY } from "./defaults";
-import { AlpacaSnapshotEnrichmentProvider, fetchWithRetry } from "./data-providers";
+import { AlpacaSnapshotEnrichmentProvider, apiKeyFingerprint, fetchWithRetry } from "./data-providers";
+import { admitProviderRequests, withProviderLimit } from "./provider-rate-limit";
 import { fetchYahooFinanceQuote, fetchYahooFinanceQuotesBatch } from "./yahoo-finance";
 import { normalizeSymbol } from "./money";
 import {
@@ -16,7 +17,7 @@ import {
   isYahooFallbackProvider
 } from "./quote-delayed-fallback";
 import { upsertSymbolFieldLatest, type SymbolFieldLatestRecord } from "./db-fundamentals";
-import type { BrokerQuote, ConnectedAccount, TradingPolicy } from "./types";
+import type { BrokerQuote, ConnectedAccount, QuoteFieldProvenance, TradingPolicy } from "./types";
 
 /**
  * Helper to extract the first valid number from fields on an object.
@@ -32,6 +33,81 @@ function firstNumber(obj: any, keys: string[]): number | undefined {
     }
   }
   return undefined;
+}
+
+/**
+ * Quote fields whose per-field provenance is tracked through
+ * `mergeBrokerQuoteFields` (Codex P1 review on #3449).
+ */
+const PROVENANCE_TRACKED_FIELDS = [
+  "price",
+  "bid",
+  "ask",
+  "bidSize",
+  "askSize",
+  "volume",
+  "prevClose",
+  "open",
+  "high",
+  "low",
+  "close",
+  "vwap",
+  "change",
+  "changePct",
+  "netChange",
+  "companyName"
+] as const;
+
+/**
+ * Builds the merged quote's `fieldProvenance`: for each tracked field, the quote
+ * that supplied the winning value (`primary.field ?? secondary.field`) stamps its
+ * own provider/asOf/fetchedAt.  Prior receipts for fields this merge does not
+ * decide ride along (secondary first, then primary) so no provenance is lost.
+ */
+function stampFieldProvenance(
+  primary: BrokerQuote,
+  secondary: BrokerQuote
+): Record<string, QuoteFieldProvenance> {
+  const prov: Record<string, QuoteFieldProvenance> = {
+    ...(secondary.fieldProvenance ?? {}),
+    ...(primary.fieldProvenance ?? {})
+  };
+  for (const field of PROVENANCE_TRACKED_FIELDS) {
+    const winner =
+      primary[field] != null ? primary : secondary[field] != null ? secondary : undefined;
+    if (winner) {
+      prov[field] = {
+        provider: winner.provider,
+        asOf: winner.asOf,
+        fetchedAt: winner.fetchedAt
+      };
+    }
+  }
+  return prov;
+}
+
+/**
+ * A quote is "field-complete" for cascade purposes when it carries the core
+ * session fields the cascade exists to coalesce: a usable price, a two-sided
+ * book, the previous close, and the session OHLC (Codex P1 review on #3449 —
+ * a fresh broker/Alpaca price missing prevClose/OHLC must not stop the
+ * cascade before Finnhub/Tiingo/Yahoo can backfill them).  VWAP is deliberately
+ * excluded: it is effectively single-provider (Alpaca), so requiring it would
+ * force every non-Alpaca symbol through all seven levels on every refresh,
+ * conflicting with the quota-protection review finding.  A fresh but
+ * field-incomplete quote stays pending; later levels backfill the gaps.
+ */
+export function isCascadeFieldComplete(quote: BrokerQuote): boolean {
+  const positive = (v: unknown): v is number => typeof v === "number" && v > 0;
+  return (
+    positive(quote.price) &&
+    positive(quote.bid) &&
+    positive(quote.ask) &&
+    positive(quote.prevClose) &&
+    positive(quote.open) &&
+    positive(quote.high) &&
+    positive(quote.low)
+  );
 }
 
 /**
@@ -78,7 +154,8 @@ export function mergeBrokerQuoteFields(
       bidSize: target.bidSize ?? incoming.bidSize,
       askSize: target.askSize ?? incoming.askSize,
       companyName: target.companyName ?? incoming.companyName,
-      netChange: target.netChange ?? incoming.netChange
+      netChange: target.netChange ?? incoming.netChange,
+      fieldProvenance: stampFieldProvenance(target, incoming)
     };
   }
 
@@ -106,7 +183,8 @@ export function mergeBrokerQuoteFields(
       bidSize: incoming.bidSize ?? target.bidSize,
       askSize: incoming.askSize ?? target.askSize,
       companyName: incoming.companyName ?? target.companyName,
-      netChange: incoming.netChange ?? target.netChange
+      netChange: incoming.netChange ?? target.netChange,
+      fieldProvenance: stampFieldProvenance(incoming, target)
     };
   }
 
@@ -150,7 +228,8 @@ export function mergeBrokerQuoteFields(
       hasBid && hasAsk
         ? primary.syntheticSpread
         : (primary.syntheticSpread ?? secondary.syntheticSpread),
-    delayedFallback: primary.delayedFallback ?? (preferIncoming ? secondary.delayedFallback : undefined)
+    delayedFallback: primary.delayedFallback ?? (preferIncoming ? secondary.delayedFallback : undefined),
+    fieldProvenance: stampFieldProvenance(primary, secondary)
   };
 }
 
@@ -161,10 +240,14 @@ export async function fetchFinnhubQuote(
   userId?: string,
   signal?: AbortSignal
 ): Promise<BrokerQuote | undefined> {
-  const res = await fetchWithRetry(
-    `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${encodeURIComponent(apiKey)}`,
-    { signal },
-    { service: "finnhub", keySource, userId }
+  // Paced through the provider limiter like every other Finnhub call site —
+  // the cascade must not burst past Finnhub's quota (Codex P1 review on #3449).
+  const res = await withProviderLimit("finnhub", () =>
+    fetchWithRetry(
+      `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${encodeURIComponent(apiKey)}`,
+      { signal },
+      { service: "finnhub", keySource, userId }
+    )
   );
   if (!res.ok) return undefined;
   const q = (await res.json()) as Record<string, unknown>;
@@ -202,13 +285,19 @@ export async function fetchTiingoQuote(
   signal?: AbortSignal
 ): Promise<BrokerQuote | undefined> {
   const ticker = symbol.toLowerCase();
+  // Admit against the shared "tiingo" quota bucket (the same lane history.ts and
+  // the Tiingo enrichment provider draw from) and disable in-call retries: every
+  // upstream attempt must be independently reserved and metered instead of hiding
+  // an uncounted retry inside one logical call (Codex P1 review on #3449).
+  const credKey = await apiKeyFingerprint(apiKey);
+  if (admitProviderRequests("tiingo", credKey, 1) < 1) return undefined;
   const res = await fetchWithRetry(
     `https://api.tiingo.com/iex/${encodeURIComponent(ticker)}?token=${encodeURIComponent(apiKey)}`,
     {
       headers: { Authorization: `Token ${apiKey}`, Accept: "application/json" },
       signal
     },
-    { service: "tiingo", keySource, userId }
+    { service: "tiingo", keySource, userId, retries: 0 }
   );
   if (!res.ok) return undefined;
   const payload = await res.json();
@@ -267,49 +356,54 @@ export async function fetchTiingoQuote(
 
 export function syncQuotesToFieldStore(quotes: Record<string, BrokerQuote>): void {
   try {
+    const nowIso = new Date().toISOString();
     const records: SymbolFieldLatestRecord[] = [];
+    const isFiniteNumber = (v: unknown): v is number =>
+      typeof v === "number" && Number.isFinite(v);
+    // Persist each field with ITS OWN provenance (recorded by
+    // mergeBrokerQuoteFields), falling back to the merged quote's single
+    // provider/asOf/fetchedAt only when no per-field receipt exists
+    // (Codex P1 review on #3449).
+    const pushField = (
+      symbol: string,
+      quote: BrokerQuote,
+      field: string,
+      value: unknown,
+      valid: (v: unknown) => boolean,
+      normalize?: (v: never) => unknown
+    ): void => {
+      if (!valid(value)) return;
+      const prov = quote.fieldProvenance?.[field];
+      records.push({
+        symbol,
+        field,
+        valueJson: JSON.stringify(normalize ? normalize(value as never) : value),
+        source: prov?.provider ?? quote.provider ?? "quote-cascade",
+        asOf: prov?.asOf ?? quote.asOf ?? quote.fetchedAt ?? nowIso,
+        fetchedAt: prov?.fetchedAt ?? quote.fetchedAt ?? nowIso
+      });
+    };
     for (const [symbol, quote] of Object.entries(quotes)) {
       if (!quote) continue;
-      const asOf = quote.asOf || quote.fetchedAt || new Date().toISOString();
-      const fetchedAt = quote.fetchedAt || new Date().toISOString();
-      const source = quote.provider || "quote-cascade";
-
-      if (typeof quote.price === "number" && Number.isFinite(quote.price)) {
-        records.push({ symbol, field: "price", valueJson: JSON.stringify(quote.price), source, asOf, fetchedAt });
-      }
-      if (typeof quote.bid === "number" && Number.isFinite(quote.bid)) {
-        records.push({ symbol, field: "bid", valueJson: JSON.stringify(quote.bid), source, asOf, fetchedAt });
-      }
-      if (typeof quote.ask === "number" && Number.isFinite(quote.ask)) {
-        records.push({ symbol, field: "ask", valueJson: JSON.stringify(quote.ask), source, asOf, fetchedAt });
-      }
-      if (typeof quote.volume === "number" && Number.isFinite(quote.volume)) {
-        records.push({ symbol, field: "volume", valueJson: JSON.stringify(quote.volume), source, asOf, fetchedAt });
-      }
-      if (typeof quote.prevClose === "number" && Number.isFinite(quote.prevClose)) {
-        records.push({ symbol, field: "prevClose", valueJson: JSON.stringify(quote.prevClose), source, asOf, fetchedAt });
-      }
-      if (typeof quote.vwap === "number" && Number.isFinite(quote.vwap)) {
-        records.push({ symbol, field: "vwap", valueJson: JSON.stringify(quote.vwap), source, asOf, fetchedAt });
-      }
-      if (typeof quote.open === "number" && Number.isFinite(quote.open)) {
-        records.push({ symbol, field: "open", valueJson: JSON.stringify(quote.open), source, asOf, fetchedAt });
-      }
-      if (typeof quote.high === "number" && Number.isFinite(quote.high)) {
-        records.push({ symbol, field: "high", valueJson: JSON.stringify(quote.high), source, asOf, fetchedAt });
-      }
-      if (typeof quote.low === "number" && Number.isFinite(quote.low)) {
-        records.push({ symbol, field: "low", valueJson: JSON.stringify(quote.low), source, asOf, fetchedAt });
-      }
-      if (typeof quote.change === "number" && Number.isFinite(quote.change)) {
-        records.push({ symbol, field: "change", valueJson: JSON.stringify(quote.change), source, asOf, fetchedAt });
-      }
-      if (typeof quote.changePct === "number" && Number.isFinite(quote.changePct)) {
-        records.push({ symbol, field: "changePct", valueJson: JSON.stringify(quote.changePct), source, asOf, fetchedAt });
-      }
-      if (typeof quote.companyName === "string" && quote.companyName.trim()) {
-        records.push({ symbol, field: "companyName", valueJson: JSON.stringify(quote.companyName.trim()), source, asOf, fetchedAt });
-      }
+      pushField(symbol, quote, "price", quote.price, isFiniteNumber);
+      pushField(symbol, quote, "bid", quote.bid, isFiniteNumber);
+      pushField(symbol, quote, "ask", quote.ask, isFiniteNumber);
+      pushField(symbol, quote, "volume", quote.volume, isFiniteNumber);
+      pushField(symbol, quote, "prevClose", quote.prevClose, isFiniteNumber);
+      pushField(symbol, quote, "vwap", quote.vwap, isFiniteNumber);
+      pushField(symbol, quote, "open", quote.open, isFiniteNumber);
+      pushField(symbol, quote, "high", quote.high, isFiniteNumber);
+      pushField(symbol, quote, "low", quote.low, isFiniteNumber);
+      pushField(symbol, quote, "change", quote.change, isFiniteNumber);
+      pushField(symbol, quote, "changePct", quote.changePct, isFiniteNumber);
+      pushField(
+        symbol,
+        quote,
+        "companyName",
+        quote.companyName,
+        (v): v is string => typeof v === "string" && v.trim().length > 0,
+        (v: string) => v.trim()
+      );
     }
     if (records.length > 0) {
       upsertSymbolFieldLatest(records);
@@ -599,6 +693,19 @@ export async function fetchFreshQuotesCascade(
 
   let maxAgeMs = cascadeFreshMaxAgeMs();
 
+  // Accept-and-stop gate (Codex P1 review on #3449): a quote stops the cascade
+  // only when it is BOTH fresh and field-complete.  Fresh-but-incomplete quotes
+  // stay pending so later levels can backfill the missing fields; the merged
+  // best quote is what gets accepted.  (The venue-authoritative Level 1a path
+  // keeps its unconditional accept — the active execution venue's price is
+  // authoritative by owner rule.)
+  const acceptIfComplete = (symbol: string, quote: BrokerQuote): void => {
+    const merged = bestQuotes[symbol] ?? quote;
+    if (isQuoteFresh(merged, nowMs, maxAgeMs) && isCascadeFieldComplete(merged)) {
+      result[symbol] = merged;
+    }
+  };
+
   const ingestBrokerQuotes = (
     brokerQuotes: Record<string, BrokerQuote>,
     opts: { venueDelayed: boolean; delayedTape?: boolean; providerTag: string }
@@ -624,9 +731,9 @@ export async function fetchFreshQuotesCascade(
         result[symbol] = normalizedQuote;
       } else {
         updateBestQuote(symbol, normalizedQuote);
-        if (isUsableBrokerQuote(normalizedQuote, nowMs, maxAgeMs)) {
-          result[symbol] = normalizedQuote;
-        }
+        // Secondary (delayed-tape) broker books get the same field-completeness
+        // gate as the other levels (Codex P1 review on #3449).
+        acceptIfComplete(symbol, normalizedQuote);
       }
     }
     pendingSymbols = pendingSymbols.filter((s) => !result[s]);
@@ -730,9 +837,7 @@ export async function fetchFreshQuotesCascade(
                 fetchedAt: stampIngest()
               };
               updateBestQuote(symbol, q);
-              if (isQuoteFresh(q, nowMs, maxAgeMs)) {
-                result[symbol] = bestQuotes[symbol] ?? q;
-              }
+              acceptIfComplete(symbol, q);
             }
           }
         }
@@ -755,9 +860,7 @@ export async function fetchFreshQuotesCascade(
               const q = await fetchFinnhubQuote(symbol, finnhub.key!, finnhub.source, userId, signal);
               if (q) {
                 updateBestQuote(symbol, q);
-                if (isQuoteFresh(q, nowMs, maxAgeMs)) {
-                  result[symbol] = bestQuotes[symbol] ?? q;
-                }
+                acceptIfComplete(symbol, q);
               }
             } catch (err) {
               console.warn(`[quotes-cascade] Level 3 (Finnhub) fetch failed for ${symbol}:`, err);
@@ -783,9 +886,7 @@ export async function fetchFreshQuotesCascade(
               const q = await fetchTiingoQuote(symbol, tiingo.key!, tiingo.source, userId, signal);
               if (q) {
                 updateBestQuote(symbol, q);
-                if (isQuoteFresh(q, nowMs, maxAgeMs)) {
-                  result[symbol] = bestQuotes[symbol] ?? q;
-                }
+                acceptIfComplete(symbol, q);
               }
             } catch (err) {
               console.warn(`[quotes-cascade] Level 4 (Tiingo) fetch failed for ${symbol}:`, err);
@@ -830,9 +931,7 @@ export async function fetchFreshQuotesCascade(
               fetchedAt: stampIngest()
             };
             updateBestQuote(symbol, q);
-            if (isQuoteFresh(q, nowMs, maxAgeMs)) {
-              result[symbol] = bestQuotes[symbol] ?? q;
-            }
+            acceptIfComplete(symbol, q);
           }
         }
       }
@@ -874,9 +973,7 @@ export async function fetchFreshQuotesCascade(
               fetchedAt: stampIngest()
             };
             updateBestQuote(symbol, q);
-            if (isQuoteFresh(q, nowMs, maxAgeMs)) {
-              result[symbol] = bestQuotes[symbol] ?? q;
-            }
+            acceptIfComplete(symbol, q);
           }
         }
       }
@@ -916,9 +1013,7 @@ export async function fetchFreshQuotesCascade(
                       fetchedAt: stampIngest()
                     };
                     updateBestQuote(symbol, q);
-                    if (isQuoteFresh(q, nowMs, maxAgeMs)) {
-                      result[symbol] = bestQuotes[symbol] ?? q;
-                    }
+                    acceptIfComplete(symbol, q);
                   }
                 }
               }

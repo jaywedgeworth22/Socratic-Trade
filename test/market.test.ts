@@ -135,6 +135,28 @@ describe("applyEnrichment", () => {
     expect(enriched.sources?.senateTrades).toBe("congress-trades");
   });
 
+  it("folds the newly arbitrated quote fields (bidSize/askSize/prevClose/OHLC/netChange) onto the quote", () => {
+    // Codex P1 review on #3449: providers supply these, the cascade arbitrates
+    // them, and applyEnrichment must carry them onto the MarketQuote.
+    const extra: SymbolEnrichment = {
+      bidSize: 100,
+      askSize: 200,
+      prevClose: 148,
+      open: 149,
+      high: 151,
+      low: 147.5,
+      netChange: 2.5
+    };
+    const enriched = applyEnrichment(quote({ symbol: "AAPL" }), extra);
+    expect(enriched.bidSize).toBe(100);
+    expect(enriched.askSize).toBe(200);
+    expect(enriched.prevClose).toBe(148);
+    expect(enriched.open).toBe(149);
+    expect(enriched.high).toBe(151);
+    expect(enriched.low).toBe(147.5);
+    expect(enriched.netChange).toBe(2.5);
+  });
+
   it("keeps the existing quote value when enrichment omits a field", () => {
     const enriched = applyEnrichment(quote({ symbol: "AAPL", senateTrades: 2 }), { peRatio: 30 });
     expect(enriched.senateTrades).toBe(2); // not clobbered by undefined

@@ -302,7 +302,12 @@ function encryptionKeyConfigured(): boolean {
 }
 
 function encryptStoredTokens(tokens: McpOAuthTokens): McpOAuthTokens {
-  if (!encryptionKeyConfigured()) return tokens; // no stable key → store plaintext (survives restart)
+  if (!encryptionKeyConfigured()) {
+    if (process.env.DB_BOOTSTRAP === "live") {
+      throw new Error("Refusing to store plaintext Robinhood OAuth token in live production without ENCRYPTION_KEY.");
+    }
+    return tokens; // no stable key → store plaintext (survives restart)
+  }
   return {
     ...tokens,
     accessToken: tokens.accessToken ? encryptValue(tokens.accessToken) : tokens.accessToken,

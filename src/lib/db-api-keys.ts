@@ -102,7 +102,7 @@ const ALGORITHM = "aes-256-gcm";
  * broader-than-production `assertEncryptionKeyAvailable` in db.ts for that (dev+prod) check.
  */
 export function assertEncryptionKeyConfiguredInProduction(env: NodeJS.ProcessEnv = process.env): void {
-  if (env.NODE_ENV !== "production") return;
+  if (env.DB_BOOTSTRAP !== "live") return;
   if (isValidEncryptionKeyHex(env.ENCRYPTION_KEY?.trim())) return;
   throw new Error(
     "ENCRYPTION_KEY is missing or invalid in production. Refusing to boot: a per-process " +

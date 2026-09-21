@@ -1,5 +1,23 @@
 # Current Status
 
+## 2026-09-21 CLAUDE — next 16.3.5 bump, round-4 autofix (correct the autofix round/count state)
+
+Codex's round-4 P1 on PR #3442 was against the rollout note's round-cap bullet: it claimed
+`git log origin/main..HEAD --grep='[codex-autofix]'` "returns exactly 1" and that the loop was at
+round 2, while the note's own Round 3 section and the branch tip both showed three PR-local
+autofix commits.  Two defects: the count was **stale** (written at round-2 time, never refreshed
+when round 3 landed), and the quoted command **cannot run at all** — `--grep='[codex-autofix]'` is
+an invalid git regex (`x-a` parses as a character range) and aborts with `fatal: command line,
+'[codex-autofix]': Invalid range end`.  Verified figures, quoted in the note with a runnable
+command and the measurement point stated: **3 PR-local autofix commits at `876f3f2c` / 4 at this
+tip**, **7** on `origin/main` (unchanged by this PR), **10** in whole branch history at `876f3f2c`
+/ **11** at this tip.  The "61" history figure the note and this file previously quoted matched no
+measurement.  Corrected in place in the rollout note, in the round-2/round-3 entries of this
+file, and in the `docs/EFFORT-LOG.md` row, each with the correction noted.  Documentation only —
+no source, dependency, or lockfile change.  Round 4 of the codex-autofix loop (4 commits authored
+on this branch vs the cap of 10).  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-21-next-16.3.5-bump.md`.
+
 ## 2026-09-21 CLAUDE — next 16.3.5 bump, round-3 autofix (rollout-note accuracy: file inventory + CI gate)
 
 Codex's round-3 pair of P1s on PR #3442 was again against
@@ -12,7 +30,8 @@ paths with the commit that introduced each (and explains that the "documentation
 describes the autofix rounds, not the dependency files that are the PR's subject), and the gate
 sentence now names all four commands in the mandated order.  Documentation only — no source,
 dependency, or lockfile change.  Round 3 of the codex-autofix loop (2 commits authored on this
-branch vs the cap of 10).  Extra-ship no.  No Coolify Deploy.
+branch at the moment this entry was written — the round-3 commit itself is the third; corrected to
+4 at round 4.  Cap is 10).  Extra-ship no.  No Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-21-next-16.3.5-bump.md`.
 
 ## 2026-09-21 CLAUDE — next 16.3.5 bump, round-2 autofix (verification-order fix in the rollout note)
@@ -24,8 +43,11 @@ only.  Re-ran all four in the prescribed order — `npm run lint` exit 0 (819 pr
 `npx tsc --noEmit` exit 0 clean, `npm test` exit 1 (13 failed / 8144 passed / 51 skipped, the
 known sandbox LLM-key leak in the same 4 files; those 4 re-run with the ambient key unset give
 4 files / 60 passed / 0 failed), `npm run build` exit 0 — and rewrote the note to record that
-order.  Also corrected an inaccurate round-cap claim in the same note (61 autofix commits in
-branch history, but exactly 1 authored on this PR).  No source, dependency, or lockfile change.
+order.  Also corrected an inaccurate round-cap claim in the same note — which it replaced with a
+second wrong figure (61 autofix commits in branch history, exactly 1 authored on this PR);
+**both numbers were wrong**, the verified figures at the tip are 10 in branch history and 4
+authored on this PR, and they were corrected in place at round 4.  No source, dependency, or
+lockfile change.
 Round 2 of the codex-autofix loop.  Extra-ship no.  No Coolify Deploy.
 Rollout: `docs/rollouts/2026-09-21-next-16.3.5-bump.md`.
 

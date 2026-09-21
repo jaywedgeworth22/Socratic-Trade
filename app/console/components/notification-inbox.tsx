@@ -14,6 +14,7 @@ import { activeConnectedAccount } from "../lib/derive";
 import { cx } from "../lib/format";
 import { useConsoleData } from "../lib/useConsoleData";
 import { Ago, Btn } from "../ui/primitives";
+import { useFocusTrap } from "../ui/focus-trap";
 import { useToast } from "../ui/toast";
 
 const INBOX_PREVIEW = 8;
@@ -22,6 +23,7 @@ export function NotificationInbox({ snapshot }: { snapshot: DashboardSnapshot })
   const [open, setOpen] = useState(false);
   const [ackingIds, setAckingIds] = useState<Set<string>>(new Set());
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const { refresh } = useConsoleData();
   const toast = useToast();
   const activeAccountId = activeConnectedAccount(snapshot)?.id;
@@ -37,14 +39,7 @@ export function NotificationInbox({ snapshot }: { snapshot: DashboardSnapshot })
     requestAnimationFrame(() => triggerRef.current?.focus());
   };
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  useFocusTrap(menuRef, open, { onEscape: close });
 
   const markRead = async (ids: string[]) => {
     const unique = ids.filter((id) => id.length > 0);
@@ -87,8 +82,10 @@ export function NotificationInbox({ snapshot }: { snapshot: DashboardSnapshot })
         <>
           <div className="fixed inset-0 z-40" onClick={close} aria-hidden />
           <div
+            ref={menuRef}
             role="dialog"
             aria-label="Notifications"
+            tabIndex={-1}
             className="con-menu-drop absolute right-2 top-[calc(100%+2px)] z-50 w-[min(92vw,380px)] rounded-card border border-[color:var(--con-line-strong)] bg-[color:var(--con-surface)] p-3 shadow-xl"
           >
             <div className="mb-2 flex items-center justify-between gap-2">

@@ -45,6 +45,7 @@ import { useToast } from "../ui/toast";
 import { BREAKER_FIRED_NOTE } from "@/lib/guardrail-copy";
 import { Btn, Chip, Dot, Meter, TextInput } from "../ui/primitives";
 import { Sheet } from "../ui/sheet";
+import { useFocusTrap } from "../ui/focus-trap";
 
 // ── Reality banner ───────────────────────────────────────────────────────────
 
@@ -103,25 +104,15 @@ export function ScopeSelector({ snapshot }: { snapshot: DashboardSnapshot; compa
   const label = active ? active.label || brokerName(active.broker) : "No connected account";
   const activeLast4 = active?.accountNumber ? active.accountNumber.slice(-4) : null;
 
+  const menuRef = useRef<HTMLDivElement>(null);
+
   const close = () => {
     setOpen(false);
     // Return focus to the trigger so keyboard users aren't dropped at page top.
     requestAnimationFrame(() => triggerRef.current?.focus());
   };
 
-  // Escape closes and returns focus to the trigger (menu-button pattern).
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        close();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-     
-  }, [open]);
+  useFocusTrap(menuRef, open, { onEscape: close });
 
   const switchTo = async (id: string) => {
     setBusyId(id);
@@ -151,8 +142,6 @@ export function ScopeSelector({ snapshot }: { snapshot: DashboardSnapshot; compa
       <button
         key={account.id}
         type="button"
-        role="menuitemradio"
-        aria-checked={isActive}
         disabled={isActive || busyId !== null}
         onClick={() => guardAction(() => void switchTo(account.id))}
         className={cx(
@@ -213,7 +202,7 @@ export function ScopeSelector({ snapshot }: { snapshot: DashboardSnapshot; compa
         ref={triggerRef}
         type="button"
         onClick={() => (open ? close() : setOpen(true))}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-expanded={open}
         className="flex w-full items-center gap-2 overflow-hidden rounded-control border border-[color:var(--con-line-strong)] bg-[color:var(--con-surface-2)] px-2.5 py-1.5 text-left transition-colors hover:border-[color:var(--con-accent)] sm:px-3 con-bar-ctl con-bar-ctl-scope"
         title="Switch which account this console shows"
@@ -232,16 +221,18 @@ export function ScopeSelector({ snapshot }: { snapshot: DashboardSnapshot; compa
 
       {open && (
         <>
-          {/* invisible click-away backdrop; uses button for iOS Safari / PWA touch compatibility */}
-          <button
-            type="button"
+          {/* invisible click-away backdrop */}
+          <div
             aria-label="Close account menu"
             className="fixed inset-0 z-40 h-full w-full cursor-default border-0 bg-transparent opacity-0"
             onClick={close}
+            aria-hidden
           />
           <div
-            role="menu"
+            ref={menuRef}
+            role="dialog"
             aria-label="Account scope"
+            tabIndex={-1}
             className="con-menu-drop absolute left-0 top-[calc(100%+4px)] z-50 flex max-h-[min(70vh,480px)] w-[min(calc(100vw-48px),360px)] max-w-[calc(100vw-48px)] sm:w-[360px] sm:max-w-[360px] flex-col gap-2 overflow-y-auto rounded-card border border-[color:var(--con-line-strong)] bg-[color:var(--con-surface)] p-3 shadow-xl"
           >
             <p className="text-[length:var(--con-fs-xs)] leading-relaxed text-[color:var(--con-muted)]">
@@ -264,7 +255,6 @@ export function ScopeSelector({ snapshot }: { snapshot: DashboardSnapshot; compa
             <div className="my-0.5 h-px bg-[color:var(--con-line)]" />
             <Link
               href="/console/connections#brokers"
-              role="menuitem"
               onClick={close}
               className="con-scope-row flex w-full items-center gap-2 rounded-control border border-[color:var(--con-line)] px-3 py-2 text-[length:var(--con-fs-sm)] font-medium"
               title="Add, remove, or reconnect broker accounts"
@@ -864,6 +854,7 @@ export function UserMenu({
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const user = snapshot.currentUser;
 
   const close = () => {
@@ -872,15 +863,7 @@ export function UserMenu({
     requestAnimationFrame(() => triggerRef.current?.focus());
   };
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-     
-  }, [open]);
+  useFocusTrap(menuRef, open, { onEscape: close });
 
   // No session identity (single-user/local operation) → nothing to sign out of.
   if (!user) return null;
@@ -899,7 +882,7 @@ export function UserMenu({
         title={`Signed in as ${user.email ?? who}. Click for account, theme, and sign out.`}
         aria-label={`Signed in as ${user.email ?? who} — account menu`}
         aria-expanded={open}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         style={{ width: 32, height: 32, minWidth: 32, minHeight: 32, maxWidth: 32, maxHeight: 32 }}
         className="con-bar-ctl flex shrink-0 items-center justify-center overflow-hidden rounded-control border border-[color:var(--con-line-strong)] text-[color:var(--con-muted)] transition-colors hover:border-[color:var(--con-accent)] hover:text-[color:var(--con-accent)]"
       >
@@ -908,9 +891,15 @@ export function UserMenu({
 
       {open && (
         <>
-          {/* invisible click-away backdrop; the panel sits above it */}
+          {/* invisible click-away backdrop */}
           <div className="fixed inset-0 z-40" onClick={close} aria-hidden />
-          <div className="con-menu-drop absolute right-2 top-[calc(100%+2px)] z-50 w-[min(92vw,340px)] rounded-card border border-[color:var(--con-line-strong)] bg-[color:var(--con-surface)] p-4 shadow-xl">
+          <div
+            ref={menuRef}
+            role="dialog"
+            aria-label="Account options"
+            tabIndex={-1}
+            className="con-menu-drop absolute right-2 top-[calc(100%+2px)] z-50 flex w-[min(92vw,320px)] flex-col gap-2 rounded-card border border-[color:var(--con-line-strong)] bg-[color:var(--con-surface)] p-3 shadow-xl sm:right-6 lg:right-8"
+          >
             <div className="flex flex-col gap-3 text-[length:var(--con-fs-sm)]">
               <div className="flex items-center gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[color:var(--con-line)] text-[color:var(--con-muted)]">

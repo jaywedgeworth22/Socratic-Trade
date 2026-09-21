@@ -35,8 +35,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const push = useCallback((kind: ToastKind, title: string, detail?: string) => {
     const id = nextId.current++;
     setToasts((prev) => [...prev.slice(-3), { id, kind, title, detail }]);
-    const ttl = kind === "neg" ? 9000 : 6000;
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), ttl);
+    if (kind !== "neg") {
+      const ttl = 6000;
+      setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), ttl);
+    }
   }, []);
 
   const api = useMemo<ToastApi>(() => ({ push }), [push]);

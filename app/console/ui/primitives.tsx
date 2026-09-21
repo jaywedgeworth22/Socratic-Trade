@@ -2,7 +2,7 @@
 
 /** Console UI primitives. Own design system — no imports from app/ui/*. */
 
-import { useState, useEffect, useId, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { useState, useEffect, useId, useRef, cloneElement, isValidElement, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { cx, fmtExact, timeAgo, EM_DASH } from "../lib/format";
 import { isInteractiveTooltipTrigger } from "../lib/tooltip-trigger";
 import { AnimatePresence, motion } from "motion/react";
@@ -35,7 +35,7 @@ export function Card({
   if (collapsible && title) {
     return (
       <details className={cx("con-card con-disclosure", className)} open={defaultOpen}>
-        <summary className="focus:outline-none">
+        <summary className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--con-accent)]">
           {/* Open: pt-3.5 pb-1 (tight bottom toward body). Collapsed: balanced
               py via .con-disclosure.con-card:not([open]) in console.css so
               one-line titles like "You're set" sit vertically centered. */}
@@ -507,7 +507,7 @@ export function Tooltip({
         className
       )}
       tabIndex={interactive ? undefined : 0}
-      aria-describedby={tooltipId}
+      aria-describedby={!interactive ? tooltipId : undefined}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
       onClick={() => setOpen((prev) => !prev)}
@@ -516,7 +516,11 @@ export function Tooltip({
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
       }}
     >
-      {children}
+      {interactive && isValidElement(children)
+        ? cloneElement(children as React.ReactElement<any>, {
+            "aria-describedby": tooltipId
+          })
+        : children}
       <span id={tooltipId} className="sr-only">
         {content}
       </span>

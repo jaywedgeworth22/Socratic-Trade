@@ -500,6 +500,7 @@ export const ApprovalCard = memo(function ApprovalCard({
     // No overflow-hidden: it creates a containing block that breaks sticky CTAs (PR-A2).
     <article
       id={proposalElementId(pending.id)}
+      aria-label={`${SIDE_LABEL[p.side] ?? p.side.toUpperCase()} ${p.symbol}`}
       className={cx("con-card", live && "border-[color:var(--con-live-border)]", focused && DEEP_LINK_FOCUS_CLASS)}
     >
       {/* Header: verb + company logo + symbol + size + reality word — always visible (PR-A2). */}
@@ -1028,7 +1029,7 @@ export const ApprovalCard = memo(function ApprovalCard({
 
       {/* Actions — sticky above mobile tab bar (PR-A2); static on desktop. API/confirm unchanged. */}
       <footer className="ac-actions flex items-center justify-end gap-2 border-t border-[color:var(--con-line)] px-4 py-3">
-        <Btn variant="ghost" disabled={actionBusy} onClick={() => void reject()}>
+        <Btn variant="ghost" disabled={actionBusy} onClick={() => void reject()} aria-label={`Reject ${p.symbol}`}>
           {busy === "reject" ? "Rejecting…" : "Reject"}
         </Btn>
         {/* Approving a broker-connected order stays visually primary; the typed

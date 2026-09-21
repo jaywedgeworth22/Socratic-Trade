@@ -1,5 +1,18 @@
 # Current Status
 
+## 2026-09-21 MUSE — next 16.3.5 bump, round-7 sweep (answer codex-autofix round-6 review)
+
+Round-7 of the PR #3442 lane.  Codex raised two final P1s on the round-6 push: (a) "remove the
+already-landed jose bump from this inventory" - accepted; the whole-PR inventory now shows the
+`jose` 6.2.12 bump as branch history (landed on `main` via #3445), with the PR diff carrying
+only the `next` 16.3.4 -> 16.3.5 change; (b) "preserve the documentation-aware commit message" -
+the cited `803e440` does not exist (the real #3446 squash `df6308b3` does enumerate its docs),
+but the underlying `COMMIT_MESSAGES` concern is valid, so auto-merge was armed with an explicit
+`commitHeadline`/`commitBody` naming the handoff docs (both were `null` before this round).  Also
+merged post-#3446 `origin/main` (clean).  Auto-merge armed with the explicit message; `verify` CI
+re-runs on push.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-21-next-16.3.5-bump.md`.
+
 ## 2026-09-21 CLAUDE — next 16.3.5 bump, round-6 codex-autofix (two false claims corrected: squash message + round-5 re-run)
 
 Codex's two remaining P1s on PR #3442 were both against

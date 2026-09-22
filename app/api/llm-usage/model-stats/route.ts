@@ -44,11 +44,13 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const userId = resolveRequestUserId(request);
   const url = new URL(request.url);
-  const sinceDays = Number(url.searchParams.get("sinceDays")) || 90;
-  const sinceIso = new Date(Date.now() - sinceDays * 24 * 60 * 60_000).toISOString();
+  const sinceDaysParam = url.searchParams.get("sinceDays");
+  // Default to 0 (all time / lifetime) unless a specific bounded window is requested.
+  const sinceDays = sinceDaysParam !== null ? Math.max(0, Number(sinceDaysParam) || 0) : 0;
+  const sinceIso = sinceDays > 0 ? new Date(Date.now() - sinceDays * 24 * 60 * 60_000).toISOString() : undefined;
 
   const usageRows = getLlmUsageSummary({ sinceIso, userId });
-  const latencyEvents = listAuditByKind("llm_call_latency", 2000, userId);
+  const latencyEvents = listAuditByKind("llm_call_latency", 10000, userId);
 
   // Closed lots across every connected account (paper + live), FIFO-replayed exactly as the
   // Results page does. No currentPrices — only REALIZED outcomes matter here.

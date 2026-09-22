@@ -404,3 +404,122 @@ describe("normalizeBenchmarkSummaries", () => {
     expect(rows).toEqual([{ model: "mistral-medium-latest", role: "green", benchmarkCostUsd: 0.0117, benchmarkColdP50Ms: 1261 }]);
   });
 });
+
+describe("aggregateModelStats — token aggregation & predecessor lineage", () => {
+  it("aggregates promptTokens, completionTokens, totalTokens, and computes avgTokensPerCall", () => {
+    const stats = aggregateModelStats({
+      usageRows: [
+        {
+          model: "gpt-5.4-mini",
+          context: "strategy",
+          calls: 4,
+          costUsd: 0.08,
+          promptTokens: 4000,
+          completionTokens: 800,
+          totalTokens: 4800
+        },
+        {
+          model: "gpt-5.4-mini",
+          context: "strategy",
+          calls: 6,
+          costUsd: 0.12,
+          promptTokens: 6000,
+          completionTokens: 1200,
+          totalTokens: 7200
+        }
+      ],
+      latencyEvents: [],
+      benchmarkSummaries: NO_BENCH,
+      closedLots: []
+    });
+
+    const green = statFor(stats, "gpt-mini-latest", "green");
+    expect(green.liveCalls).toBe(10);
+    expect(green.promptTokens).toBe(10000);
+    expect(green.completionTokens).toBe(2000);
+    expect(green.totalTokens).toBe(12000);
+    expect(green.avgTokensPerCall).toBe(1200);
+  });
+
+  it("rolls forward predecessor stats when direct live samples or closed trades are below threshold", () => {
+    // gpt-5.6-sol is a successor of gpt-5.6-terra in catalog.
+    // Give predecessor (gpt-5.6-terra) established stats: 25 closed trades, 10 calls, latency samples.
+    // Give successor (gpt-5.6-sol) 0 live calls and 1 closed trade.
+    const lots = [
+      ...Array.from({ length: 25 }, () => ({
+        entryModel: "gpt-5.6-terra",
+        reviewedByModel: null,
+        pnl: 100,
+        returnPct: 5
+      })),
+      {
+        entryModel: "gpt-5.6-sol",
+        reviewedByModel: null,
+        pnl: 50,
+        returnPct: 2
+      }
+    ];
+
+    const stats = aggregateModelStats({
+      usageRows: [
+        {
+          model: "gpt-5.6-terra",
+          context: "strategy",
+          calls: 10,
+          costUsd: 0.5,
+          promptTokens: 10000,
+          completionTokens: 2000,
+          totalTokens: 12000
+        }
+      ],
+      latencyEvents: [
+        { payload: { step: "bull", model: "gpt-5.6-terra", durationMs: 4000, ok: true } },
+        { payload: { step: "bull", model: "gpt-5.6-terra", durationMs: 4200, ok: true } },
+        { payload: { step: "bull", model: "gpt-5.6-terra", durationMs: 4400, ok: true } }
+      ],
+      benchmarkSummaries: NO_BENCH,
+      closedLots: lots,
+      models: ["gpt-5.6-sol", "gpt-5.6-terra"]
+    });
+
+    const solGreen = statFor(stats, "gpt-5.6-sol", "green");
+    expect(solGreen.isInherited).toBe(true);
+    expect(solGreen.inheritedFrom).toBe("gpt-5.6-terra");
+    // Cost and latency inherited from predecessor
+    expect(solGreen.avgCostUsd).toBeCloseTo(0.05, 6);
+    expect(solGreen.p50LatencyMs).toBe(4200);
+    // Tokens inherited
+    expect(solGreen.avgTokensPerCall).toBe(1200);
+    // Realized perf inherited because successor only had 1 closed trade (< 20)
+    expect(solGreen.perf).not.toBeNull();
+    expect(solGreen.perf?.closedTrades).toBe(26);
+    expect(solGreen.closedTrades).toBe(26);
+    expect(solGreen.inheritedClosedTrades).toBe(25);
+  });
+
+  it("rolls forward reviewer veto efficacy when successor has fewer than 20 matured vetoes", () => {
+    const stats = aggregateModelStats({
+      usageRows: [],
+      latencyEvents: [],
+      benchmarkSummaries: NO_BENCH,
+      closedLots: [],
+      reviewerPerfByModel: [
+        {
+          model: "gpt-5.6-terra",
+          maturedVetoes: 35,
+          vetoValueAddRate: 70,
+          survivorRiskHitRate: 30,
+          avgReturnPct: -4.5
+        }
+      ],
+      models: ["gpt-5.6-sol", "gpt-5.6-terra"]
+    });
+
+    const solRed = statFor(stats, "gpt-5.6-sol", "red");
+    expect(solRed.isInherited).toBe(true);
+    expect(solRed.inheritedFrom).toBe("gpt-5.6-terra");
+    expect(solRed.reviewerPerf).not.toBeNull();
+    expect(solRed.reviewerPerf?.maturedVetoes).toBe(35);
+    expect(solRed.reviewerPerf?.vetoValueAddRate).toBe(70);
+  });
+});

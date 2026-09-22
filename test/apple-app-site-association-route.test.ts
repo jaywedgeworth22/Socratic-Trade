@@ -18,7 +18,7 @@ describe("GET /.well-known/apple-app-site-association", () => {
     expect(response.headers.get("content-type")).toContain("application/json");
     const body = await response.json();
     expect(body.applinks.details).toHaveLength(1);
-    expect(body.applinks.details[0].appIDs).toEqual(["CC8UTF7ATG.trade.socratic.app"]);
+    expect(body.applinks.details[0].appIDs).toEqual(["CC8UTF7ATG.trade.socratic.ios"]);
   });
 
   it("claims exactly the routes the iOS app routes, and nothing broader", async () => {

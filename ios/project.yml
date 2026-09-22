@@ -6,7 +6,7 @@
 name: Socratic Trade
 
 options:
-  bundleIdPrefix: trade.socratic
+  bundleIdPrefix: trade.socratic.ios
   deploymentTarget:
     iOS: "18.0"
     macOS: "15.0"
@@ -66,7 +66,7 @@ targets:
         type: file
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: trade.socratic.app
+        PRODUCT_BUNDLE_IDENTIFIER: trade.socratic.ios
         DEVELOPMENT_TEAM: CC8UTF7ATG
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: SocraticTrade/SocraticTrade.entitlements
@@ -128,7 +128,7 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         CFBundleURLTypes:
-          - CFBundleURLName: trade.socratic.app
+          - CFBundleURLName: trade.socratic.ios
             CFBundleURLSchemes:
               - socratictrade
     entitlements:
@@ -150,11 +150,24 @@ targets:
         com.apple.developer.applesignin:
           - Default
         # Universal links.  The domain side is app/.well-known/apple-app-site-association/
-        # route.ts (served without a .json extension, appID CC8UTF7ATG.trade.socratic.app).
+        # route.ts (served without a .json extension, appID CC8UTF7ATG.trade.socratic.ios).
         # Keep this list and SocraticTrade.entitlements in sync — xcodegen REWRITES that file
         # from these properties, so an entry only added there is lost on the next regen.
+        #
+        # 2026-09-22 bundle-ID migration (see docs/rollouts/2026-09-22-bundle-id-migration.md):
+        # added applinks:socratic.trade + webcredentials:socratic.trade for the new
+        # socratic.trade zone (Jay owns the domain; app group group.trade.socratic also added
+        # in the application-groups block below), and kept applinks:socratictrade.com so
+        # the existing universal-link surfaces do not break.
         com.apple.developer.associated-domains:
           - applinks:socratictrade.com
+          - applinks:socratic.trade
+          - webcredentials:socratic.trade
+        # App Group for the new trade.socratic.ios bundle (must be registered per App ID in
+        # the Apple Developer Portal before any shared-container UserDefaults writes work).
+        # 2026-09-22 bundle-ID migration (see docs/rollouts/2026-09-22-bundle-id-migration.md).
+        com.apple.security.application-groups:
+          - group.trade.socratic
 
   SocraticTradeTests:
     type: bundle.unit-test
@@ -166,7 +179,7 @@ targets:
       - target: SocraticTrade
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: trade.socratic.app.tests
+        PRODUCT_BUNDLE_IDENTIFIER: trade.socratic.ios.tests
         GENERATE_INFOPLIST_FILE: YES
         DEVELOPMENT_TEAM: CC8UTF7ATG
         CODE_SIGN_STYLE: Automatic

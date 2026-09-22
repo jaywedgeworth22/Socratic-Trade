@@ -11,7 +11,7 @@ beforeAll(() => {
   process.env.DATABASE_URL = `file:${join(tmpdir(), `agentic-apns-route-${randomUUID()}.db`)}`;
   process.env.APNS_KEY_ID = "KEY123456";
   process.env.APNS_TEAM_ID = "CC8UTF7ATG";
-  process.env.APNS_BUNDLE_ID = "trade.socratic.app";
+  process.env.APNS_BUNDLE_ID = "trade.socratic.ios";
   process.env.APNS_PRIVATE_KEY_B64 = Buffer.from(
     crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey.export({ type: "pkcs8", format: "pem" }).toString()
   ).toString("base64");

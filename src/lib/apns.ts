@@ -53,7 +53,7 @@ export type ApnsEnvSource = Record<string, string | undefined>;
 export interface ApnsConfig {
   keyId: string;
   teamId: string;
-  /** The APNs topic — the app's bundle id (trade.socratic.app). */
+  /** The APNs topic — the app's bundle id (trade.socratic.ios). */
   bundleId: string;
   /** PEM text of the .p8 signing key, decoded from APNS_PRIVATE_KEY_B64. */
   privateKeyPem: string;

@@ -1,5 +1,7 @@
 # Full-App Expert-Panel Review — Desktop Web + Mobile Web + iOS (MONET, 2026-08-18)
 
+> **2026-09-22 [MM] archaeology note:** historical reference to the iOS bundle ID `trade.socratic.app` (and the prior `com.jays.SocraticTrade` SIWA fallback it replaced) is preserved verbatim as the ID that was live at review time.  Renamed on 2026-09-22 to `trade.socratic.ios` (PR forthcoming); `src/lib/auth/apple-client-id.ts` now exports `NATIVE_APPLE_CLIENT_ID = "trade.socratic.ios"`.  See `docs/rollouts/2026-09-22-bundle-id-migration.md`.
+
 Owner-directed top-to-bottom review of Socratic-Trade by a diverse expert panel, covering the desktop website, the phone-width website, and the native iOS app.  Every finding is grounded on current `main` (`c55c2e642` at review start) with a file:line, and every panel finding was independently re-checked by a second, skeptical agent.  Findings that were already fixed, in-flight, out of scope (the PWA), or contrary to owner rulings were meant to be refuted at that stage; the verifiers instead confirmed 307 and downgraded/qualified 29 (see §0 for the honest caveat).
 
 Companion artifacts: the hotfix that came out of the live pass (PR #2851, live), the raw findings JSON (`review-findings.json`, session scratchpad — not committed), and Cursor's 2026-08-17 report-only audits (§10).

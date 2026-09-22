@@ -16,7 +16,7 @@ export const APPLE_APP_SITE_ASSOCIATION = {
   applinks: {
     details: [
       {
-        appIDs: ["CC8UTF7ATG.trade.socratic.app"],
+        appIDs: ["CC8UTF7ATG.trade.socratic.ios"],
         components: [
           { "/": "/console/approvals", comment: "Proposals tab" },
           { "/": "/console/approvals/*", comment: "One specific proposal" },

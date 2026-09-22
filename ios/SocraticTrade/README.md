@@ -38,7 +38,7 @@ xcodebuild \
   CODE_SIGNING_ALLOWED=NO test
 ```
 
-The canonical application bundle identifier is `trade.socratic.app`. The
+The canonical application bundle identifier is `trade.socratic.ios`. The
 project includes the Sign in with Apple entitlement and the `socratictrade` URL
 scheme. The app signs in directly with Apple's identity-token endpoint. Google
 and GitHub use `ASWebAuthenticationSession`, but the custom callback carries a

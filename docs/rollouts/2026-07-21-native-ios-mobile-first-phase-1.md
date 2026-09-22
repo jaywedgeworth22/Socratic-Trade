@@ -1,5 +1,7 @@
 # 2026-07-21 — Native iOS mobile-first Phase 1
 
+> **2026-09-22 [MM] archaeology note:** historical references to `trade.socratic.app` (the iOS app, the SIWA audience, and the test bundle) are kept verbatim as the IDs that were live at rollout time.  Renamed on 2026-09-22 to `trade.socratic.ios` / `trade.socratic.ios.tests` (PR forthcoming).  See `docs/rollouts/2026-09-22-bundle-id-migration.md`.
+
 ## Summary
 
 Replaced the native iOS one-list starter surface with a stable five-tab product shell:

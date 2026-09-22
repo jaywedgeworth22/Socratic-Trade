@@ -1,5 +1,7 @@
 # 2026-08-17 — iOS release-readiness leftovers (#2560)
 
+> **2026-09-22 [MM] archaeology note:** historical reference to `APNS_BUNDLE_ID = trade.socratic.app` is kept verbatim as the topic that was live at rollout time.  Renamed on 2026-09-22 to `trade.socratic.ios` (PR forthcoming).  See `docs/rollouts/2026-09-22-bundle-id-migration.md`.
+
 ## Context & Objective
 
 Issue #2560 listed four P1 iOS release-readiness gaps from the 2026-08-06 review.

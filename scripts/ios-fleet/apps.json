@@ -3,7 +3,7 @@
   "apps": {
     "socratic": {
       "displayName": "Socratic-Trade",
-      "bundleId": "trade.socratic.app",
+      "bundleId": "trade.socratic.ios",
       "appleId": 6799238379,
       "scheme": "SocraticTrade",
       "projectRel": "ios/Socratic Trade.xcodeproj",

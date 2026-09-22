@@ -47,7 +47,7 @@ const testKeyPem = crypto
 const testConfig = (): ApnsConfig => ({
   keyId: "KEY123456",
   teamId: "CC8UTF7ATG",
-  bundleId: "trade.socratic.app",
+  bundleId: "trade.socratic.ios",
   privateKeyPem: testKeyPem
 });
 
@@ -90,8 +90,8 @@ describe("device-token registry", () => {
   it("registers idempotently and normalizes Apple's token formatting", () => {
     const userId = `u-${randomUUID()}`;
     const token = hexToken("idempotent");
-    const first = registerDeviceToken({ userId, token, environment: "production", bundleId: "trade.socratic.app" });
-    const again = registerDeviceToken({ userId, token, environment: "production", bundleId: "trade.socratic.app" });
+    const first = registerDeviceToken({ userId, token, environment: "production", bundleId: "trade.socratic.ios" });
+    const again = registerDeviceToken({ userId, token, environment: "production", bundleId: "trade.socratic.ios" });
 
     expect(again.createdAt).toBe(first.createdAt); // re-register keeps first-seen time
     expect(countActiveDeviceTokens(userId)).toBe(1);
@@ -105,10 +105,10 @@ describe("device-token registry", () => {
     const bob = `bob-${randomUUID()}`;
     const token = hexToken("shared-device");
 
-    registerDeviceToken({ userId: alice, token, environment: "production", bundleId: "trade.socratic.app" });
+    registerDeviceToken({ userId: alice, token, environment: "production", bundleId: "trade.socratic.ios" });
     expect(listActiveDeviceTokens(alice).map((d) => d.token)).toEqual([token]);
 
-    registerDeviceToken({ userId: bob, token, environment: "production", bundleId: "trade.socratic.app" });
+    registerDeviceToken({ userId: bob, token, environment: "production", bundleId: "trade.socratic.ios" });
 
     // The device now belongs to Bob ALONE — Alice's alerts must never reach it again.
     expect(listActiveDeviceTokens(alice)).toHaveLength(0);
@@ -122,11 +122,11 @@ describe("device-token registry", () => {
   it("re-registering a previously disabled token re-enables it", () => {
     const userId = `u-${randomUUID()}`;
     const token = hexToken("reinstall");
-    registerDeviceToken({ userId, token, environment: "sandbox", bundleId: "trade.socratic.app" });
+    registerDeviceToken({ userId, token, environment: "sandbox", bundleId: "trade.socratic.ios" });
     expect(unregisterDeviceToken(userId, token)).toBe(true);
     expect(countActiveDeviceTokens(userId)).toBe(0);
 
-    registerDeviceToken({ userId, token, environment: "sandbox", bundleId: "trade.socratic.app" });
+    registerDeviceToken({ userId, token, environment: "sandbox", bundleId: "trade.socratic.ios" });
     expect(countActiveDeviceTokens(userId)).toBe(1);
     expect(getDeviceToken(token)?.disabledAt).toBeNull();
   });
@@ -135,7 +135,7 @@ describe("device-token registry", () => {
     const owner = `owner-${randomUUID()}`;
     const other = `other-${randomUUID()}`;
     const token = hexToken("scoped-unregister");
-    registerDeviceToken({ userId: owner, token, environment: "production", bundleId: "trade.socratic.app" });
+    registerDeviceToken({ userId: owner, token, environment: "production", bundleId: "trade.socratic.ios" });
 
     expect(unregisterDeviceToken(other, token)).toBe(false);
     expect(countActiveDeviceTokens(owner)).toBe(1);
@@ -224,7 +224,7 @@ describe("sendApnsPush", () => {
 
     const req = calls[0];
     expect(req.path).toBe(`/3/device/${hexToken("headers")}`);
-    expect(req.headers["apns-topic"]).toBe("trade.socratic.app");
+    expect(req.headers["apns-topic"]).toBe("trade.socratic.ios");
     expect(req.headers["apns-push-type"]).toBe("alert");
     expect(req.headers["apns-collapse-id"]).toBe("approval-AAPL-buy");
     expect(req.headers.authorization.startsWith("bearer ")).toBe(true);
@@ -328,7 +328,7 @@ describe("APNs configuration", () => {
     const base = {
       APNS_KEY_ID: "K1",
       APNS_TEAM_ID: "T1",
-      APNS_BUNDLE_ID: "trade.socratic.app",
+      APNS_BUNDLE_ID: "trade.socratic.ios",
       APNS_PRIVATE_KEY_B64: Buffer.from(testKeyPem).toString("base64")
     };
     expect(apnsConfigured(loadApnsConfig(base))).toBe(true);
@@ -342,7 +342,7 @@ describe("APNs configuration", () => {
     const config = loadApnsConfig({
       APNS_KEY_ID: "K1",
       APNS_TEAM_ID: "T1",
-      APNS_BUNDLE_ID: "trade.socratic.app",
+      APNS_BUNDLE_ID: "trade.socratic.ios",
       APNS_PRIVATE_KEY_B64: Buffer.from(testKeyPem).toString("base64")
     });
     expect(config?.privateKeyPem).toBe(testKeyPem);
@@ -353,7 +353,7 @@ describe("APNs configuration", () => {
     const config = loadApnsConfig({
       APNS_KEY_ID: "K1",
       APNS_TEAM_ID: "T1",
-      APNS_BUNDLE_ID: "trade.socratic.app",
+      APNS_BUNDLE_ID: "trade.socratic.ios",
       APNS_P8: testKeyPem
     });
     expect(config?.privateKeyPem.trim()).toBe(testKeyPem.trim());
@@ -400,7 +400,7 @@ describe("apns delivery channel", () => {
       userId,
       token: hexToken("auto-apns"),
       environment: "production",
-      bundleId: "trade.socratic.app"
+      bundleId: "trade.socratic.ios"
     });
     setNotifyPrefs(userId, { channels: ["pushover"], pushoverTarget: "u123" });
     const ids = channelsForNotify(userId, getNotifyPrefs(userId), notifyConfig(testConfig()));
@@ -412,8 +412,8 @@ describe("apns delivery channel", () => {
     const userId = `u-${randomUUID()}`;
     const live = hexToken("live-device");
     const dead = hexToken("dead-device");
-    registerDeviceToken({ userId, token: live, environment: "production", bundleId: "trade.socratic.app" });
-    registerDeviceToken({ userId, token: dead, environment: "sandbox", bundleId: "trade.socratic.app" });
+    registerDeviceToken({ userId, token: live, environment: "production", bundleId: "trade.socratic.ios" });
+    registerDeviceToken({ userId, token: dead, environment: "sandbox", bundleId: "trade.socratic.ios" });
     setNotifyPrefs(userId, { channels: ["apns"] });
 
     const transport: ApnsTransport = async (req) =>
@@ -434,7 +434,7 @@ describe("apns delivery channel", () => {
   it("retires a 400 BadDeviceToken (a sandbox token sent to the production endpoint)", async () => {
     const userId = `u-${randomUUID()}`;
     const token = hexToken("wrong-env");
-    registerDeviceToken({ userId, token, environment: "production", bundleId: "trade.socratic.app" });
+    registerDeviceToken({ userId, token, environment: "production", bundleId: "trade.socratic.ios" });
     setNotifyPrefs(userId, { channels: ["apns"] });
 
     const results = await notify(
@@ -452,7 +452,7 @@ describe("apns delivery channel", () => {
 
   it("reports 'not configured' when the APNs credential set is missing — it does not crash", async () => {
     const userId = `u-${randomUUID()}`;
-    registerDeviceToken({ userId, token: hexToken("unconfigured"), environment: "production", bundleId: "trade.socratic.app" });
+    registerDeviceToken({ userId, token: hexToken("unconfigured"), environment: "production", bundleId: "trade.socratic.ios" });
     setNotifyPrefs(userId, { channels: ["apns"] });
 
     const results = await notify(userId, { title: "t", body: "b", kind: "fill" }, { config: notifyConfig(null) });
@@ -475,7 +475,7 @@ describe("apns delivery channel", () => {
 
   it("a failing push never breaks the other channels", async () => {
     const userId = `u-${randomUUID()}`;
-    registerDeviceToken({ userId, token: hexToken("failing"), environment: "production", bundleId: "trade.socratic.app" });
+    registerDeviceToken({ userId, token: hexToken("failing"), environment: "production", bundleId: "trade.socratic.ios" });
     setNotifyPrefs(userId, { channels: ["apns", "push"], pushTarget: "topic-1" });
 
     const results = await notify(
@@ -505,7 +505,7 @@ describe("push respects the user's existing per-event notification preferences",
 
   it("does NOT push an event the user disabled", async () => {
     const userId = `u-${randomUUID()}`;
-    registerDeviceToken({ userId, token: hexToken("gated-off"), environment: "production", bundleId: "trade.socratic.app" });
+    registerDeviceToken({ userId, token: hexToken("gated-off"), environment: "production", bundleId: "trade.socratic.ios" });
     setNotifyPrefs(userId, { channels: ["apns"] });
     setPolicy(
       {
@@ -531,7 +531,7 @@ describe("push respects the user's existing per-event notification preferences",
 
   it("DOES push the prioritized events the user left enabled", async () => {
     const userId = `u-${randomUUID()}`;
-    registerDeviceToken({ userId, token: hexToken("gated-on"), environment: "production", bundleId: "trade.socratic.app" });
+    registerDeviceToken({ userId, token: hexToken("gated-on"), environment: "production", bundleId: "trade.socratic.ios" });
     setNotifyPrefs(userId, { channels: ["apns"] });
 
     const { transport, calls } = recordingTransport(() => okResponse);
@@ -557,7 +557,7 @@ describe("push respects the user's existing per-event notification preferences",
 
   it("a push failure does NOT fail the notification when another channel delivered", async () => {
     const userId = `u-${randomUUID()}`;
-    registerDeviceToken({ userId, token: hexToken("softfail"), environment: "production", bundleId: "trade.socratic.app" });
+    registerDeviceToken({ userId, token: hexToken("softfail"), environment: "production", bundleId: "trade.socratic.ios" });
     setNotifyPrefs(userId, { channels: ["apns", "push"], pushTarget: "topic-2" });
 
     const event = await sendNotification(

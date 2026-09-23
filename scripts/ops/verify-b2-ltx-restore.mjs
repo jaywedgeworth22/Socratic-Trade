@@ -8,10 +8,23 @@
  * (verify-cold-snapshot-restore.mjs); this script covers the LIVE Litestream path that
  * R2 does NOT cover.  Both must pass before any backup-driven recovery can be trusted.
  *
+ * Production runs Litestream 0.5.12 (pinned — do not upgrade, see
+ * docs/rollouts/2026-07-10-deploy-blocker-tcpmem-litestream.md), whose replica layout is
+ * LTX objects at `<path>/<level:0000-0009>/<minTXID>-<maxTXID>.ltx`; full snapshots live
+ * at level 0009 (litestream's SnapshotLevel = 9, compaction_level.go).  There is NO
+ * standalone `.db` object in a 0.5 replica, so "download the snapshot, then replay" is
+ * not a real code path against it — the Litestream binary IS the restore path.  An older
+ * `<prefix>-<timestamp>.db` snapshot layout is still detected and handled for historic
+ * replica sets.
+ *
  * What this proves (the ONLY thing `r2coldsnap:lastSuccess` and Litestream health
  * fields cannot prove):
- *   1. The latest `.db` snapshot in B2 can be downloaded byte-for-byte.
- *   2. The LTX files since that snapshot can be applied by a real Litestream binary.
+ *   1. LTX layout (production): `litestream restore` rebuilds the database straight
+ *      from the live replica into a scratch file — snapshot fetch AND chain replay in
+ *      one step, executed by the same binary version production replicates with.
+ *   2. Legacy layout: the newest `.db` base snapshot downloads byte-for-byte AND the
+ *      replica chain replays onto it via the Litestream binary.  A replay failure
+ *      FAILS the drill — a base snapshot alone is not proof of restorability.
  *   3. The resulting database passes `PRAGMA integrity_check`.
  *   4. The money-and-state tables (audit_events, trade_proposals, portfolio_snapshots,
  *      connected_accounts, settings, llm_usage) are non-empty in the restored copy.
@@ -19,13 +32,15 @@
  *      audit_events table, proving the chain survives a backup round-trip.
  *
  * Read-only against B2 (signed GET only — never DELETE).  Read-only against the local
- * working directory except for the scratch copy it cleans up at the end.
+ * working directory except for the scratch copy it cleans up at the end.  Only scratch
+ * directories this script itself creates (mkdtemp) are deleted; an operator-supplied
+ * RESTORE_DRILL_SCRATCH_DIR is never removed — only the files this run created in it.
  *
  * Usage:
  *   node scripts/ops/verify-b2-ltx-restore.mjs
  *   node scripts/ops/verify-b2-ltx-restore.mjs --list            # inventory only
- *   node scripts/ops/verify-b2-ltx-restore.mjs --key <objectKey>  # use a specific snapshot
- *   node scripts/ops/verify-b2-ltx-restore.mjs --no-apply-ltx    # verify snapshot only
+ *   node scripts/ops/verify-b2-ltx-restore.mjs --key <objectKey>  # use a specific (legacy) snapshot
+ *   node scripts/ops/verify-b2-ltx-restore.mjs --no-apply-ltx    # degraded: verify the snapshot object only, no replay
  *
  * Credentials come from the environment; never pass them on argv:
  *   AWS_S3_BUCKET_NAME       (default: jays-socratic-trade-eu)
@@ -42,14 +57,15 @@
  *   0  restore verified — the live B2 replica IS restorable
  *   1  usage / missing credentials / unexpected error
  *   2  auth failure (403/AccessDenied)
- *   3  VERIFICATION FAILED — the B2 replica is NOT provably restorable
+ *   3  VERIFICATION FAILED — the B2 replica is NOT provably restorable (integrity,
+ *      table, or LTX replay failure)
  *
  * Cadence and where the result is recorded: docs/backup-policy.md.
  */
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import { createRequire } from "node:module";
-import { mkdirSync, mkdtempSync, rmSync, createWriteStream } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, createWriteStream, writeFileSync, openSync, readSync, closeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -64,10 +80,19 @@ const DOWNLOAD_TIMEOUT_MS = 60 * 60_000; // a multi-GB snapshot over a modest up
 const LTX_APPLY_TIMEOUT_MS = 30 * 60_000; // 30 min for apply; the LTX chain can be long
 
 /** Path prefix inside the B2 bucket for the live Litestream replica.  Mirrors the
- *  `path: trading-live/app.db` line in litestream.coolify.yml — Litestream stores the
- *  base snapshot under `<path>` and incremental LTX files under `<path>.ltx/`.
- *  We list everything under that prefix and pick the newest snapshot. */
+ *  `path: trading-live/app.db` line in litestream.coolify.yml.  Under Litestream 0.5.x
+ *  the objects below it are `<prefix>/<level:0000-0009>/<minTXID>-<maxTXID>.ltx`
+ *  (snapshots at level 0009); legacy replica sets instead carry `.db` snapshots named
+ *  `<prefix>-<timestamp>.db`.  We list everything under the prefix and detect which. */
 export const B2_LIVE_PREFIX = "trading-live/app.db";
+
+/** Litestream's SnapshotLevel (compaction_level.go, pinned v0.5.12) — full-database
+ *  snapshots are written as LTX files at this level. */
+export const LTX_SNAPSHOT_LEVEL = 9;
+
+/** First 4 bytes of every LTX file (superfly/ltx Magic), checked on degraded
+ *  snapshot-only downloads. */
+export const LTX_MAGIC = "LTX1";
 
 /** Same money-and-state tables the R2 cold-snapshot verifier asserts (mirror of
  *  scripts/ops/verify-cold-snapshot-restore.mjs:DEFAULT_VERIFY_TABLES).  When the two
@@ -98,6 +123,39 @@ export function newestSnapshotKey(keys, prefix = B2_LIVE_PREFIX) {
   return candidates.length > 0 ? candidates[candidates.length - 1] : null;
 }
 
+/** `<level:%04x>/<minTXID:%016x>-<maxTXID:%016x>.ltx` below the replica prefix — the
+ *  Litestream 0.5.x object shape (s3.ReplicaClient: `c.Path + "/" + fmt.Sprintf("%04x/%s", level, filename)`). */
+const LTX_KEY_RE = /^([0-9a-f]{4})\/([0-9a-f]{16})-([0-9a-f]{16})\.ltx$/;
+
+/** Parse a 0.5.x LTX object key under the replica prefix.  Returns
+ *  { level, minTxid, maxTxid } (txids as fixed-width hex strings) or null. */
+export function parseLtxKey(key, prefix = B2_LIVE_PREFIX) {
+  if (!key.startsWith(`${prefix}/`)) return null;
+  const m = LTX_KEY_RE.exec(key.slice(prefix.length + 1));
+  if (!m) return null;
+  return { level: parseInt(m[1], 16), minTxid: m[2], maxTxid: m[3] };
+}
+
+/** Detect which replica layout the listed keys represent: "ltx" (Litestream 0.5.x —
+ *  what production writes), "legacy" (`.db` snapshots), or "empty" (nothing usable). */
+export function detectReplicaLayout(keys, prefix = B2_LIVE_PREFIX) {
+  if (keys.some((k) => parseLtxKey(k, prefix) !== null)) return "ltx";
+  if (keys.some((k) => k === prefix || k.startsWith(`${prefix}-`) || k === `${prefix}.db`)) return "legacy";
+  return "empty";
+}
+
+/** Pick the newest snapshot-level (0009) LTX object — a full-database snapshot written
+ *  every `snapshot.interval` (24h in litestream.coolify.yml).  Fixed-width hex TXIDs
+ *  sort lexicographically.  Returns null when no snapshot has been written yet (a
+ *  replica younger than one snapshot interval still restores from the raw L0 chain). */
+export function newestLtxSnapshotKey(keys, prefix = B2_LIVE_PREFIX) {
+  const snaps = keys
+    .map((k) => ({ key: k, info: parseLtxKey(k, prefix) }))
+    .filter((x) => x.info !== null && x.info.level === LTX_SNAPSHOT_LEVEL)
+    .sort((a, b) => (a.info.maxTxid < b.info.maxTxid ? -1 : a.info.maxTxid > b.info.maxTxid ? 1 : 0));
+  return snaps.length > 0 ? snaps[snaps.length - 1].key : null;
+}
+
 /** Parse a minimal ListObjectsV2 XML response.  Returns [{ key, size }].  Same shape as
  *  the R2 verifier so the surface is interchangeable. */
 export function parseListObjectsV2(xml) {
@@ -112,15 +170,21 @@ export function parseListObjectsV2(xml) {
   return objects;
 }
 
-/** Decide whether the verdict is a pass.  Mirrors verify-cold-snapshot-restore.mjs:assessRestore. */
-export function assessRestore({ integrity, tables }) {
+/** Decide whether the verdict is a pass.  Mirrors verify-cold-snapshot-restore.mjs:assessRestore.
+ *  `ltxApplied` is true/false when a Litestream replay was requested, null when the
+ *  operator explicitly opted out with --no-apply-ltx.  A requested replay that failed
+ *  fails the drill — PASS on the base snapshot alone is exactly the false-green this
+ *  script exists to prevent. */
+export function assessRestore({ integrity, tables, ltxApplied = null }) {
   const missingTables = tables.filter((t) => !t || t.rowCount === 0);
   const tablesOK = missingTables.length === 0;
   const integrityOK = integrity === "ok";
+  const ltxOK = ltxApplied !== false;
   return {
-    pass: tablesOK && integrityOK,
+    pass: tablesOK && integrityOK && ltxOK,
     tablesOK,
     integrityOK,
+    ltxOK,
     missingTables
   };
 }
@@ -255,45 +319,75 @@ async function downloadSnapshot(cfg, key, destPath) {
   }
 }
 
-/** Apply LTX files to the restored snapshot DB using a real Litestream binary.  Litestream's
- *  restore command reads `<path>.ltx/` and replays incremental transactions to bring the
- *  snapshot forward to a target time.  We use the system's `litestream` binary by default
- *  (overridable via LITESTREAM_BIN) so this script doesn't pin a Litestream version —
- *  whatever the operator has installed is what production is replicating with, so it's the
- *  most faithful restore target.  We invoke `litestream restore -o <db>` and rely on the
- *  binary's own replica resolution. */
-async function applyLtx(scratchDir, snapshotPath, cfg) {
+/** Read the first `len` bytes of a file (the LTX magic check must not slurp a
+ *  multi-GB snapshot object into memory). */
+function readFileMagic(path, len = 4) {
+  const fd = openSync(path, "r");
+  try {
+    const buf = Buffer.alloc(len);
+    const n = readSync(fd, buf, 0, len, 0);
+    return buf.subarray(0, n).toString("latin1");
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Restore the database from the live replica using a real Litestream binary.  We use
+ *  the system's `litestream` binary by default (overridable via LITESTREAM_BIN) so this
+ *  script doesn't pin a Litestream version — whatever the operator has installed is
+ *  what production is replicating with, so it's the most faithful restore target.
+ *
+ *  Two invocation traps, both verified against the pinned v0.5.12 source
+ *  (cmd/litestream/restore.go, cmd/litestream/main.go):
+ *    - `-config -` does NOT read stdin: OpenConfigFile os.Open()s the path, so "-"
+ *      fails with "config file not found".  The drill config is therefore written
+ *      into the scratch dir (mode 0600 — it carries the B2 keys) and deleted in the
+ *      finally below.
+ *    - `restore` REQUIRES a positional DB path (or replica URL); without one it exits
+ *      with a usage error before touching the replica.  We pass the scratch output
+ *      path, matching the `path:` in the generated config, plus `-force` so the
+ *      legacy flow can replay onto the just-downloaded snapshot file.
+ *  `force-path-style: true` mirrors litestream.coolify.yml — virtual-hosted style is
+ *  unreliable against B2. */
+async function litestreamRestore(scratchDir, destPath, cfg) {
   const bin = process.env.LITESTREAM_BIN ?? "litestream";
-  return await new Promise((resolve, reject) => {
-    // Use the live env so litestream can resolve the replica via ${VAR} substitution.
-    const env = {
-      ...process.env,
-      AWS_S3_BUCKET_NAME: cfg.bucket,
-      AWS_S3_ENDPOINT: cfg.endpoint,
-      AWS_S3_REGION: cfg.region,
-      AWS_ACCESS_KEY_ID: cfg.accessKeyId,
-      AWS_SECRET_ACCESS_KEY: cfg.secretAccessKey
-    };
-    const proc = spawn(
-      bin,
-      ["restore", "-config", "-", "-o", snapshotPath],
-      {
-        cwd: scratchDir,
-        env,
-        timeout: LTX_APPLY_TIMEOUT_MS,
-        // Litestream reads replica config from stdin when -config is "-".
-        stdio: ["pipe", "inherit", "inherit"]
-      }
-    );
-    // Minimal replica config pointing at the live B2 prefix.
-    const replicaConfig = `dbs:\n  - path: ${snapshotPath}\n    replicas:\n      - type: s3\n        bucket: ${cfg.bucket}\n        path: ${B2_LIVE_PREFIX}\n        region: ${cfg.region}\n        endpoint: ${cfg.endpoint}\n        access-key-id: ${cfg.accessKeyId}\n        secret-access-key: ${cfg.secretAccessKey}\n`;
-    proc.stdin.end(replicaConfig);
-    proc.on("error", reject);
-    proc.on("exit", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`litestream restore exited with code ${code}`));
+  const configPath = join(scratchDir, ".litestream-drill-config.yml");
+  const replicaConfig = [
+    "dbs:",
+    `  - path: ${JSON.stringify(destPath)}`,
+    "    replicas:",
+    "      - type: s3",
+    `        bucket: ${JSON.stringify(cfg.bucket)}`,
+    `        path: ${JSON.stringify(B2_LIVE_PREFIX)}`,
+    `        region: ${JSON.stringify(cfg.region)}`,
+    `        endpoint: ${JSON.stringify(cfg.endpoint)}`,
+    "        force-path-style: true",
+    `        access-key-id: ${JSON.stringify(cfg.accessKeyId)}`,
+    `        secret-access-key: ${JSON.stringify(cfg.secretAccessKey)}`,
+    ""
+  ].join("\n");
+  writeFileSync(configPath, replicaConfig, { mode: 0o600 });
+  try {
+    await new Promise((resolve, reject) => {
+      const proc = spawn(
+        bin,
+        ["restore", "-config", configPath, "-o", destPath, "-force", destPath],
+        {
+          cwd: scratchDir,
+          stdio: ["ignore", "inherit", "inherit"],
+          timeout: LTX_APPLY_TIMEOUT_MS
+        }
+      );
+      proc.on("error", reject);
+      proc.on("exit", (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`litestream restore exited with code ${code}`));
+      });
     });
-  });
+  } finally {
+    // The config file carries the B2 credentials — it must not outlive the run.
+    rmSync(configPath, { force: true });
+  }
 }
 
 /** Open the restored DB and run the integrity check + table row-count assertions. */
@@ -314,6 +408,102 @@ export function inspectRestored(dbPath, tables) {
   } finally {
     db.close();
   }
+}
+
+function tableListFromEnv(env) {
+  return (env.RESTORE_DRILL_TABLES ?? DEFAULT_VERIFY_TABLES.join(",")).split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+function printInspection(inspected, verdict) {
+  console.error(`[b2-restore] integrity: ${inspected.integrity}`);
+  for (const t of inspected.tables) {
+    console.error(`[b2-restore] ${t.name}: rows=${t.rowCount}${t.error ? ` error=${t.error}` : ""}`);
+  }
+  if (!verdict.ltxOK) {
+    console.error("[b2-restore] LTX replay FAILED — the drill cannot pass on the base snapshot alone (--no-apply-ltx is the explicit degraded opt-out)");
+  }
+  console.error(`[b2-restore] verdict: ${verdict.pass ? "PASS" : "FAIL"}`);
+}
+
+/** Legacy layout: download the newest `.db` base snapshot byte-for-byte, then replay
+ *  the replica chain onto it with the Litestream binary.  A requested replay that
+ *  fails FAILS the drill (exit 3). */
+async function runSnapshotFlow({ cfg, env, targetKey, noApplyLtx, scratchRoot, createdFiles }) {
+  if (!targetKey) {
+    console.error(`No Litestream base snapshot found under ${B2_LIVE_PREFIX}`);
+    return 1;
+  }
+  console.error(`[b2-restore] target snapshot: ${targetKey}`);
+  const snapshotDest = join(scratchRoot, targetKey.split("/").pop() ?? "snapshot.db");
+  createdFiles.push(snapshotDest);
+  await downloadSnapshot(cfg, targetKey, snapshotDest);
+  let ltxApplied = null;
+  if (!noApplyLtx) {
+    try {
+      await litestreamRestore(scratchRoot, snapshotDest, cfg);
+      ltxApplied = true;
+      console.error("[b2-restore] litestream restore applied the replica chain");
+    } catch (e) {
+      ltxApplied = false;
+      console.error(`[b2-restore] ERROR: litestream restore failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  const inspected = inspectRestored(snapshotDest, tableListFromEnv(env));
+  const verdict = assessRestore({ ...inspected, ltxApplied });
+  printInspection(inspected, verdict);
+  return verdict.pass ? 0 : 3;
+}
+
+/** Litestream 0.5.x LTX layout (what production writes): there is no standalone `.db`
+ *  object, so the Litestream binary performs the whole restore — snapshot fetch and
+ *  chain replay — into a scratch file, which we then integrity-check. */
+async function runLtxReplicaFlow({ cfg, env, noApplyLtx, scratchRoot, createdFiles, keys }) {
+  const newestSnap = newestLtxSnapshotKey(keys, B2_LIVE_PREFIX);
+  console.error(`[b2-restore] replica layout: Litestream 0.5 LTX (objects at ${B2_LIVE_PREFIX}/<level>/<minTXID>-<maxTXID>.ltx)`);
+  if (newestSnap) {
+    console.error(`[b2-restore] newest snapshot-level object: ${newestSnap}`);
+  } else {
+    console.error(`[b2-restore] WARN: no snapshot-level object under ${B2_LIVE_PREFIX}/0009/ — restore replays the raw L0 chain`);
+  }
+
+  if (noApplyLtx) {
+    // Degraded object-level check: prove the newest snapshot object downloads
+    // byte-for-byte and carries the LTX magic.  No database is produced, so the
+    // integrity/table assertions cannot run in this mode.
+    if (!newestSnap) {
+      console.error("[b2-restore] --no-apply-ltx needs a snapshot-level object to verify; none found");
+      return 1;
+    }
+    const ltxDest = join(scratchRoot, newestSnap.split("/").pop() ?? "snapshot.ltx");
+    createdFiles.push(ltxDest);
+    await downloadSnapshot(cfg, newestSnap, ltxDest);
+    const magic = readFileMagic(ltxDest);
+    const ok = magic === LTX_MAGIC;
+    console.error(`[b2-restore] snapshot object downloaded (${newestSnap}); LTX magic: ${ok ? "ok" : `INVALID (${JSON.stringify(magic)})`}`);
+    console.error(`[b2-restore] verdict: ${ok ? "PASS" : "FAIL"} (degraded: snapshot object only — no replay, no integrity_check)`);
+    return ok ? 0 : 3;
+  }
+
+  const restoredDest = join(scratchRoot, "restored-ltx.db");
+  createdFiles.push(restoredDest, `${restoredDest}-txid`);
+  let ltxApplied = null;
+  try {
+    await litestreamRestore(scratchRoot, restoredDest, cfg);
+    ltxApplied = true;
+    console.error("[b2-restore] litestream restore rebuilt the database from the live LTX replica");
+  } catch (e) {
+    ltxApplied = false;
+    console.error(`[b2-restore] ERROR: litestream restore failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  const tableList = tableListFromEnv(env);
+  // A failed restore produces no database to inspect — report the failure shape
+  // instead of crashing on a missing file, and let ltxOK fail the verdict.
+  const inspected = ltxApplied
+    ? inspectRestored(restoredDest, tableList)
+    : { integrity: "fail", tables: tableList.map((name) => ({ name, rowCount: 0 })) };
+  const verdict = assessRestore({ ...inspected, ltxApplied });
+  printInspection(inspected, verdict);
+  return verdict.pass ? 0 : 3;
 }
 
 export async function main(argv = process.argv.slice(2), env = process.env) {
@@ -354,40 +544,37 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
     return 0;
   }
 
-  const targetKey = keyArg ?? newestSnapshotKey(keys.map((k) => k.key), B2_LIVE_PREFIX);
-  if (!targetKey) {
-    console.error(`No Litestream base snapshot found under ${B2_LIVE_PREFIX}`);
-    return 1;
-  }
-  console.error(`[b2-restore] target snapshot: ${targetKey}`);
-  console.error(`[b2-restore] LTX chain candidate keys: ${keys.length - 1} (the rest are non-db)`);
-
-  const scratchRoot = env.RESTORE_DRILL_SCRATCH_DIR ?? mkdtempSync(join(tmpdir(), "agentic-b2-drill-"));
-  const snapshotDest = join(scratchRoot, targetKey.split("/").pop() ?? "snapshot.db");
+  // Only scratch directories THIS script creates (mkdtemp) may be deleted at the end.
+  // An operator-supplied RESTORE_DRILL_SCRATCH_DIR is never wiped — the finally only
+  // removes the specific files this run created inside it (a multi-GB snapshot must
+  // not linger, but an operator directory must not be destroyed).
+  const operatorScratchDir = env.RESTORE_DRILL_SCRATCH_DIR ?? null;
+  const scratchRoot = operatorScratchDir ?? mkdtempSync(join(tmpdir(), "agentic-b2-drill-"));
   mkdirSync(scratchRoot, { recursive: true });
+  const createdFiles = [];
 
   try {
-    await downloadSnapshot(cfg, targetKey, snapshotDest);
-    if (!noApplyLtx) {
-      try {
-        await applyLtx(scratchRoot, snapshotDest, cfg);
-        console.error("[b2-restore] litestream restore applied LTX chain");
-      } catch (e) {
-        console.error(`[b2-restore] WARN: litestream restore failed: ${e instanceof Error ? e.message : String(e)}`);
-        console.error("[b2-restore] continuing with base-snapshot-only integrity check (use --no-apply-ltx to suppress)");
-      }
+    const keyList = keys.map((k) => k.key);
+    console.error(`[b2-restore] objects under ${B2_LIVE_PREFIX}: ${keyList.length}`);
+    if (keyArg) {
+      // An explicit --key is always legacy snapshot semantics.
+      return await runSnapshotFlow({ cfg, env, targetKey: keyArg, noApplyLtx, scratchRoot, createdFiles });
     }
-    const tableList = (env.RESTORE_DRILL_TABLES ?? DEFAULT_VERIFY_TABLES.join(",")).split(",").map((s) => s.trim()).filter(Boolean);
-    const inspected = inspectRestored(snapshotDest, tableList);
-    const verdict = assessRestore(inspected);
-    console.error(`[b2-restore] integrity: ${inspected.integrity}`);
-    for (const t of inspected.tables) {
-      console.error(`[b2-restore] ${t.name}: rows=${t.rowCount}${t.error ? ` error=${t.error}` : ""}`);
+    const layout = detectReplicaLayout(keyList, B2_LIVE_PREFIX);
+    if (layout === "empty") {
+      console.error(`No Litestream base snapshot or LTX replica objects found under ${B2_LIVE_PREFIX}`);
+      return 1;
     }
-    console.error(`[b2-restore] verdict: ${verdict.pass ? "PASS" : "FAIL"}`);
-    return verdict.pass ? 0 : 3;
+    if (layout === "ltx") {
+      return await runLtxReplicaFlow({ cfg, env, noApplyLtx, scratchRoot, createdFiles, keys: keyList });
+    }
+    return await runSnapshotFlow({ cfg, env, targetKey: newestSnapshotKey(keyList, B2_LIVE_PREFIX), noApplyLtx, scratchRoot, createdFiles });
   } finally {
-    rmSync(scratchRoot, { recursive: true, force: true });
+    if (operatorScratchDir) {
+      for (const f of createdFiles) rmSync(f, { force: true });
+    } else {
+      rmSync(scratchRoot, { recursive: true, force: true });
+    }
   }
 }
 
@@ -412,4 +599,3 @@ if (isCli) {
     }
   );
 }
-

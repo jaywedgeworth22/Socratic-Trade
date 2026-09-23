@@ -312,6 +312,58 @@ final class MobileModelsTests: XCTestCase {
         XCTAssertEqual(desk.pending.first?.side, "buy")
     }
 
+    // 2026-09-23 MM (held-batch): when the most recent snapshot decoded with at least one
+    // money-path collection element dropped, Owner Approve is BLOCKED — a pending proposal
+    // not in the visible list would make a visible-card approval unsafe.  All other
+    // commands stay available so the user can still cancel / browse / switch accounts.
+    @MainActor
+    func testPartialDataBlocksOwnerApproveButKeepsEverythingElse() throws {
+        // Build a snapshot whose decode intentionally dropped 1 pending proposal and 1 order.
+        let json = #"""
+        {"readiness":{"hasAccount":true,"hasUniverse":true,"systemState":"active","strategyAuthority":"decide","commandBacklog":{"queued":0,"running":0}},
+         "policy":{"systemState":"active","strategyAuthority":"decide"},
+         "orders":[{"junk":true}],
+         "pendingProposals":[{"junk":true}]}
+        """#
+        let partialSnapshot = try JSONDecoder().decode(MobileSnapshot.self, from: Data(json.utf8))
+        XCTAssertTrue(partialSnapshot.partialData)
+        XCTAssertEqual(partialSnapshot.partialDropCounts.orders, 1)
+        XCTAssertEqual(partialSnapshot.partialDropCounts.pendingProposals, 1)
+        let store = MobileStore(
+            client: MobileAPIClient(baseURL: URL(string: "https://socratictrade.com")!),
+            previewSnapshot: partialSnapshot
+        )
+        XCTAssertTrue(store.partialData, "partialData flag must propagate from snapshot to store")
+
+        // Owner Approve is BLOCKED when partialData is true, regardless of staleness.
+        XCTAssertFalse(store.canSubmit("proposal.approve"), "Owner Approve must be paused on partial decode")
+        XCTAssertFalse(store.canSubmit("proposal.approve", at: Date(timeIntervalSinceNow: 181)))
+
+        // Cancel, account switch, and reject are still available — partial decode is a
+        // DISPLAY hazard, not a stale-data hazard.
+        XCTAssertTrue(store.canSubmit("order.cancel"))
+        XCTAssertTrue(store.canSubmit("account.activate"))
+        XCTAssertTrue(store.canSubmit("proposal.reject"))
+
+        // Read-only and strategy-start commands follow the normal readiness path.
+        XCTAssertTrue(store.canSubmit("strategy.stop"))
+    }
+
+    @MainActor
+    func testCleanSnapshotAllowsOwnerApprove() throws {
+        // The full snapshot fixture has no drops — Owner Approve is the same as before.
+        let snapshot = try JSONDecoder().decode(MobileSnapshot.self, from: Data(fullSnapshotJSON.utf8))
+        XCTAssertFalse(snapshot.partialData)
+        let store = MobileStore(
+            client: MobileAPIClient(baseURL: URL(string: "https://socratictrade.com")!),
+            previewSnapshot: snapshot
+        )
+        XCTAssertFalse(store.partialData)
+        XCTAssertTrue(store.canSubmit("proposal.approve"))
+        XCTAssertTrue(store.canSubmit("order.cancel"))
+        XCTAssertTrue(store.canSubmit("account.activate"))
+    }
+
     @MainActor
     func testCommandSafetyGatesReadinessAndStalenessButKeepsProtectiveActions() throws {
         let snapshot = try JSONDecoder().decode(MobileSnapshot.self, from: Data(minimalSnapshotJSON.utf8))

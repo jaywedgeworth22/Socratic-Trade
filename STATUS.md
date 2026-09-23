@@ -1,5 +1,35 @@
 # Current Status
 
+## 2026-09-23 INSTINCT — PR #3453 round: B2 LTX restore drill hardening + handoff records (Codex findings)
+
+Codex review of head `48831cf9` raised four findings on `scripts/ops/verify-b2-ltx-restore.mjs`;
+all four verified real against the code and the pinned Litestream v0.5.12 source, and fixed this
+round.  (a) A failed Litestream replay was WARN-swallowed and the drill could still report PASS on
+the base snapshot alone — the false-green the drill exists to prevent.  `assessRestore` now takes
+`ltxApplied`; a requested replay that failed fails the drill (exit 3).  `--no-apply-ltx` remains
+the explicit degraded opt-out.  (b) The `finally` unconditionally `rmSync`'d the scratch root,
+wiping an operator-supplied `RESTORE_DRILL_SCRATCH_DIR`; only mkdtemp dirs the script itself
+created are now removed, and inside an operator dir only this run's own files.  (c) REAL:
+production's Litestream 0.5.12 replica holds no `.db` snapshot — objects are
+`<path>/<level:0000-0009>/<minTXID>-<maxTXID>.ltx` with full snapshots at level 0009
+(SnapshotLevel = 9), traced against the pinned v0.5.12 source (compaction_level.go,
+s3/replica_client.go key format, cmd/litestream/restore.go).  The drill now detects the layout
+and, for LTX replicas, has `litestream restore` rebuild the database straight from the replica.
+Two invocation bugs fixed on the way: `-config -` never read stdin (OpenConfigFile os.Opens the
+path) and `restore` requires a positional DB path — the old invocation could never have succeeded.
+The generated replica config (it carries the B2 keys) is now a 0600 temp file with
+`force-path-style: true`, deleted after the run.  (d) This entry, `PLAN.md`, and
+`docs/rollouts/2026-09-23-b2-ltx-restore-drill-hardening.md` are the round's handoff records.
+
+Verification: `node --check` clean; an offline harness (stubbed S3 ListObjectsV2/GET + fake
+litestream binary) covers both layouts, replay-failure exit 3, operator-scratch preservation,
+mkdtemp cleanup, degraded `--no-apply-ltx`, empty replica, and usage errors — all pass.  NOT yet
+run against real B2 credentials — the first real drill should be watched.  Repo vitest excludes
+`scripts/**/*.test.mjs` and nothing under `src/**` imports this script; the required CI `verify`
+check re-runs on push.  Ops script + docs only.  Extra-ship no.
+Rollout: `docs/rollouts/2026-09-23-b2-ltx-restore-drill-hardening.md`.
+
+
 ## 2026-09-21 MUSE — claude-code-action 1.0.230 bump, round-3 sweep (restore pin, record verification)
 
 Round-3 of the PR #3447 lane.  Codex reviewed head `784ab103` and raised three P1s: (a) "record

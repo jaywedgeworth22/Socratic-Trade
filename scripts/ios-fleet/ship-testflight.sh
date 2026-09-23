@@ -827,6 +827,19 @@ if [[ "$SYNC_PROJECT_VERSION" -eq 1 ]]; then
     "$PBXPROJ"
   log "synced project.pbxproj -> MARKETING_VERSION=${MARKETING} CURRENT_PROJECT_VERSION=${BUILD_NUM}"
   log "commit that change; it is the repo's record of this version"
+  # project.yml is the actual source of truth: `xcodegen generate` (below) rewrites
+  # project.pbxproj FROM ${_sync_yml_dir}/project.yml, so the sed above is silently
+  # overwritten on regen unless project.yml carries the same values (the 2026-08-13
+  # drift incident). sync-project-yml.mjs enforces the exact pair.
+  _sync_yml_dir="$XCODEGEN_DIR"
+  [[ -n "$_sync_yml_dir" && "$_sync_yml_dir" != "null" ]] || _sync_yml_dir="ios"
+  command -v node >/dev/null 2>&1 || die "--sync-project-version: node not found; cannot update ${_sync_yml_dir}/project.yml"
+  node "${REPO_ROOT}/scripts/ios-fleet/sync-project-yml.mjs" \
+    --project-yaml "${REPO_ROOT}/${_sync_yml_dir}/project.yml" \
+    --marketing "$MARKETING" \
+    --build "$BUILD_NUM" \
+    || die "sync-project-yml.mjs failed; refusing to leave ${_sync_yml_dir}/project.yml stale"
+  log "synced ${_sync_yml_dir}/project.yml -> MARKETING_VERSION=${MARKETING} CURRENT_PROJECT_VERSION=${BUILD_NUM}"
 fi
 AUTH_MODE="none"
 load_secrets
@@ -1129,3 +1142,4 @@ record_successful_ship
 log "upload submitted; watch TestFlight processing for ${BUNDLE_ID} build ${BUILD_NUM}"
 log "logs: ${LOG_DIR}"
 exit 0
+

@@ -1,7 +1,7 @@
 # 2026-07-05 — Volatility-targeting sizing + portfolio-heat budget (continuous taper, advisory)
 
 Lane 2 of a 5-lane parallel risk-engine effort. Worktree
-`~/Code/Socratic.Trade/.claude/worktrees/monet-vol-heat`, branch
+`~/Code/Socratic-Trade/.claude/worktrees/monet-vol-heat`, branch
 `claude/vol-targeting-portfolio-heat` (based on `origin/main`). Committed locally only — the
 orchestrator lands serially across all five lanes.
 

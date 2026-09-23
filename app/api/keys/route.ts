@@ -123,10 +123,10 @@ const API_KEY_CATALOG = [
     label: "Financial Modeling Prep",
     category: "Market data",
     required: false,
-    unlocks: "Retired on Socratic.Trade — CT-only. Do not use for ST product enrichment.",
+    unlocks: "Retired on Socratic-Trade — CT-only. Do not use for ST product enrichment.",
     docsUrl: "https://site.financialmodelingprep.com/developer/docs",
     retired: true,
-    retiredNote: "Retired on Socratic.Trade (Congress.Trade only). Key row kept for archaeology; product code never calls FMP."
+    retiredNote: "Retired on Socratic-Trade (Congress.Trade only). Key row kept for archaeology; product code never calls FMP."
   },
   {
     service: "alphavantage",
@@ -363,7 +363,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "This provider is retired on Socratic.Trade. Use Congress.Trade for FMP-class latency / congressional alt-data; do not store a key here."
+            "This provider is retired on Socratic-Trade. Use Congress.Trade for FMP-class latency / congressional alt-data; do not store a key here."
         },
         { status: 400 }
       );

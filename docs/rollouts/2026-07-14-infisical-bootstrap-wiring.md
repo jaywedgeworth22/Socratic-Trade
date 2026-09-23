@@ -2,7 +2,7 @@
 
 ## Summary
 
-Socratic.Trade's Infisical runner now resolves its machine-identity bootstrap before Next starts,
+Socratic-Trade's Infisical runner now resolves its machine-identity bootstrap before Next starts,
 uses complete identity pairs before same-source stale tokens, and keeps all bootstrap credentials
 out of the long-lived runner, third-party CLI helpers, and final application. A final argv-safe
 wrapper masks credential names after Infisical injection so Next cannot restore them from
@@ -38,7 +38,7 @@ that broad file would expose unrelated keys and make shell metacharacters execut
   never combined across namespaces or files.
 - A shared-only configuration aborts before token minting/export because overlay mode must fetch the
   app project as well.
-- Socratic.Trade defaults to project `39d93bb7-76f9-498c-8b50-a7def52e072f`. Shared defaults to
+- Socratic-Trade defaults to project `39d93bb7-76f9-498c-8b50-a7def52e072f`. Shared defaults to
   `18f563a3-9c88-454c-96eb-28fc9678f3ba` only when shared auth is present (or explicitly selected),
   so app-only setups remain single-project.
 - Credential aliases are normalized in process memory only. The runner snapshots the selected auth,

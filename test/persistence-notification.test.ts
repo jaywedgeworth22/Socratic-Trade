@@ -603,7 +603,7 @@ describe("persistence and notifications", () => {
     expect(emailBody).toMatchObject({
       from: "alerts@example.test",
       to: ["ops@example.test"],
-      subject: "[Socratic.Trade] AAPL fill"
+      subject: "[Socratic-Trade] AAPL fill"
     });
     expect(String(emailBody.text)).toContain("AAPL");
     expect(String(emailBody.text)).toMatch(/\n\(sent by Socratic\.Trade\)$/);

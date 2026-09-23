@@ -193,7 +193,7 @@ the narrative round label and the cap count are off by one here, and the rollout
 that explicitly.  **5 of 10** against the cap.
 
 Also recorded: Codex cited commit `22efe659` as its fresh evidence for (a).  That SHA resolves
-nowhere (`gh api repos/jaywedgeworth22/Socratic.Trade/commits/22efe659` => HTTP 422 "No commit
+nowhere (`gh api repos/jaywedgeworth22/Socratic-Trade/commits/22efe659` => HTTP 422 "No commit
 found for SHA") and is not one of the PR's six commits.  The finding was still correct on its
 merits, verified independently against the repo's squash settings and the PR's commit subjects,
 so it was fixed rather than disputed.  Documentation only — no source, dependency, or lockfile
@@ -1087,7 +1087,7 @@ after 7761 passing tests.  `#3046`'s `onConsoleLog: () => false` still
 forwards logs over RPC.  Fix: `disableConsoleIntercept: true` plus quiet
 log/info/debug in the existing setup file.  Targeted vitest 3/3 in 6.67s,
 eslint on touched files exit 0.  Branch `grok/vitest-teardown-console`,
-worktree `~/apps/trading-grok-verify-flake`.  PR: https://github.com/jaywedgeworth22/Socratic.Trade/pull/3163
+worktree `~/apps/trading-grok-verify-flake`.  PR: https://github.com/jaywedgeworth22/Socratic-Trade/pull/3163
 SHA `4fba321ff`.  No Coolify.  No extra-ship.  No merge from this lane.
 Remaining gate: GitHub `verify`.  Rollout:
 `docs/rollouts/2026-09-04-vitest-teardown-console.md`.
@@ -1472,7 +1472,7 @@ Independent re-check of `docs/rollouts/2026-08-21-ios-adaptive-tabs-followups.md
 ## 2026-08-22 CURSOR — PR #3028 merged to `main` (iOS wide layout / Admin tab / gear-bell)
 
 Squash `a851a68d` (`a851a68da16b9c7ec722897a3ab4f378e0117111`) at 2026-08-22 01:14:36Z.
-https://github.com/jaywedgeworth22/Socratic.Trade/pull/3028
+https://github.com/jaywedgeworth22/Socratic-Trade/pull/3028
 
 Shipped on `main`: regular-width `.sidebarAdaptable` TabView plus the existing card-column
 scaffold; compact keeps the phone bar; `gearshape` trailing on every tab; bell leading
@@ -3245,7 +3245,7 @@ from #2681).
 
 Branch `monet/real-toggles`, worktree `~/apps/trading-monet-toggles`. Gates (foreground, waited
 on): tsc clean; `npm test` 6573 passed / 51 skipped (568 files); lint 0 errors; build clean. PR
-https://github.com/jaywedgeworth22/Socratic.Trade/pull/2682, opened ready, auto-merge armed
+https://github.com/jaywedgeworth22/Socratic-Trade/pull/2682, opened ready, auto-merge armed
 (squash) — merges on green `verify`. Rollout:
 `docs/rollouts/2026-08-13-remove-force-include-notifications.md`.
 ## Current (2026-08-13 ~2:20pm CT CLAUDE — HOTFIX: adaptive FTS-mirror batching)
@@ -3349,7 +3349,7 @@ accounts -> portfolio/positions/orders -> quotes chain.
 Also: the intro canvas now measures the fixed overlay instead of `window.innerHeight` (they
 disagree by 60-90px on iOS Safari, which pushed the chart down and clipped its low wicks on every
 iPhone), DPR 3 on phones, iOS URL-bar resize absorption, safe-area-aware landing box.  iOS
-`LaunchStateView` (icon + spinner + "Socratic.Trade") is now the candlestick SOCRATIC TRADE wordmark
+`LaunchStateView` (icon + spinner + "Socratic-Trade") is now the candlestick SOCRATIC TRADE wordmark
 at the top that slides away, sized by the web `MobileBrandRow` formula, plus a `LaunchBackground`
 colorset that kills the white cold-launch flash.  Found and fixed a shipped bug along the way:
 `CandleWordmarkView` rendered the wordmark VERTICALLY MIRRORED (S as 2, R as K, A as Y) from a
@@ -4164,7 +4164,7 @@ behavior unchanged; injectable RNG for deterministic tests. Branch `monet/rotati
 ## Current (2026-08-06 MONET full-product review + deploy-freeze repair)
 ## Current (2026-08-07 GROK — iOS login brand parity)
 
-**iOS login restyled to match website** (`app/login/page.tsx`): candlestick "SOCRATIC TRADE" wordmark (`CandleWordmarkView`, port of `candle-ticker.ts`), accent-dot value bullets, plain `--bg` surface, Google/GitHub/Apple button order and styles. PR [#2574](https://github.com/jaywedgeworth22/Socratic.Trade/pull/2574) (branch `grok/ios-login-brand`, auto-merge armed). `xcodebuild` BUILD SUCCEEDED. Rollout: `docs/rollouts/2026-08-07-ios-login-brand.md`.
+**iOS login restyled to match website** (`app/login/page.tsx`): candlestick "SOCRATIC TRADE" wordmark (`CandleWordmarkView`, port of `candle-ticker.ts`), accent-dot value bullets, plain `--bg` surface, Google/GitHub/Apple button order and styles. PR [#2574](https://github.com/jaywedgeworth22/Socratic-Trade/pull/2574) (branch `grok/ios-login-brand`, auto-merge armed). `xcodebuild` BUILD SUCCEEDED. Rollout: `docs/rollouts/2026-08-07-ios-login-brand.md`.
 
 ## Prior (2026-08-06 MONET full-product review + deploy-freeze repair)
 
@@ -4336,7 +4336,7 @@ Thesis→Home, Evidence→Scan, Journal→Activity, Outcomes→Results, Regime�
 tooltips keep metaphor; home CTAs use `destinationLabel`; mobile pins already by href.
 Rollout: `docs/rollouts/2026-08-04-ux-b1-plain-nav-labels.md`.
 **2026-08-04 — GROK: retire direct FMP / QuiverQuant / Unusual Whales.** Owner:
-Socratic.Trade must not call those vendors. Congressional disclosures/analytics from
+Socratic-Trade must not call those vendors. Congressional disclosures/analytics from
 Congress.Trade (default ON); **fundamentals from multi-source cascade** (Yahoo/Finnhub/
 ROIC/SEC/… — App A fundamentals default OFF). Hard ban at registration + request choke
 points. Branch `grok/no-direct-fmp-quiver-uw` (PR #2398).
@@ -4463,7 +4463,7 @@ Root cause: `deriveEvidenceRows` assumed every truthy `latestScan` had array
 `topCandidates`. Fix: `safeTopCandidates` + snapshot normalization in `dashboard.ts`.
 Rollout: `docs/rollouts/2026-08-03-console-topcandidates-slice-crash.md`.
 
-**2026-08-03 — Xcode App Settings & Apple Sign-In Layout Constraint Fix (ANTIGRAVITY).** Configured Xcode App Category (`public.app-category.finance`), Display Name (`Socratic.Trade`), Marketing Version (`1.0.0`), and Build Version (`1`) across `Info.plist` and `project.pbxproj`. Fixed `ASAuthorizationAppleIDButton` layout constraint collision warning (`width == 392` vs `width <= 375`) in `LoginView.swift` by capping `SignInWithAppleButton` width to 375pt. `xcodebuild` succeeded clean. Rollout: `docs/rollouts/2026-08-03-xcode-app-settings-and-apple-signin-constraint-fix.md`.
+**2026-08-03 — Xcode App Settings & Apple Sign-In Layout Constraint Fix (ANTIGRAVITY).** Configured Xcode App Category (`public.app-category.finance`), Display Name (`Socratic-Trade`), Marketing Version (`1.0.0`), and Build Version (`1`) across `Info.plist` and `project.pbxproj`. Fixed `ASAuthorizationAppleIDButton` layout constraint collision warning (`width == 392` vs `width <= 375`) in `LoginView.swift` by capping `SignInWithAppleButton` width to 375pt. `xcodebuild` succeeded clean. Rollout: `docs/rollouts/2026-08-03-xcode-app-settings-and-apple-signin-constraint-fix.md`.
 
 **2026-08-02 — Exit-0 outage root-caused + exit-code hardening (MONET, branch
 `monet/exit0-outage-audit`).** The 15:29Z "clean exit 0, stayed down" outage was an

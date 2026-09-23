@@ -3,13 +3,13 @@
 ## Summary
 
 Kimi hit max-plan usage mid-flight while rotating the UM Cloudflare analytics
-token and diagnosing the Socratic.Trade R2 kill-switch. GROK took over.
+token and diagnosing the Socratic-Trade R2 kill-switch. GROK took over.
 
 ### What fired the kill-switch
 
 Marker `/app/data/.litestream-r2-disabled` written at **2026-08-03T19:57:06Z**:
 
-- Reason: Socratic.Trade Class A ops projected **73.16%** of free tier (pace basis, 0.2 elapsed floor)
+- Reason: Socratic-Trade Class A ops projected **73.16%** of free tier (pace basis, 0.2 elapsed floor)
 - Absolute Class A was only **14.63%** MTD
 - Storage latest was **~4.86 GiB (48.6%)** — under the 70% absolute storage threshold
 - App correctly booted **without** litestream while the marker existed

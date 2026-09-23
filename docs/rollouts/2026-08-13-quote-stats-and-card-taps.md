@@ -59,7 +59,7 @@ npx vitest run test/quote-route.test.ts test/on-demand-quote.test.ts test/yahoo-
 bash scripts/land.sh    # full suite 6624 passed / 51 skipped (569 files); npm run build clean
 ```
 
-PR https://github.com/jaywedgeworth22/Socratic.Trade/pull/2692 — squash auto-merge armed.
+PR https://github.com/jaywedgeworth22/Socratic-Trade/pull/2692 — squash auto-merge armed.
 
 ## Next Steps & Blockers
 

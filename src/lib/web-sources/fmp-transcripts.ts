@@ -283,7 +283,7 @@ export function fmpTranscriptStorageRightsConfirmed(
 
 /**
  * Two explicit opt-ins for the transcript *machinery* (rights + feature flags).
- * Even when both are on, requestFmpJson is hard-blocked — Socratic.Trade never
+ * Even when both are on, requestFmpJson is hard-blocked — Socratic-Trade never
  * opens a socket to FMP (owner 2026-08-04). Keep the dual-opt-in so rights /
  * inventory / purge tooling and contract tests stay meaningful.
  */

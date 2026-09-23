@@ -15,7 +15,7 @@ the original normalized-string comparison (matches the pre-existing behavior for
 case).
 
 ## Why
-This check false-failed every Socratic.Trade PR earlier today (2026-07-12) when
+This check false-failed every Socratic-Trade PR earlier today (2026-07-12) when
 Congress.Trade re-pinned `congress-trading-shared` to a raw SHA that is exactly what tag
 `v1.6.0` resolves to. The old check only did a normalized-string compare of the ref after
 `#`, so `v1.6.0` (this repo) vs `c4fcfb4423a11318bda8486ecf3dd6ab1783e87a` (peer) read as a
@@ -24,7 +24,7 @@ moving this repo's own pin to the same raw-SHA form (see `package.json` /
 `package-lock.json`), which made the string compare coincidentally pass again — but the
 underlying bug was untouched and will recur the instant the two repos pin the same commit
 via two different ref forms again. That is imminent: CODEX's pending `congress-trading-shared`
-v1.7.0 bump uses the tag form (`#v1.7.0`), and if Socratic.Trade's side lags on a raw SHA (or
+v1.7.0 bump uses the tag form (`#v1.7.0`), and if Socratic-Trade's side lags on a raw SHA (or
 vice versa) the false-positive returns. This change makes the check correct by construction
 instead of coincidentally-passing on today's specific pin state.
 

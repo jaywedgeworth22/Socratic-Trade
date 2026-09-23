@@ -1,5 +1,5 @@
 /**
- * Owner directive (2026-08-04): Socratic.Trade must NEVER call QuiverQuant,
+ * Owner directive (2026-08-04): Socratic-Trade must NEVER call QuiverQuant,
  * Unusual Whales, or FMP directly.
  *
  * - Congressional disclosures, FMP-class fundamentals/analyst snapshots that
@@ -28,7 +28,7 @@ export function isDirectVendorAccessAllowed(_vendor: RetiredDirectVendor): boole
 
 export function directVendorRetirementMessage(vendor: RetiredDirectVendor): string {
   return (
-    `${vendor} direct access is retired in Socratic.Trade; ` +
+    `${vendor} direct access is retired in Socratic-Trade; ` +
     `consume congressional / FMP-class data via Congress.Trade`
   );
 }
@@ -73,7 +73,7 @@ export function isIntentionalOffHealthService(service: string): boolean {
 export function intentionalOffHealthReason(service: string): string {
   const s = service.trim().toLowerCase();
   if (s === "fmp" || s.startsWith("fmp-") || s.startsWith("fmp_")) {
-    return "FMP direct access is retired in Socratic.Trade; FMP-class latency lives on Congress.Trade";
+    return "FMP direct access is retired in Socratic-Trade; FMP-class latency lives on Congress.Trade";
   }
   if (s === "quiverquant" || s === "quiver" || s.startsWith("quiver")) {
     return "QuiverQuant direct access is retired; congressional / alt-data via Congress.Trade";
@@ -84,7 +84,7 @@ export function intentionalOffHealthReason(service: string): string {
     s.includes("unusualwhales") ||
     s.includes("unusual_whales")
   ) {
-    return "Unusual Whales is not a Socratic.Trade producer (permanently retired)";
+    return "Unusual Whales is not a Socratic-Trade producer (permanently retired)";
   }
   return directVendorRetirementMessage("fmp");
 }

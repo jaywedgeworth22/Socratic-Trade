@@ -2,7 +2,7 @@
 
 ## Summary
 
-Socratic.Trade now supplies fixed-length explicit idempotency keys for every usage-monitor delivery.
+Socratic-Trade now supplies fixed-length explicit idempotency keys for every usage-monitor delivery.
 LLM and RAG events hash their durable local ledger-row IDs and carry the exact timestamp persisted
 with that row, broker balance metrics share one snapshot identity with metric suffixes, and each
 aggregated provider-call lane gets a unique window identity. Failed or ambiguous POSTs retain the
@@ -46,7 +46,7 @@ monitor's idempotency-key limit. Empty IDs receive independent UUID-backed ident
 
 - Land the paired API Usage Monitor hardening first or alongside this producer fix; its ingest
   route now returns 409 for conflicting payloads instead of silently accepting one.
-- No merge to Socratic.Trade `main` without an explicit landing decision because merge
+- No merge to Socratic-Trade `main` without an explicit landing decision because merge
   auto-deploys production.
 - The former process-crash gap for LLM/RAG ledger rows is resolved locally by the bounded durable
   replay worker documented in `docs/rollouts/2026-07-13-usage-monitor-durable-replay.md`. Landing is

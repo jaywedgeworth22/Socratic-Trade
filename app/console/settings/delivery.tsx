@@ -31,7 +31,7 @@ import {
 } from "./lib";
 
 const CHANNEL_TITLE: Record<DeliveryChannelDescriptor["id"], string> = {
-  apns: "Native notifications on your iPhone.  Your devices register themselves when you allow notifications in the Socratic.Trade app.",
+  apns: "Native notifications on your iPhone.  Your devices register themselves when you allow notifications in the Socratic-Trade app.",
   push: "Alerts via ntfy.sh — subscribe to a topic in the ntfy app or any ntfy-compatible client.",
   pushover: "Pushover push notifications to your phone.  Paste your own application API token + user key below — no server setup needed.",
   webhook: "An HTTPS POST with a JSON payload to any URL you control (chat webhooks get rich embeds).",

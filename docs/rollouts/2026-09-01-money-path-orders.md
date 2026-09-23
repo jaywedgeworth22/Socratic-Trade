@@ -2,7 +2,7 @@
 
 ## Context & Objective
 
-Owner 2026-09-01: thoroughly fix Socratic.Trade trading and order issues.  Cursor's 2026-08-23 review filed three live-order bugs (#3152 / boards efd2a783, ef0dccb3, d4cb5e75, d36c2233).  No live order placement from this Mac.
+Owner 2026-09-01: thoroughly fix Socratic-Trade trading and order issues.  Cursor's 2026-08-23 review filed three live-order bugs (#3152 / boards efd2a783, ef0dccb3, d4cb5e75, d36c2233).  No live order placement from this Mac.
 
 ## Changes Made
 

@@ -1,4 +1,4 @@
-# Socratic.Trade — Backend / API / Ops / Docs Review (deepseek lane)
+# Socratic-Trade — Backend / API / Ops / Docs Review (deepseek lane)
 
 Reviewed: /Users/jay/apps/trading-deepseek @ origin/main 41a7a438d (clean checkout, verified `git status` empty).
 Date: 2026-08-21. Read-only review; scratch artifacts only in /tmp.

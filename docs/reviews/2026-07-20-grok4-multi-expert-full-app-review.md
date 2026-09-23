@@ -1,4 +1,4 @@
-# Socratic.Trade — Multi-Expert Full-App Review (GROK4)
+# Socratic-Trade — Multi-Expert Full-App Review (GROK4)
 
 **Date:** 2026-07-20  
 **Branch / worktree:** `agent/ios-phase-5` @ `code-socratictrade/grok`  
@@ -29,7 +29,7 @@
 
 ## Executive summary
 
-Socratic.Trade is a **mature real-money trading monolith** with unusually strong approval receipts, glossary honesty, placement/reconcile hardening, and a sophisticated RAG stack. The 2026-07-04 composite review’s biggest learning-loop holes (episodic memory read, outcome writer, Red Team measurement) are **largely closed in code**. What remains is a different class of problem:
+Socratic-Trade is a **mature real-money trading monolith** with unusually strong approval receipts, glossary honesty, placement/reconcile hardening, and a sophisticated RAG stack. The 2026-07-04 composite review’s biggest learning-loop holes (episodic memory read, outcome writer, Red Team measurement) are **largely closed in code**. What remains is a different class of problem:
 
 1. **Trust false positives** — budget/credit skips finish as `status: "completed"` and UI can say “did nothing on purpose.”
 2. **Operational RAG cliff** — prod is on bge-m3 with a minority corpus (~1.6k vs ~8.7k Voyage); dense retrieval is sparse by design until full re-embed.

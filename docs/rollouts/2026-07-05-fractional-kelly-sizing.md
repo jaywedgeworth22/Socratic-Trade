@@ -109,7 +109,7 @@ learning-loop feature in this codebase (`calibrationSizing`, `skipNegativeExpect
 
 ## Verification
 
-Run from `/Users/jay/Code/Socratic.Trade/.claude/worktrees/monet-kelly`:
+Run from `/Users/jay/Code/Socratic-Trade/.claude/worktrees/monet-kelly`:
 
 - `npx tsc --noEmit` — clean, no output.
 - `npx vitest run test/kelly.test.ts test/performance-payoff-stats.test.ts test/kelly-sizing.test.ts test/conviction-size-cap.test.ts test/performance.test.ts` —

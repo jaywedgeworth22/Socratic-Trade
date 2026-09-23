@@ -2,7 +2,7 @@
 
 ## Context and goal
 
-Owner asked for a top-to-bottom pass of Socratic.Trade (desktop web, mobile web, iOS, backend pipeline, RAG/embeddings/ingest, recent trades, broker, errors, connections).  File every improvement on the Mac board, effort log, and GitHub.  Coordinate on Slack.  This rollout is filing-only.
+Owner asked for a top-to-bottom pass of Socratic-Trade (desktop web, mobile web, iOS, backend pipeline, RAG/embeddings/ingest, recent trades, broker, errors, connections).  File every improvement on the Mac board, effort log, and GitHub.  Coordinate on Slack.  This rollout is filing-only.
 
 ## What changed
 

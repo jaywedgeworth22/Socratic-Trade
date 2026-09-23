@@ -1,7 +1,7 @@
 # 2026-08-17 — Effort-board hygiene
 
 ## Context & Objective
-In Progress on the live Socratic.Trade board still listed work that had already merged. Zero open PRs. GitHub effort issues stayed `state:in-progress` because the committed mirror had not moved those rows.
+In Progress on the live Socratic-Trade board still listed work that had already merged. Zero open PRs. GitHub effort issues stayed `state:in-progress` because the committed mirror had not moved those rows.
 
 ## Changes Made
 - Rebuilt In Progress to leftover real work only.

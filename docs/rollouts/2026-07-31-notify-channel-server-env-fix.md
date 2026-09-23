@@ -15,7 +15,7 @@ what could be fixed without owner-only credentials.
 - Infisical ST prod had **none** of the Pushover/Twilio keys (only
   `RESEND_API_KEY`) → "not configured on the server" was accurate.
 - The Twilio set the owner remembered configuring lives in the **shared**
-  Infisical project (`shared-at-ct`, prod) — not in the Socratic.Trade
+  Infisical project (`shared-at-ct`, prod) — not in the Socratic-Trade
   project the app's prod env actually reads.
 - `PUSHOVER_APP_TOKEN` exists in **no** secret store (local `~/.secrets`,
   shared prod, CT prod, ST prod) — the Pushover *application* token was never

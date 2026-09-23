@@ -1,7 +1,7 @@
 # 2026-07-07 — as-of epoch Pinecone backfill executed (ops run, MONET)
 
 Agent: MONET (cloud session worktree
-`~/.claude/projects/Socratic.Trade/backfill-asof-epoch-09e06b`, branch
+`~/.claude/projects/Socratic-Trade/backfill-asof-epoch-09e06b`, branch
 `monet/backfill-asof-epoch-09e06b` off `origin/main@8a53840b`).
 
 ## Summary
@@ -40,7 +40,7 @@ would currently drop nothing for lack of an epoch.
 ## Execution details / decisions
 
 - Ran from the existing deps-installed session worktree
-  `~/Code/Socratic.Trade/.claude/worktrees/monet-xenodochial-dirac-26f036` (branch
+  `~/Code/Socratic-Trade/.claude/worktrees/monet-xenodochial-dirac-26f036` (branch
   `claude/deferred-rag-closeout`, tree clean; the script + `backfillAsOfEpoch` there are
   byte-identical to `main`'s) because this session's worktree had no `node_modules` yet.
   The operator `PINECONE_API_KEY`/`VOYAGE_API_KEY` were exported from

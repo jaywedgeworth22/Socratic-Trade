@@ -1,6 +1,6 @@
 # iOS fleet ship tooling
 
-This directory is the **source of truth** for the fleet-wide TestFlight ship scripts used by all three apps (Socratic.Trade, Congress.Trade, Usage Monitor).  The runtime install location is `/Users/jay/apps/ios-fleet/`, which is outside version control — twice in one week an unversioned host script there carried a defect nobody could review (a reattach cron that opened a 60s outage window every minute; a macOS `flock` bug that would have shipped an empty version string).  This directory exists so the same scripts get code review, history, and PRs before they run.
+This directory is the **source of truth** for the fleet-wide TestFlight ship scripts used by all three apps (Socratic-Trade, Congress.Trade, Usage Monitor).  The runtime install location is `/Users/jay/apps/ios-fleet/`, which is outside version control — twice in one week an unversioned host script there carried a defect nobody could review (a reattach cron that opened a 60s outage window every minute; a macOS `flock` bug that would have shipped an empty version string).  This directory exists so the same scripts get code review, history, and PRs before they run.
 
 ## Files
 

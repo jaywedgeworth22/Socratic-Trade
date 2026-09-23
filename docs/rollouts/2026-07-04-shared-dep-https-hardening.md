@@ -2,7 +2,7 @@
 
 ## Summary
 
-- Switched Socratic.Trade from the GitHub Packages semver dependency to the exact public HTTPS git tag for `@jaywedgeworth22/congress-trading-shared`.
+- Switched Socratic-Trade from the GitHub Packages semver dependency to the exact public HTTPS git tag for `@jaywedgeworth22/congress-trading-shared`.
 - Removed the old GitHub Packages project `.npmrc` and the bespoke `scripts/npm-ci-with-shared-deps.sh` install helper.
 - Returned CI, deploy, e2e, cloud setup, and preview-sync dependency installs to plain `npm ci`.
 - Updated the shared-package pin check to compare git dependency refs after `#`.

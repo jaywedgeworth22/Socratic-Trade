@@ -7,7 +7,7 @@ autonomy desk / The dashboard is taking too long to respond. Retrying…" on **e
 the iOS app on the same account went "Stale" for a few minutes and then flipped to green "Updated" —
 "why does it update and website have issue?"; (b) make the website's loading graphic work at iOS
 screen sizes; (c) put "SOCRATIC TRADE" in candlesticks at the top of the iOS app while it loads, then
-slide it away (owner attached a screenshot of the existing icon + spinner + "Socratic.Trade" splash);
+slide it away (owner attached a screenshot of the existing icon + spinner + "Socratic-Trade" splash);
 (d) make the iOS font Lato everywhere, and offer Lato on the website too — "maybe could be default
 and one of the options in settings".
 
@@ -69,7 +69,7 @@ attempt, so the watchdog no longer needed to manufacture an error to be safe.
 
 ### (c) iOS candlestick launch screen — `ios/SocraticTrade/SocraticTradeApp.swift`
 
-- `LaunchStateView` replaced: the teal rounded-square icon + `ProgressView` + "Socratic.Trade" label
+- `LaunchStateView` replaced: the teal rounded-square icon + `ProgressView` + "Socratic-Trade" label
   (the owner's screenshot) is now the **candlestick "SOCRATIC TRADE" wordmark at the top of the
   screen**, ticking, on the app background — then the whole overlay **slides up and away**
   (`.move(edge: .top).combined(with: .opacity)`, 0.55s), uncovering the app. Reduced motion gets a

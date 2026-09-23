@@ -18,7 +18,7 @@
 # Durable CT compose should use the same 5.0 on scan-cpu-worker (congress-app
 # stays at 2.0; combined CT ceiling 7.5 still leaves a core).
 #
-# This script NEVER restarts a container and NEVER touches Socratic.Trade,
+# This script NEVER restarts a container and NEVER touches Socratic-Trade,
 # Coolify, or Usage Monitor. Default is dry-run. --apply requires
 # ISOLATE_SHARED_BOX_APPLY=1 so a stray invocation cannot mutate production.
 #

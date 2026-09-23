@@ -26,7 +26,7 @@ Note: Antigravity documented the Apple width fix on 2026-08-03 (`docs/rollouts/2
 - **`ios/SocraticTrade/LoginView.swift`**: cap `SignInWithAppleButton` with `.frame(maxWidth: 375)` so the UIKit host cannot be forced wider than Apple's internal max.
 - **`ios/SocraticTrade/MobileAPIClient.swift`**: dedicated `eventsRequest()` with `Accept: text/event-stream`, `Cache-Control: no-cache`, and `timeoutInterval = 120` (heartbeat is 25s).
 - **`ios/SocraticTrade/MobileStore.swift`**: SSE reconnect loop only surfaces unauthorized errors, or network errors when there is still no snapshot (quiet reconnect when data is already on screen).
-- **`ios/SocraticTrade/Info.plist`**: wire `CFBundleShortVersionString` / `CFBundleVersion` to `$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)` and set display name `Socratic.Trade` (project already had marketing version keys).
+- **`ios/SocraticTrade/Info.plist`**: wire `CFBundleShortVersionString` / `CFBundleVersion` to `$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)` and set display name `Socratic-Trade` (project already had marketing version keys).
 - **`ios/SocraticTradeTests/MobileModelsTests.swift`**: assert SSE request Accept + long timeout.
 
 ### Files touched

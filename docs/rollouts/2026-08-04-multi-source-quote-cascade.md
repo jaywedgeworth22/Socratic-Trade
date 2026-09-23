@@ -1,7 +1,7 @@
 # Rollout Note: Multi-Source Quote Cascade & Staleness Resolution
 
 ## 1. Context & Objective
-Resolves the issue where quotes were reported as 10+ days stale. The goal was to implement a robust, redundant cascading quote provider in series to ensure Socratic.Trade always gets fresh quotes (within 16 minutes) at proposal creation, evaluation, and approval times, using every available pricing API.
+Resolves the issue where quotes were reported as 10+ days stale. The goal was to implement a robust, redundant cascading quote provider in series to ensure Socratic-Trade always gets fresh quotes (within 16 minutes) at proposal creation, evaluation, and approval times, using every available pricing API.
 
 ## 2. Changes Made
 - **[NEW]** [`src/lib/quotes-cascade.ts`](file:///Users/jay/apps/trading-antigravity/src/lib/quotes-cascade.ts): Implements `fetchFreshQuotesCascade` checking:

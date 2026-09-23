@@ -7,8 +7,8 @@ Two spaces between sentences in every file, commit, Slack post, and Apple Note.
 
 ## PASTE THIS TO GROK (first message)
 
-You are local Grok on Jay's Mac for Socratic.Trade.  Cursor local is not working.
-Do not wait on Cursor.  Do not work in ~/Code/Socratic.Trade or any main
+You are local Grok on Jay's Mac for Socratic-Trade.  Cursor local is not working.
+Do not wait on Cursor.  Do not work in ~/Code/Socratic-Trade or any main
 integration worktree.
 
 Job: adaptive-tabs leftover **item A visual QA only**.  Take screenshots.  Do
@@ -49,7 +49,7 @@ Claim on Slack #agent-sync (C0BEZDJDNKV) before you start.  Git email must be
 ## 1. Seat / tree
 
 ```bash
-# NEVER edit in ~/Code/Socratic.Trade or any main integration worktree.
+# NEVER edit in ~/Code/Socratic-Trade or any main integration worktree.
 # Prefer a fresh worktree.  trading-grok / trading-grok-drain may be dirty
 # on the RTH-drain effort (board 99ab01c7).
 git -C ~/apps/trading-grok status 2>/dev/null || true
@@ -65,7 +65,7 @@ git config user.email    # must be 12656028+jaywedgeworth22@users.noreply.github
 # if not:
 # git config user.email "12656028+jaywedgeworth22@users.noreply.github.com"
 
-bash scripts/slack-sync.sh post "repo: Socratic.Trade | [GROK] taking adaptive-tabs item A screenshots (iPad Air 11 + Mac window) from origin/main.  New worktree ~/apps/trading-grok-tabs.  Not touching E/F.  Not clobbering trading-grok-drain."
+bash scripts/slack-sync.sh post "repo: Socratic-Trade | [GROK] taking adaptive-tabs item A screenshots (iPad Air 11 + Mac window) from origin/main.  New worktree ~/apps/trading-grok-tabs.  Not touching E/F.  Not clobbering trading-grok-drain."
 ```
 
 If `git worktree add` refuses because the path exists, use
@@ -74,7 +74,7 @@ If `git worktree add` refuses because the path exists, use
 
 ## 2. PR #3027 is optional (main already merged)
 
-https://github.com/jaywedgeworth22/Socratic.Trade/pull/3027
+https://github.com/jaywedgeworth22/Socratic-Trade/pull/3027
 Branch `cursor/ios-layout-math-tests-rename-3110`.  HEAD as of 2026-08-21
 23:05Z: `bf172407`.  Auto-merge is armed (`--squash --auto`) but
 `mergeStateStatus` was **DIRTY**; resolved 2026-08-21 by merging
@@ -260,7 +260,7 @@ Fleet rule: do not claim visual QA from `BUILD SUCCEEDED`.
 
 ## 5. Do not do these
 
-- Do not work in `~/Code/Socratic.Trade`.
+- Do not work in `~/Code/Socratic-Trade`.
 - Do not reuse or reset `~/apps/trading-grok-drain`.
 - Do not hand-edit `project.pbxproj` / entitlements / xibs.  `project.yml`
   then `xcodegen generate`, then restore `objectVersion = 100` if it emitted
@@ -286,7 +286,7 @@ Update in the same change on **your** branch:
    gets the same one-line status if you can write it.
 3. This file + `docs/rollouts/2026-08-21-ios-adaptive-tabs-followups.md` item A.
 4. `PLAN.md` one-liner.
-5. Slack: `repo: Socratic.Trade | [GROK] item A shots at /tmp/st-adaptive-tabs; E/F left for owner.`
+5. Slack: `repo: Socratic-Trade | [GROK] item A shots at /tmp/st-adaptive-tabs; E/F left for owner.`
 6. Apple Note title `[ST, Grok] adaptive tabs visual QA` (folder Coding).
 
 Gate if you touch code (you should not need to):

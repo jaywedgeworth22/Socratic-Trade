@@ -1,6 +1,6 @@
 [Unit]
 Description=Litestream L1 boundary trim (fleet, sequential)
-Documentation=https://github.com/jaywedgeworth22/Socratic.Trade/blob/main/docs/litestream.md
+Documentation=https://github.com/jaywedgeworth22/Socratic-Trade/blob/main/docs/litestream.md
 After=network-online.target
 Wants=network-online.target
 

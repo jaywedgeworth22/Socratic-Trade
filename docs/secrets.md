@@ -15,7 +15,7 @@
 |---|---|---|---|
 | Bootstrap (the box) | `~/.secrets/global-api-keys` (chmod 600) + `process.env` | Infisical machine identity only — Client ID + Client Secret (universal auth) | `INFISICAL_CLIENT_ID`, `INFISICAL_CLIENT_SECRET`, `INFISICAL_TOKEN`, `INFISICAL_PROJECT_ID`, `INFISICAL_ENV`, `ENCRYPTION_KEY` |
 | Shared fleet | Infisical `shared` project | Coordination keys shared across ST/CT/UM | `AGENT_SYNC_*`, Slack bot token, shared Coolify read-only stats token |
-| App runtime | Infisical `Socratic.Trade` `prod` `/` (via runner) | Broker creds, provider keys, RAG fuses, feature flags, telemetry tokens | `ALPACA_*`, `FINNHUB_*`, `MASSIVE_*`, `SENTRY_DSN`, `RAG_*`, `EARNINGSCALLS_*` |
+| App runtime | Infisical `Socratic-Trade` `prod` `/` (via runner) | Broker creds, provider keys, RAG fuses, feature flags, telemetry tokens | `ALPACA_*`, `FINNHUB_*`, `MASSIVE_*`, `SENTRY_DSN`, `RAG_*`, `EARNINGSCALLS_*` |
 | Per-user | User Settings (`user_settings` row + `user_api_keys` table) | User-scoped runtime data | per-account LLM model, per-user LLM key, per-account policy, per-user Data source opt-ins |
 
 **LLM runtime keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.) are NOT Infisical secrets for this
@@ -101,7 +101,7 @@ files over 1 MiB. Managed assignments are parsed with Node's dotenv parser as in
 command substitutions, backticks, semicolons, and other shell-looking text are never sourced or
 evaluated.
 
-The Socratic.Trade project defaults to `39d93bb7-76f9-498c-8b50-a7def52e072f`. The shared project
+The Socratic-Trade project defaults to `39d93bb7-76f9-498c-8b50-a7def52e072f`. The shared project
 defaults to `18f563a3-9c88-454c-96eb-28fc9678f3ba` only when shared credentials are actually present
 (or an operator explicitly sets `INFISICAL_SHARED_PROJECT_ID`), so app-only setups do not
 accidentally enable an inaccessible overlay. A shared overlay without an explicit app identity/token
@@ -118,7 +118,7 @@ only for the compile-time primary user `LOCAL_USER` (`local`, the owner's
 services. No request, manifest, environment variable, or route body can select
 another user or add another provider.
 
-Its destination is also fixed in code: Socratic.Trade project
+Its destination is also fixed in code: Socratic-Trade project
 `39d93bb7-76f9-498c-8b50-a7def52e072f`, environment `prod`, path
 `/usage-monitor/st-primary/v1`. Enablement requires all three runtime values:
 
@@ -200,7 +200,7 @@ infisical secrets set --env=prod --path=/ $(grep -vE '^\s*#|^\s*$' .env.local | 
 
 Then create a **Machine Identity** (Project -> Access Control) with the **Universal Auth** method and
 copy its **Client ID** (UUID — not secret) and a **Client Secret** (64-char string — secret, never
-committed). App secrets live in the **`Socratic.Trade`** project (slug `socratic-trade`); shared
+committed). App secrets live in the **`Socratic-Trade`** project (slug `socratic-trade`); shared
 App-A/B (congress-trade) secrets live in **`shared-at-ct`**
 (`18f563a3-9c88-454c-96eb-28fc9678f3ba`). To pull both, give the runner a SECOND identity via
 `INFISICAL_SHARED_CLIENT_ID` + `INFISICAL_SHARED_CLIENT_SECRET` (and optionally
@@ -212,7 +212,7 @@ On the box set the bootstrap:
 ```bash
 export INFISICAL_CLIENT_ID='<machine-identity Client ID>'          # a UUID; identifier, not a secret
 export INFISICAL_CLIENT_SECRET='<machine-identity Client Secret>'  # the 64-char secret; never committed
-export INFISICAL_PROJECT_ID='39d93bb7-76f9-498c-8b50-a7def52e072f' # Socratic.Trade (slug: socratic-trade)
+export INFISICAL_PROJECT_ID='39d93bb7-76f9-498c-8b50-a7def52e072f' # Socratic-Trade (slug: socratic-trade)
 export INFISICAL_ENV='prod'
 export REQUIRE_SECRETS_MANAGER=1     # arm the fail-closed boot guard (prod only)
 ```

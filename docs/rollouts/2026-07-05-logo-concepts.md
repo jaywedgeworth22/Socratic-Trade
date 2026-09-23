@@ -3,13 +3,13 @@
 ## Summary
 
 Owner asked for a number of logo ideas for **Socratic Trade** (some as
-**Socratic.Trade**), with emphasis on options that aren't busy and where the
+**Socratic-Trade**), with emphasis on options that aren't busy and where the
 words are clear and fill most of the logo, plus some free-form directions.
 
 Added `docs/branding/` with ten concept comps:
 
 **Wordmark-led** (the name is the logo)
-- **A · Full Stop** — `Socratic.Trade`: bold "Socratic" / light "Trade" split
+- **A · Full Stop** — `Socratic-Trade`: bold "Socratic" / light "Trade" split
   by a green geometric dot; the domain itself as the mark.
 - **B · Inscription** — wide-tracked serif capitals, classical read without
   Greek-column clichés; small green "TRADE" under a hairline rule.

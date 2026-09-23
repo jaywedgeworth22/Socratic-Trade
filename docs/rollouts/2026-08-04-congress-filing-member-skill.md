@@ -2,7 +2,7 @@
 
 ## Context & Objective
 
-Owner: Socratic.Trade needs politician performance context that Congress.Trade
+Owner: Socratic-Trade needs politician performance context that Congress.Trade
 already calculates — especially **how well trades work after filing/disclosure**
 (copy-trade), not only a compressed rank. Wire dual-anchor performance through
 the shared client, restore `memberSkill` weight, and persist raw excess stats.
@@ -16,7 +16,7 @@ the shared client, restore `memberSkill` weight, and persist raw excess stats.
 - PR: https://github.com/jaywedgeworth22/congress-trading-shared/pull/258
 - Tag: `v2.5.1` @ `787b53ba…`
 
-### Socratic.Trade
+### Socratic-Trade
 1. **Prefer filing-date skill** for ranking (`preferMemberSkillLeg` / `buildMemberSkillDetails`)
 2. **Parse dual legs** via shared client v2.5.1
 3. **Restore `memberSkill` weight to 0.2** (research weights: conviction 0.25, consensus 0.2, flow 0.15, freshness 0.1, confidence 0.1)

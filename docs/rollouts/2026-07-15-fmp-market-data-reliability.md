@@ -7,7 +7,7 @@
 - Removed multi-minute deep enrichment from the interactive scan request,
   reused slow facts from the latest completed strategy scan while replacing
   price-family data, coalesced identical refreshes, and bounded Nasdaq.
-- Migrated Socratic.Trade's FMP lane from legacy v4 URLs to stable,
+- Migrated Socratic-Trade's FMP lane from legacy v4 URLs to stable,
   header-authenticated company profile and insider-search endpoints.
 - Expanded FMP field consumption from P/E-only ratios to valuation, leverage,
   profitability, margin, yield, company identity, classification, beta, and
@@ -37,9 +37,9 @@ at 50 requests/minute, making the cold path roughly 15 minutes before Yahoo and
 other providers. The route's `Promise.race` did not cancel underlying work, and
 page mounts/retries had no single-flight.
 
-The vendor screenshot is a shared-key aggregate, not a Socratic.Trade endpoint
+The vendor screenshot is a shared-key aggregate, not a Socratic-Trade endpoint
 report. Its dominant history/profile/House/Senate paths map to Congress.Trade.
-Socratic.Trade actually used only ratios, grades, legacy insider/Senate calls,
+Socratic-Trade actually used only ratios, grades, legacy insider/Senate calls,
 and optional price targets. The three transcript attempts were not ingestion:
 the Gamma helpers have no caller and the current subscription returns HTTP 402
 for the stable transcript endpoint. PR #1586 later merged a separate stable,
@@ -53,7 +53,7 @@ rights-gated producer, but its production ingestion/backfill flags remain off.
   latest strategy run's slow facts; scheduled/strategy work owns deep
   ingestion. Opening any valid ticker owns bounded on-demand detail.
 - Congress.Trade remains authoritative for normalized congressional disclosure
-  data; Socratic.Trade does not duplicate a per-symbol FMP Senate feed.
+  data; Socratic-Trade does not duplicate a per-symbol FMP Senate feed.
 - FMP credentials travel in headers, never URLs.
 - Transcripts remain disabled until the plan and corpus/storage rights support
   them. Structured facts remain time-indexed; narrative artifacts go to RAG.

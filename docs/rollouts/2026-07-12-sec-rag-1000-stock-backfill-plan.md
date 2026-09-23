@@ -22,7 +22,7 @@ No product source, provider configuration, corpus data, Pinecone index, producti
 changed. No bulk backfill was started.
 
 Delivery: commit `8fda1325`; ready PR
-[#1494](https://github.com/jaywedgeworth22/Socratic.Trade/pull/1494); unmerged; production unchanged.
+[#1494](https://github.com/jaywedgeworth22/Socratic-Trade/pull/1494); unmerged; production unchanged.
 
 ## Why
 

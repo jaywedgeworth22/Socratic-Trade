@@ -1,6 +1,6 @@
-# Socratic.Trade iOS
+# Socratic-Trade iOS
 
-Native, phone-first desk for Socratic.Trade. Pin Home, Proposals, Assets,
+Native, phone-first desk for Socratic-Trade. Pin Home, Proposals, Assets,
 Activity, Insights, Coach, Scan, Guardrails, or Results — More keeps every
 screen reachable. Insights stays a snapshot brief; Coach is the live
 `/api/chat` conversation.

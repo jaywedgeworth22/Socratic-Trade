@@ -2,7 +2,7 @@
   "teamId": "CC8UTF7ATG",
   "apps": {
     "socratic": {
-      "displayName": "Socratic.Trade",
+      "displayName": "Socratic-Trade",
       "bundleId": "trade.socratic.app",
       "appleId": 6799238379,
       "scheme": "SocraticTrade",

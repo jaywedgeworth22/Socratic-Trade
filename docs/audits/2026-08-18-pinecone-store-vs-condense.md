@@ -9,9 +9,9 @@
 | Tree | `main` at `cde3deee` plus ancestors |
 | Question | Is more Pinecone storage better for Green/Red, or is condensing / extracting / consolidating the corpus the better way to make retrieval useful to the LLM? |
 
-This is a read-only expert review.  It does **not** flip `RAG_PINECONE_WRITE_CLASS`, does **not** prune the live index, does **not** implement a condensation pipeline, does **not** charge Stripe, and does **not** buy FilingAPI Plus.  FilingAPI is unrelated: keep the lane, 401 soft-skip ([#2792](https://github.com/jaywedgeworth22/Socratic.Trade/pull/2792)).
+This is a read-only expert review.  It does **not** flip `RAG_PINECONE_WRITE_CLASS`, does **not** prune the live index, does **not** implement a condensation pipeline, does **not** charge Stripe, and does **not** buy FilingAPI Plus.  FilingAPI is unrelated: keep the lane, 401 soft-skip ([#2792](https://github.com/jaywedgeworth22/Socratic-Trade/pull/2792)).
 
-Companion reports: tonight's RAG stack audit ([#2803](https://github.com/jaywedgeworth22/Socratic.Trade/pull/2803), `docs/audits/2026-08-17-rag-learning-recall.md`) and the approved writer-split design (`docs/designs/2026-08-16-proposer-corpus-storage.md` rev 3).
+Companion reports: tonight's RAG stack audit ([#2803](https://github.com/jaywedgeworth22/Socratic-Trade/pull/2803), `docs/audits/2026-08-17-rag-learning-recall.md`) and the approved writer-split design (`docs/designs/2026-08-16-proposer-corpus-storage.md` rev 3).
 
 ---
 
@@ -298,7 +298,7 @@ Not the 2.5M knob.  These are:
 
 | Blocker | Why it wastes trial headroom *and* hurts Green/Red | Lane |
 | --- | --- | --- |
-| 15-WU local-MTD remainder clamp | Parks every real document while the card reads "used 0 of 15."  Deadlock, not a spent trial. | **[#2800](https://github.com/jaywedgeworth22/Socratic.Trade/pull/2800)** — land this; do not "fix" it by raising the 2.5M fuse |
+| 15-WU local-MTD remainder clamp | Parks every real document while the card reads "used 0 of 15."  Deadlock, not a spent trial. | **[#2800](https://github.com/jaywedgeworth22/Socratic-Trade/pull/2800)** — land this; do not "fix" it by raising the 2.5M fuse |
 | One-funnel writer | Cannot write cheap highlights without a complete full-body commit.  Latest-name coverage stays expensive. | Corpus-storage PR A (not this PR) |
 | No money-path hydrate | Even a perfect highlight index would thin Green/Red if flipped today. | PR B |
 | Worker HTML embed | More vectors of tags/XBRL (#2803 I1). | Parsed-text builder; worker stays off |

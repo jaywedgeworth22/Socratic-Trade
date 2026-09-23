@@ -1,6 +1,6 @@
 # 2026-07-09 — Scoring-factor weight tooltips
 
-PR: https://github.com/jaywedgeworth22/Socratic.Trade/pull/1205 (`monet/scoring-factor-tooltips`)
+PR: https://github.com/jaywedgeworth22/Socratic-Trade/pull/1205 (`monet/scoring-factor-tooltips`)
 
 ## Summary
 

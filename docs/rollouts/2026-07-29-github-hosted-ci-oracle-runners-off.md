@@ -4,7 +4,7 @@
 Owner: shut down all Oracle GitHub Actions runners and run every repo on GitHub-hosted cloud runners.
 
 ## Changes Made
-### Socratic.Trade
+### Socratic-Trade
 - All workflows: `runs-on: ubuntu-latest` (was `[self-hosted, socratic-ci]`).
 - `ci.yml` classify always routes `hosted` (Mac/self path never schedules).
 - `e2e.yml`: `playwright install --with-deps chromium`.

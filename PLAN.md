@@ -546,7 +546,7 @@ Merged as PR #3196 (`3aa643cacd25688eb6c948f686e4410b834617ff`).  Final hosted r
 > prompt budget. Do not alter the external corpus/re-embed train for this work.
 > **2026-07-22 — RAG evidence-consumption receipt correction (CODEX evidence sublane).** Complete locally: strategy derives durable use only from the post-containment/post-budget prompt serialization; retrieved-but-not-consumed chunks remain diagnostic-only; stable refs propagate through strategy/chat without new raw query/prompt telemetry. Next: umbrella RAG lane reviews and lands this isolated commit after its current integration sequencing.
 
-> **2026-07-21 - CI Runner Migration (Antigravity, branch `agent/antigravity-ci-fix`).** Replaced failing self-hosted runner `trading-live` with `ubuntu-latest` across all CI workflows (`.github/workflows/*.yml`) in Socratic.Trade. The Mac self-hosted runner environment was corrupted after Hetzner failure. Scheduled to land via `scripts/land.sh` to unblock 38 pending PRs.
+> **2026-07-21 - CI Runner Migration (Antigravity, branch `agent/antigravity-ci-fix`).** Replaced failing self-hosted runner `trading-live` with `ubuntu-latest` across all CI workflows (`.github/workflows/*.yml`) in Socratic-Trade. The Mac self-hosted runner environment was corrupted after Hetzner failure. Scheduled to land via `scripts/land.sh` to unblock 38 pending PRs.
 > **2026-07-21 - CI queue recovery (GROK + CODEX, branch `monet/ci-runner-and-queue-fixes`).** Remove all workflow targets for absent `trading-live`; keep PR code on the two Coolify `socratic-ci` runners and trusted CI-failure reporting on `socratic-deploy`; remove smoke from PR events; keep an active required verification alive while GitHub collapses superseded pending heads; and repair the six stale current-main test assertions that would otherwise fail the first durable run. Land this dependency first, verify its exact production SHA, then drain PRs serially in review/dependency order without runner-service restarts.
 > **2026-07-21 - CI queue recovery (GROK + CODEX, branch `monet/ci-runner-and-queue-fixes`).** Remove all workflow targets for absent `trading-live`; keep PR code on the two Coolify `socratic-ci` runners and trusted CI-failure reporting on `socratic-deploy`; remove smoke from PR events; keep an active required verification alive while GitHub collapses superseded pending heads; remove synthetic production enrichment fallback data; make bracket permission side-specific; and repair the focused tests exposed by the first durable run. Land this dependency first, verify its exact production SHA, then drain PRs serially in review/dependency order without runner-service restarts.
 > **2026-07-24 - Coolify/Hetzner runners only (CURSOR, branch `cursor/coolify-runners-only-14e5`).** Owner correction: do not use GitHub-hosted Actions. CI runs on ci-cpx32 systemd runners; deploy/reviews on the Coolify prod host. Route `sentry-ci-report` off missing `socratic-deploy` onto `socratic-ci`; sudo-free `gh` + Playwright without `--with-deps`; add `scripts/monitor-coolify-runners.sh` for frequent Coolify/Hetzner health checks.
@@ -714,7 +714,7 @@ Added OpenRouter models to `app/ui/llm-model-catalog.ts` so they can be selected
 > is operator-only, SEC uses the same lease guard, embedding revision stays at v1 pending a real corpus
 > migration, Strategy language is source-neutral, and rights tooling performs bounded dry-run inventory
 > plus provider-first verified purge. Account deletion covers the new user-scoped receipts/outbox rows.
-> Generic FMP and transcript calls share authority within Socratic.Trade; production remains blocked on
+> Generic FMP and transcript calls share authority within Socratic-Trade; production remains blocked on
 > confirmed commercial rights and a genuinely shared cross-app transactional quota authority. Round-10
 > captures the complete implementation in local checkpoint `52cfcbec`, cleanly merges
 > `origin/main@4432c2bc` in `0713a254`, and uses an awaited Edge-safe Web Crypto SHA-256 credential
@@ -801,7 +801,7 @@ Added OpenRouter models to `app/ui/llm-model-catalog.ts` so they can be selected
 > return within an HTTP budget by keeping paced deep ingestion off the request path, reusing the
 > latest completed strategy scan's slow facts while refreshing prices, coalescing identical
 > refreshes, and bounding the Nasdaq fetch; preserve full enrichment in scheduled/strategy
-> work and bounded on-demand ticker detail. Replace Socratic.Trade's legacy FMP v4 calls with stable,
+> work and bounded on-demand ticker detail. Replace Socratic-Trade's legacy FMP v4 calls with stable,
 > header-authenticated profile and insider-search routes; map the useful ratios/profile fields already
 > paid for; keep congressional truth in Congress.Trade; and document the plan/entitlement boundary for
 > scheduled statements, metrics, estimates, calendars, news, and transcripts. Transcripts stay disabled

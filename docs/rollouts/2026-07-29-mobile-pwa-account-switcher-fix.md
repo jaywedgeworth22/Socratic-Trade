@@ -1,7 +1,7 @@
 # Mobile PWA Account Switcher Fix (2026-07-29)
 
 ## 1. Context & Objective
-- The user reported being unable to switch broker accounts when using the Socratic.Trade PWA on mobile devices.
+- The user reported being unable to switch broker accounts when using the Socratic-Trade PWA on mobile devices.
 - Investigation revealed that on mobile viewports (≤414px width), the account switcher dropdown menu ([ScopeSelector](file:///Users/jay/apps/trading-antigravity/app/console/components/chrome.tsx#L75)) overflowed off the right edge of the screen, pushing the right side of account rows (including the `Switch` tap target) offscreen. Additionally, non-interactive `<div>` backdrop click listeners failed to capture tap events on WebKit / iOS Safari PWA standalone viewports, and `switchTo()` did not close the menu overlay prior to triggering page reload.
 
 ## 2. Changes Made
@@ -15,7 +15,7 @@
 - `npx tsc --noEmit` — 0 type errors.
 - `npm test` — All 5,386 tests across 467 test files passed.
 - `npm run build` — Next.js production build succeeded cleanly.
-- `land.sh` — Successfully pushed to branch `agent/antigravity/mobile-pwa-account-switcher-fix` and created [PR #2265](https://github.com/jaywedgeworth22/Socratic.Trade/pull/2265) with auto-merge enabled.
+- `land.sh` — Successfully pushed to branch `agent/antigravity/mobile-pwa-account-switcher-fix` and created [PR #2265](https://github.com/jaywedgeworth22/Socratic-Trade/pull/2265) with auto-merge enabled.
 
 ## 4. Touched Files
 - `app/console/components/chrome.tsx`

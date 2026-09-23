@@ -1,4 +1,4 @@
-# Codex Cloud protocol bootstrap (Socratic.Trade)
+# Codex Cloud protocol bootstrap (Socratic-Trade)
 
 ## Summary
 
@@ -14,7 +14,7 @@ These must be configured as regular runtime environment variables when the agent
 Optional coordination variables:
 
 - `SLACK_CHANNEL_ID=C0BEZDJDNKV`
-- `SLACK_PROJECT=Socratic.Trade`
+- `SLACK_PROJECT=Socratic-Trade`
 - `SLACK_AGENT_NAME=Codex`
 - `AGENT_SYNC_TOKEN`
 

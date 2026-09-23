@@ -426,7 +426,7 @@ export async function sendPolicyWebhookTest(
       type: "budget_alert",
       title: "Test notification",
       payload: {
-        provider: "Socratic.Trade",
+        provider: "Socratic-Trade",
         recommendation: "If you received this, your policy webhook URL is working."
       }
     },

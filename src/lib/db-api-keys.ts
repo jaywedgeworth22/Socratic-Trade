@@ -689,7 +689,7 @@ export function resolveApiKeyWithSource(service: string, userId?: string): { key
   const canonical = normalizeApiKeyService(service);
   const envVar = apiKeyEnvVarForService(canonical);
 
-  // FMP keys must never resolve in Socratic.Trade product code (owner: FMP is CT-only).
+  // FMP keys must never resolve in Socratic-Trade product code (owner: FMP is CT-only).
   // Admin Connections may still show a retired catalog row; storage POST is rejected.
   if (canonical === "fmp" || canonical.startsWith("fmp")) {
     return { source: "none", envVar, service: canonical };
@@ -711,7 +711,7 @@ export function resolveApiKeyWithSource(service: string, userId?: string): { key
     // Check global env key first.  Trim so Infisical/Coolify trailing newlines cannot 401.
     if (envKey) return { key: envKey, source: "env", envVar, service: canonical };
 
-    // Fall back to the Socratic.Trade owner's ('local') key as the system default, since background
+    // Fall back to the Socratic-Trade owner's ('local') key as the system default, since background
     // jobs and global operations run off these keys.
     if (userId !== "local") {
       const localKey = getUserApiKey("local", canonical);

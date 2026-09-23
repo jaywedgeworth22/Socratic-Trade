@@ -14,7 +14,7 @@ export type ServerMetricsConfigurationState = "configured" | "partial" | "missin
  *
  * This panel used to answer every one of these cases with the SAME hardcoded array of six
  * invented runners pinned to "running:healthy" — five of them attributed to `ci-cpx32`, a CI
- * box deleted 2026-07-31. No GitHub token has ever been set in the Socratic.Trade production
+ * box deleted 2026-07-31. No GitHub token has ever been set in the Socratic-Trade production
  * environment, so production took that branch on 100% of requests and the panel reported six
  * machines that do not exist as healthy. Modelled on `LitestreamTierUnobservableReason` in
  * src/lib/runtime-health.ts: a bare "unknown" reads as "we checked and found nothing", so

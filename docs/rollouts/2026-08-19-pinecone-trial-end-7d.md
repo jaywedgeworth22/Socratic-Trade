@@ -51,7 +51,7 @@ npx tsc --noEmit      # clean
 # Next.js 16.3.0 webpack build succeeded
 ```
 
-PR: https://github.com/jaywedgeworth22/Socratic.Trade/pull/2940
+PR: https://github.com/jaywedgeworth22/Socratic-Trade/pull/2940
 
 ## Next Steps & Blockers
 

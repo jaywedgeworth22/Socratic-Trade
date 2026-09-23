@@ -1,6 +1,6 @@
 # Robinhood MCP OAuth & Connection Guide
 
-This document is the definitive guide for configuring, connecting, and maintaining Robinhood MCP OAuth connections in **Socratic.Trade**.
+This document is the definitive guide for configuring, connecting, and maintaining Robinhood MCP OAuth connections in **Socratic-Trade**.
 
 ---
 
@@ -66,7 +66,7 @@ To allow end-users to connect directly from `https://socratictrade.com` in 1 cli
 
 1. **Submit Developer Application**: Contact Robinhood API Developer Support (`mcp-support@robinhood.com` or `developer.robinhood.com`).
 2. **Provide Application Details**:
-   - **Application Name**: `Socratic.Trade`
+   - **Application Name**: `Socratic-Trade`
    - **Redirect URI**: `https://socratictrade.com/api/auth/robinhood/callback`
    - **Requested Scopes**: `internal`, `tools:call`
    - **Resource**: `https://agent.robinhood.com/mcp/trading`

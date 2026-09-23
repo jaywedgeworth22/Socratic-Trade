@@ -1,6 +1,6 @@
 [Unit]
 Description=Daily Litestream L1 boundary trim after the L9 snapshot
-Documentation=https://github.com/jaywedgeworth22/Socratic.Trade/blob/main/docs/litestream.md
+Documentation=https://github.com/jaywedgeworth22/Socratic-Trade/blob/main/docs/litestream.md
 
 [Timer]
 # Nightly snapshot lands ~00:00-00:03 UTC.  00:04 is the first ST oneshot

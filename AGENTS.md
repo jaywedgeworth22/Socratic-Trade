@@ -8,7 +8,7 @@ the hard way.
 ## Before you start
 
 > [!CAUTION]
-> **CRITICAL RULE: DO NOT WORK IN `/Users/jay/Code/Socratic.Trade` (OR WHATEVER THE MAIN WORKTREE IS).**
+> **CRITICAL RULE: DO NOT WORK IN `/Users/jay/Code/Socratic-Trade` (OR WHATEVER THE MAIN WORKTREE IS).**
 > That is the human owner's integration tree and the fleet's review base. If you check out your branch in the main folder, you will corrupt the review base for other agents (causing it to be drastically out-of-sync with production).
 > **You MUST `cd` into your designated agent lane (`~/apps/trading-<name>` — Claude → `trading-claude`, Codex → `trading-codex`, Antigravity → `trading-antigravity`, Cursor → `trading-cursor`, Monet → `trading-monet`, Kimi → `trading-kimi`) BEFORE doing any work.** A `pre-commit` hook is installed to block agent commits in the main folder.
 
@@ -241,7 +241,7 @@ cleanup thresholds matter — a build burst filled the old box's disk on 2026-07
 rollout note).
 
 **PRODUCTION IS ON COOLIFY (cut over 2026-07-07, owner-directed, MONET; verified).**
-`socratictrade.com` = Coolify app **uuid `socratic-app`** (name "Socratic.Trade", branch `main`,
+`socratictrade.com` = Coolify app **uuid `socratic-app`** (name "Socratic-Trade", branch `main`,
 dockerfile build pack, SSH deploy-key git source). The old uuid `m1os7ijf31bg3fanil152e4b` and the
 nixpacks note are STALE — the app was recreated during the Oracle migration; API calls against the
 old uuid return a bare `{"message":...}` that is easy to misread as a permissions problem.
@@ -448,7 +448,7 @@ installed by `scripts/setup-slack-sync.sh` (run automatically by `scripts/cloud-
 injects the recent channel into each session. Gated on `SLACK_BOT_TOKEN` (env secret;
 silent no-op without it — safe in any repo). Optional env: `SLACK_AGENT_NAME` (prefixes
 `[name]`), `SLACK_TOPIC` (project tag — filters reads to your lane, auto-prefixes posts;
-canonical tags: `Socratic.Trade`, `Congress.Trade`, `API-Usage-Monitor`,
+canonical tags: `Socratic-Trade`, `Congress.Trade`, `API-Usage-Monitor`,
 `Congress-Trading-Shared`), `SLACK_CHANNEL_ID` (per-repo channel override). Setup and FAQ:
 `docs/slack-coordination.md`.
 
@@ -666,7 +666,7 @@ paternalism that keeps creeping back in from every agent (Claude, Codex, others)
  Cursor, Monet, cloud sessions, and any sub-agent they spawn.) The owner
  maintains exactly ONE intended key per provider per app, with spend caps and
  rate guardrails deliberately configured on that key. Agents provisioning their
- own keys — for Socratic.Trade and Congress.Trade both — silently routed
+ own keys — for Socratic-Trade and Congress.Trade both — silently routed
  production spend around those guardrails and made "which key is even in use?"
  unanswerable. That is the failure this rule exists to prevent.
   - Do not create, mint, rotate, or regenerate a key in ANY provider console or

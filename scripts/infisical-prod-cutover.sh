@@ -11,7 +11,7 @@
 # expires in deploy.env. A pre-minted INFISICAL_TOKEN (a temporary JWT) is still
 # accepted but NOT recommended (it expires - see the identity's Access Token TTL).
 # Per project:
-#   App (Socratic.Trade / slug socratic-trade): INFISICAL_CLIENT_ID + INFISICAL_CLIENT_SECRET
+#   App (Socratic-Trade / slug socratic-trade): INFISICAL_CLIENT_ID + INFISICAL_CLIENT_SECRET
 #                                               (or INFISICAL_TOKEN)
 #   Shared (shared-at-ct): INFISICAL_SHARED_CLIENT_ID + INFISICAL_SHARED_CLIENT_SECRET
 #                          (or INFISICAL_SHARED_TOKEN) - OPTIONAL; omit to use one project.
@@ -38,7 +38,7 @@ DIR="${DEPLOY_DIR:-$HOME/apps/trading-live}"
 APP="${PM2_APP:-trading}"
 ENV_DIR="$HOME/.config/agentic-trading"
 ENV_FILE="$ENV_DIR/deploy.env"
-PROJECT_ID="${INFISICAL_PROJECT_ID:-39d93bb7-76f9-498c-8b50-a7def52e072f}" # Socratic.Trade (slug: socratic-trade)
+PROJECT_ID="${INFISICAL_PROJECT_ID:-39d93bb7-76f9-498c-8b50-a7def52e072f}" # Socratic-Trade (slug: socratic-trade)
 ENV_NAME="${INFISICAL_ENV:-prod}"
 SECRETS_PATH="${INFISICAL_PATH:-/}"
 SHARED_PROJECT_ID="${INFISICAL_SHARED_PROJECT_ID:-18f563a3-9c88-454c-96eb-28fc9678f3ba}" # shared-at-ct
@@ -107,7 +107,7 @@ command -v pm2 >/dev/null 2>&1 || die "pm2 not found on PATH."
 
 # App identity prompts (Client ID visible, Client Secret hidden) when nothing supplied.
 if [ -z "$APP_CLIENT_ID" ] && [ -z "$APP_TOKEN" ] && [ -t 0 ]; then
-  printf '[cutover] App (Socratic.Trade / socratic-trade) machine-identity Client ID: ' >&2
+  printf '[cutover] App (Socratic-Trade / socratic-trade) machine-identity Client ID: ' >&2
   IFS= read -r APP_CLIENT_ID || true
 fi
 if [ -n "$APP_CLIENT_ID" ] && [ -z "$APP_CLIENT_SECRET" ] && [ -t 0 ]; then
@@ -209,7 +209,7 @@ log "Writing bootstrap to $ENV_FILE"
 mkdir -p "$ENV_DIR"; chmod 700 "$ENV_DIR"
 umask 177
 {
-  printf '%s\n' "# Infisical bootstrap for the Socratic.Trade production box. Machine-managed by"
+  printf '%s\n' "# Infisical bootstrap for the Socratic-Trade production box. Machine-managed by"
   printf '%s\n' "# scripts/infisical-prod-cutover.sh. chmod 600. NEVER commit this file."
   if [ -n "$APP_CLIENT_ID" ] && [ -n "$APP_CLIENT_SECRET" ]; then
     printf "export INFISICAL_CLIENT_ID='%s'\n" "$APP_CLIENT_ID"

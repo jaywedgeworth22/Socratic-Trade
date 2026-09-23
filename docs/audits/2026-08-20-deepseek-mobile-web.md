@@ -1,4 +1,4 @@
-# Mobile Website Review — Socratic.Trade console at phone widths (320–430px)
+# Mobile Website Review — Socratic-Trade console at phone widths (320–430px)
 
 Reviewer: DeepSeek review subagent (repo `/Users/jay/apps/trading-deepseek`, clean at `origin/main`, branch `deepseek/lane`).  Date: 2026-08-21.  Read-only; no repo files modified.
 

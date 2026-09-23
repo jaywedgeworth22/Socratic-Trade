@@ -60,7 +60,7 @@ export async function fetchAlternativeEmbedding(texts: string[], userId: string 
     // applyOpenRouterClassifierEnrichment. SiliconFlow bypasses OpenRouter, so its classifier
     // context flows only via the pushed telemetry event (meterEmbed below).
     headers["HTTP-Referer"] = "https://socratictrade.com";
-    headers["X-Title"] = "Socratic.Trade";
+    headers["X-Title"] = "Socratic-Trade";
     applyOpenRouterClassifierEnrichment(body, { userId, service: "rag", feature: "search-fusion-mmr" });
   }
   const response = await fetch(url, {

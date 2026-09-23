@@ -47,10 +47,14 @@
  * Cadence and where the result is recorded: docs/backup-policy.md.
  */
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import { createRequire } from "node:module";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync, createReadStream, openSync, readSync, closeSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, createWriteStream } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
 const Database = require("better-sqlite3");
@@ -137,7 +141,10 @@ function signedRequest(cfg, method, key, query = {}) {
   const region = cfg.region;
   const service = "s3";
   const host = new URL(cfg.endpoint).host;
-  const path = `/${key.split("/").map(encodeURIComponent).join("/")}`;
+  // Path-style addressing: B2 (like the R2 verifier) expects the bucket as the
+  // first path segment — without it every signed request hits the wrong resource.
+  const segments = key ? [cfg.bucket, ...key.split("/")] : [cfg.bucket];
+  const path = `/${segments.map(encodeURIComponent).join("/")}`;
   const search = new URLSearchParams(query);
   const canonicalQuery = [...search.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
   const now = new Date();
@@ -168,10 +175,12 @@ function signedRequest(cfg, method, key, query = {}) {
 }
 
 function hmac(key, data) {
+  // `crypto` must be the node:crypto import above: in an ESM module the global
+  // `crypto` is Web Crypto, which has no createHmac — every signed request crashed.
   return crypto.createHmac("sha256", typeof key === "string" ? Buffer.from(key, "utf8") : key).update(data, "utf8").digest();
 }
 function cryptoHash(data) {
-  return require("node:crypto").createHash("sha256").update(data, "utf8").digest("hex");
+  return crypto.createHash("sha256").update(data, "utf8").digest("hex");
 }
 
 function loadConfig(env) {
@@ -187,21 +196,38 @@ function loadConfig(env) {
 }
 
 async function listKeys(cfg, prefix) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), CONTROL_TIMEOUT_MS);
-  try {
-    const { url, headers } = signedRequest(cfg, "GET", "", { "list-type": "2", prefix });
-    const res = await fetch(url, { method: "GET", headers, signal: ctrl.signal });
-    if (isAccessDenied(res.status, await res.text().catch(() => ""))) {
-      const e = new Error("B2 auth failure (403/401)");
-      e.code = "AUTH";
-      throw e;
+  // ListObjectsV2 returns at most 1000 keys per page.  The LTX chain under this
+  // prefix grows unboundedly, so page through with the continuation token or the
+  // newest base snapshot silently falls out of the (alphabetical) first page.
+  const objects = [];
+  let continuationToken = null;
+  do {
+    const query = { "list-type": "2", prefix };
+    if (continuationToken) query["continuation-token"] = continuationToken;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), CONTROL_TIMEOUT_MS);
+    let body;
+    try {
+      const { url, headers } = signedRequest(cfg, "GET", "", query);
+      const res = await fetch(url, { method: "GET", headers, signal: ctrl.signal });
+      // Read the body exactly once — a second res.text() throws "body used already".
+      body = await res.text().catch(() => "");
+      if (isAccessDenied(res.status, body)) {
+        const e = new Error("B2 auth failure (403/401)");
+        e.code = "AUTH";
+        throw e;
+      }
+      if (!res.ok) throw new Error(`ListObjectsV2 HTTP ${res.status}`);
+    } finally {
+      clearTimeout(timer);
     }
-    if (!res.ok) throw new Error(`ListObjectsV2 HTTP ${res.status}`);
-    return parseListObjectsV2(await res.text());
-  } finally {
-    clearTimeout(timer);
-  }
+    objects.push(...parseListObjectsV2(body));
+    const truncated = /<IsTruncated>\s*true\s*<\/IsTruncated>/.test(body);
+    continuationToken = truncated
+      ? (/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/.exec(body)?.[1] ?? null)
+      : null;
+  } while (continuationToken);
+  return objects;
 }
 
 async function downloadSnapshot(cfg, key, destPath) {
@@ -210,14 +236,19 @@ async function downloadSnapshot(cfg, key, destPath) {
   try {
     const { url, headers } = signedRequest(cfg, "GET", key);
     const res = await fetch(url, { method: "GET", headers, signal: ctrl.signal });
-    if (isAccessDenied(res.status, await res.text().catch(() => ""))) {
-      const e = new Error("B2 auth failure (403/401)");
-      e.code = "AUTH";
-      throw e;
+    if (!res.ok || !res.body) {
+      // Read the body exactly once — a second res.text() throws "body used already".
+      const body = await res.text().catch(() => "");
+      if (isAccessDenied(res.status, body)) {
+        const e = new Error("B2 auth failure (403/401)");
+        e.code = "AUTH";
+        throw e;
+      }
+      throw new Error(`Download HTTP ${res.status} for ${key}`);
     }
-    if (!res.ok) throw new Error(`Download HTTP ${res.status} for ${key}`);
-    const buf = Buffer.from(await res.arrayBuffer());
-    writeFileSync(destPath, buf);
+    // Stream straight to disk: the base snapshot is several GB, so buffering it
+    // whole in memory (res.arrayBuffer) can OOM the drill host.
+    await pipeline(Readable.fromWeb(res.body), createWriteStream(destPath));
     return destPath;
   } finally {
     clearTimeout(timer);
@@ -289,7 +320,17 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
   const listOnly = argv.includes("--list");
   const noApplyLtx = argv.includes("--no-apply-ltx");
   const keyIdx = argv.indexOf("--key");
-  const keyArg = keyIdx !== -1 ? argv[keyIdx + 1] : null;
+  let keyArg = null;
+  if (keyIdx !== -1) {
+    const v = argv[keyIdx + 1];
+    // A missing value (or the next flag swallowed as the value) must be a usage
+    // error, not a silent fall-through to the newest snapshot.
+    if (v === undefined || v.startsWith("--")) {
+      console.error("--key requires a value (a B2 object key under the bucket)");
+      return 1;
+    }
+    keyArg = v;
+  }
 
   let cfg;
   try {
@@ -357,7 +398,7 @@ const isCli = (() => {
   const argv1 = process.argv[1];
   if (!argv1) return false;
   try {
-    return import.meta.url === require("node:url").pathToFileURL(argv1).href;
+    return import.meta.url === pathToFileURL(argv1).href;
   } catch {
     return false;
   }
@@ -371,3 +412,4 @@ if (isCli) {
     }
   );
 }
+

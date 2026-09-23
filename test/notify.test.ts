@@ -132,7 +132,7 @@ describe("notify multi-channel delivery", () => {
     expect(calls[0]?.text).toBe(
       formatNotifyEmailText("Storage Warning: litestream tier 2 stale", "Deep compaction is stale.")
     );
-    expect(calls[0]?.text).toMatch(/\n\(sent by Socratic\.Trade\)$/);
+    expect(calls[0]?.text).toMatch(/\n\(sent by Socratic-Trade\)$/);
     expect(formatNotifyEmailText("T", "B")).toBe(`T\n\nB\n\n${NOTIFY_EMAIL_SENT_BY}`);
   });
 

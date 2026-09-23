@@ -1,5 +1,16 @@
 # Current Status
 
+## 2026-09-23 INSTINCT — PR #3458 CI fix: email sign-off test assertions
+
+The rename commit (`320f7bf9`) changed `NOTIFY_EMAIL_SENT_BY` to `(sent by Socratic-Trade)`
+but missed three test assertions written as escaped-dot regexes
+(`/\n\(sent by Socratic\.Trade\)$/`). `verify-hosted` failed at `npm test` (run
+35923420885, job 107392707307) on exactly those three; the `verify` gate then failed
+closed in 4s as designed. Assertions updated to the new name. Reproduced locally pre-fix
+(3 failures, same files/lines as the CI annotations); post-fix the three files pass 32/32.
+Rollout: `docs/rollouts/2026-09-23-rename-pr-3458-signoff-test-fix.md`.
+
+
 ## 2026-09-23 INSTINCT — PR #3453 round: B2 LTX restore drill hardening + handoff records (Codex findings)
 
 Codex review of head `48831cf9` raised four findings on `scripts/ops/verify-b2-ltx-restore.mjs`;

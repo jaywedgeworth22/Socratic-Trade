@@ -36,7 +36,17 @@ export type ChatProvider = "openai" | "anthropic" | "xai" | "gemini" | "mistral"
  *  `providerRequestId` is only meaningful when the loop made exactly ONE provider request
  *  (the ledger row is a per-run aggregate; a single generation id can only verify a single
  *  call's cost, so multi-step runs pass undefined rather than a misleading partial id). */
-function recordChatUsage(opts: LlmUsageOpts, provider: ChatProvider, model: string, prompt: number, completion: number, saw: boolean, providerRequestId?: string): void {
+function recordChatUsage(
+  opts: LlmUsageOpts,
+  provider: ChatProvider,
+  model: string,
+  prompt: number,
+  completion: number,
+  saw: boolean,
+  providerRequestId?: string,
+  latencyMs?: number,
+  status?: "success" | "error" | "timeout" | "canceled"
+): void {
   if (!opts.userId) return;
   recordLlmUsage({
     userId: opts.userId,
@@ -47,7 +57,9 @@ function recordChatUsage(opts: LlmUsageOpts, provider: ChatProvider, model: stri
     keyRef: opts.keyRef,
     promptTokens: saw ? prompt : undefined,
     completionTokens: saw ? completion : undefined,
-    providerRequestId
+    providerRequestId,
+    latencyMs,
+    status
   });
 }
 
@@ -378,6 +390,12 @@ export class AnthropicLLM implements ChatLLM {
 
   async run(args: LlmRunArgs): Promise<LlmResult> {
     const { system, message, tools, executeTool, history } = args;
+    // 2026-09-23 MM (llm-stats feature): capture total wall-clock latency for this chat run
+    // (covers the entire multi-step tool loop, not just the last provider request) so the
+    // LLM stats console can render p50/p95/p99 per model alias.  status reflects whether the
+    // run returned a usable assistant message vs. threw / was canceled / timed out.
+    const startedAt = performance.now();
+    let chatStatus: "success" | "error" | "timeout" | "canceled" = "success";
     const messages: any[] = [];
     let promptTokens = 0;
     let completionTokens = 0;

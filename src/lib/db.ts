@@ -3298,6 +3298,28 @@ const MIGRATIONS: Migration[] = [
         "CREATE INDEX IF NOT EXISTS idx_audit_events_kind_created ON audit_events (kind, created_at)"
       );
     }
+  },
+  {
+    // 2026-09-23 MM (llm-stats feature): the LLM stats console page needs per-call
+    // latency_ms + status so it can render p50/p95/p99 latency and an error-rate column.
+    // Both columns are nullable so legacy rows written before this migration stay valid;
+    // the recorder (src/lib/llm-usage.ts) fills them in for every call from here on.  No
+    // data eviction — owner rule: keep every LLM call forever for trade-outcome correlation
+    // (proposals cross-referenced against which LLM family produced them, with enough sample
+    // size per alias that single-generation versions don't each need their own bucket).
+    version: 91,
+    name: "llm_usage_latency_status",
+    up: (database) => {
+      if (!tableExists(database, "llm_usage")) return;
+      if (!columnExists(database, "llm_usage", "latency_ms")) {
+        database.exec("ALTER TABLE llm_usage ADD COLUMN latency_ms INTEGER");
+      }
+      if (!columnExists(database, "llm_usage", "status")) {
+        database.exec("ALTER TABLE llm_usage ADD COLUMN status TEXT");
+      }
+      database.exec("CREATE INDEX IF NOT EXISTS idx_llm_usage_model_status ON llm_usage (model, status, created_at)");
+      database.exec("CREATE INDEX IF NOT EXISTS idx_llm_usage_provider_status ON llm_usage (provider, status, created_at)");
+    }
   }
 ];
 

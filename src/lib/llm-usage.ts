@@ -142,6 +142,11 @@ const MODEL_PRICE_PER_M: Record<string, [number, number]> = {
   "grok-latest": [2, 6],
   "claude-fable-latest": [10, 50],
   "claude-opus-5": [5, 25],
+  // 2026-09-23 MM: opus-5.5 confirmed against Anthropic's own docs (platform.claude.com/.../opus-5-5/overview)
+  // and OpenRouter ($4/$20 per MTok, 1M context, 128k max output, cache hit 5% of input = $0.20/MTok).
+  // Discovered via free DuckDuckGo HTML search after the bundled web_search tool returned 402.
+  // Lower than opus-5 ($5/$25) — same family, cheaper per token.
+  "claude-opus-5.5": [4, 20],
   "claude-opus-latest": [5, 25],
   "claude-sonnet-5": [2, 10], // was [3, 15] — real price is $2/$10 (verified 2026-09-18)
   "claude-sonnet-4-6": [2, 10], // was [3, 15] — kept in sync with claude-sonnet-5 above

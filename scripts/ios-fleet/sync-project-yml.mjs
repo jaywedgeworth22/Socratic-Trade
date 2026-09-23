@@ -34,7 +34,8 @@
  *   2  dry-run detected a drift and exited without writing
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const PROJECT_YAML_FLAG = "--project-yaml";
 const PBXPROJ_FLAG = "--pbxproj";
@@ -45,20 +46,30 @@ const HELP_FLAG = "--help";
 
 function parseArgs(argv) {
   const opts = { projectYaml: null, pbxproj: null, marketing: null, build: null, dryRun: false, help: false };
+  // A value-taking flag with no value (or with the NEXT flag swallowed as its
+  // value) must be a loud usage error — otherwise `undefined` slips through and
+  // either disables the version checks or gets written into project.yml.
+  const takeValue = (flag, i) => {
+    const v = argv[i + 1];
+    if (v === undefined || v.startsWith("--")) {
+      throw new Error(`${flag} requires a value`);
+    }
+    return v;
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     switch (arg) {
       case PROJECT_YAML_FLAG:
-        opts.projectYaml = argv[++i];
+        opts.projectYaml = takeValue(PROJECT_YAML_FLAG, i); i++;
         break;
       case PBXPROJ_FLAG:
-        opts.pbxproj = argv[++i];
+        opts.pbxproj = takeValue(PBXPROJ_FLAG, i); i++;
         break;
       case MARKETING_FLAG:
-        opts.marketing = argv[++i];
+        opts.marketing = takeValue(MARKETING_FLAG, i); i++;
         break;
       case BUILD_FLAG:
-        opts.build = argv[++i];
+        opts.build = takeValue(BUILD_FLAG, i); i++;
         break;
       case DRY_RUN_FLAG:
         opts.dryRun = true;
@@ -114,14 +125,14 @@ export function readPbxprojVersion(pbxprojText) {
 export function patchProjectYaml(yamlText, marketing, build) {
   let out = yamlText;
   let found = { marketing: false, build: false };
-  if (marketing !== null) {
+  if (marketing != null) { // != null covers undefined as well
     const re = /^(\s*MARKETING_VERSION:\s*")[^"]*(".*)$/m;
     if (re.test(out)) {
       out = out.replace(re, (_, pre, post) => `${pre}${marketing}${post}`);
       found.marketing = true;
     }
   }
-  if (build !== null) {
+  if (build != null) { // != null covers undefined as well
     const re = /^(\s*CURRENT_PROJECT_VERSION:\s*")[^"]*(".*)$/m;
     if (re.test(out)) {
       out = out.replace(re, (_, pre, post) => `${pre}${build}${post}`);
@@ -168,8 +179,13 @@ export async function main(argv = process.argv.slice(2)) {
   const yamlText = readFileSync(projectYaml, "utf8");
   const { text: patched, found } = patchProjectYaml(yamlText, marketing, build);
 
-  if (!found.marketing && !found.build) {
-    console.error(`Neither MARKETING_VERSION nor CURRENT_PROJECT_VERSION lines found in ${projectYaml}`);
+  // Fail when ANY value we are enforcing is absent from project.yml — a partial
+  // patch (one field written, the other silently skipped) must not exit 0.
+  const notFound = [];
+  if (marketing != null && !found.marketing) notFound.push("MARKETING_VERSION");
+  if (build != null && !found.build) notFound.push("CURRENT_PROJECT_VERSION");
+  if (notFound.length > 0) {
+    console.error(`${projectYaml} is missing ${notFound.join(" and ")}; refusing a partial sync`);
     return 1;
   }
 
@@ -193,7 +209,7 @@ const isCli = (() => {
   const argv1 = process.argv[1];
   if (!argv1) return false;
   try {
-    return import.meta.url === require("node:url").pathToFileURL(argv1).href;
+    return import.meta.url === pathToFileURL(argv1).href;
   } catch {
     return false;
   }
@@ -207,3 +223,4 @@ if (isCli) {
     }
   );
 }
+

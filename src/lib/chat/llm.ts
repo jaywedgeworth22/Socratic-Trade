@@ -9,6 +9,7 @@
 import { canonicalTicker } from "../rag/chunk";
 import { resolveLlmCredential } from "../db";
 import { recordLlmUsage, extractLlmUsage, providerRequestIdFromPayload } from "../llm-usage";
+import { isAbortOrTimeoutError } from "../network-errors";
 import { applyOpenRouterClassifierEnrichment, applyOpenRouterProviderRouting } from "../llm-call";
 import { llmFetch, LLM_TIMEOUT_MS, reasoningCapabilityForModel, withLlmRequestBounds } from "../llm-request";
 // Reuse the SAME model-family + OpenRouter-wire-id helpers the strategy engine's
@@ -429,6 +430,7 @@ export class AnthropicLLM implements ChatLLM {
     for (let step = 0; step < MAX_STEPS; step++) {
       if (args.abortSignal?.aborted) {
         args.onStage?.({ stage: "error", reason: "cancelled" });
+        chatStatus = "canceled";
         break;
       }
       if (typeof args.deadlineMs === "number") {
@@ -444,6 +446,8 @@ export class AnthropicLLM implements ChatLLM {
             remainingMs: budget.remainingMs,
             minStageMs: budget.minStageMs
           });
+          // Deadline budget ran out before this step could start, so the reply was cut short.
+          chatStatus = "timeout";
           break;
         }
       }
@@ -454,7 +458,26 @@ export class AnthropicLLM implements ChatLLM {
         maxOutputTokens: 1024,
         reasoningEffort: this.reasoningEffort
       });
-      const resp = await this.transport(requestBody, this.apiKey, args.abortSignal);
+      let resp: any;
+      try {
+        resp = await this.transport(requestBody, this.apiKey, args.abortSignal);
+      } catch (e) {
+        // Record the failed run (tokens billed on earlier steps + wall-clock latency) so
+        // error / timeout / canceled rows reach the LLM stats console, then rethrow unchanged.
+        chatStatus = args.abortSignal?.aborted ? "canceled" : isAbortOrTimeoutError(e) ? "timeout" : "error";
+        recordChatUsage(
+          this.usage,
+          "anthropic",
+          this.model,
+          promptTokens,
+          completionTokens,
+          sawUsage,
+          undefined,
+          performance.now() - startedAt,
+          chatStatus
+        );
+        throw e;
+      }
       const u = extractLlmUsage(resp);
       if (u.promptTokens !== undefined || u.completionTokens !== undefined) {
         sawUsage = true;
@@ -488,7 +511,17 @@ export class AnthropicLLM implements ChatLLM {
     for (const c of toolCalls.filter((tc) => tc.name === "kb_search" && tc.result?.chunks?.length)) {
       for (const chunk of c.result.chunks) citations.push({ source: chunk.source, chunk_id: chunk.chunk_id, evidence_ref: chunk.evidence_ref, as_of: chunk.as_of, url: chunk.url });
     }
-    recordChatUsage(this.usage, "anthropic", this.model, promptTokens, completionTokens, sawUsage);
+    recordChatUsage(
+      this.usage,
+      "anthropic",
+      this.model,
+      promptTokens,
+      completionTokens,
+      sawUsage,
+      undefined,
+      performance.now() - startedAt,
+      chatStatus
+    );
     return { text: withDisclaimer(text), toolCalls, citations };
   }
 }

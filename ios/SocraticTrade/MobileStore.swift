@@ -185,6 +185,14 @@ final class MobileStore: ObservableObject {
     @Published private(set) var isAcceptingConsent = false
     @Published private(set) var isSigningIn = false
     @Published private(set) var snapshotLoadFailed = false
+    /// 2026-09-23 MM (held-batch): flips to true when the most recent snapshot decoded with
+    /// at least one money-path collection element dropped (positions / orders /
+    /// pendingProposals).  When true, Owner Approve is BLOCKED — a partial feed might hide a
+    /// pending proposal the user did not see, so approving any visible card is unsafe.  Other
+    /// commands (cancel, account switch, read-only browse) remain available.  See
+    /// MobileSnapshot.PartialDropCounts for which collection was lossy.  UI surfaces a banner
+    /// at the top of the workspace when this is set so the user understands the disable.
+    @Published private(set) var partialData: Bool = false
     /// proposalId → queued command id so cards can follow approve/reject through recentCommands.
     @Published private(set) var proposalCommandIds: [String: String] = [:]
     /// proposalId → submit-time failure shown on the card itself.
@@ -220,6 +228,9 @@ final class MobileStore: ObservableObject {
         self.client = client
         let cached = previewSnapshot ?? Self.loadCachedSnapshot()
         snapshot = cached
+        // 2026-09-23 MM (held-batch): seed partialData from the preview snapshot so tests can
+        // assert the gating path without going through a real load().
+        partialData = cached?.partialData ?? false
         isAuthenticated = cached != nil
         hasInitialized = previewSnapshot != nil
         if cached == nil {
@@ -383,8 +394,18 @@ final class MobileStore: ObservableObject {
         // `proposed -> placing` claim and the halt / Exit-only / liquidating fence, so a
         // stale tap collects an honest error instead of placing the wrong order.
         // Requires any loaded snapshot so we still have a proposal id and account.
+        //
+        // 2026-09-23 MM (held-batch): PARTIAL DATA overrides that exemption.  When
+        // `partialData == true`, at least one money-path collection element was dropped
+        // during decode (a malformed position / order / pending proposal).  Approving a
+        // visible card when a non-visible one might be pending is a CLASS of bug worse
+        // than staleness, because the user has no UI affordance to know a card is missing.
+        // Block until the next refresh lands a clean decode.  Read-only commands
+        // (cancel, account switch, browse) keep working — only the destructive approval
+        // path is gated.
         if commandType == "proposal.approve" {
-            return snapshot != nil
+            guard snapshot != nil else { return false }
+            return !partialData
         }
         guard let snapshot, !isSnapshotStale(at: now) else { return false }
         if Self.readinessDependentCommands.contains(commandType) {
@@ -431,6 +452,7 @@ final class MobileStore: ObservableObject {
             Self.saveCachedSnapshot(rawData)
             lastUpdatedAt = Date()
             snapshotLoadFailed = false
+            partialData = loadedSnapshot.partialData
             isAuthenticated = true
             if wasLoadFailed {
                 error = nil
@@ -812,6 +834,7 @@ final class MobileStore: ObservableObject {
         snapshot = nil
         lastUpdatedAt = nil
         snapshotLoadFailed = false
+        partialData = false
         deletionRequest = nil
         busyOperations = []
         pendingAccountId = nil

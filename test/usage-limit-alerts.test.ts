@@ -61,7 +61,7 @@ describe("usage limit alerts", () => {
       subject: "[Socratic-Trade] Usage limit hit: Pinecone Write Unit daily fuse"
     });
     expect(String((calls[0]?.body as { text?: string }).text)).toContain("Inspect chunking and deduping");
-    expect(String((calls[0]?.body as { text?: string }).text)).toMatch(/\n\(sent by Socratic\.Trade\)$/);
+    expect(String((calls[0]?.body as { text?: string }).text)).toMatch(/\n\(sent by Socratic-Trade\)$/);
 
     await alertUsageLimitHit({
       userId,

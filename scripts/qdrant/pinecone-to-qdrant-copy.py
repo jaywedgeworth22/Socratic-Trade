@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Copy Socratic.Trade vectors from Pinecone to Qdrant.
+"""Copy Socratic-Trade vectors from Pinecone to Qdrant.
 
 Owner rule (2026-08-28): copy ALL non-Voyage embeds.  ST's vector-db.ts tags
 records with an `embed_model` metadata field; voyage-era records are exactly

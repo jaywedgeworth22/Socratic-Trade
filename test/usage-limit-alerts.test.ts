@@ -58,10 +58,10 @@ describe("usage limit alerts", () => {
     expect(calls[0]?.body).toMatchObject({
       from: "alerts@example.test",
       to: ["owner@example.test"],
-      subject: "[Socratic.Trade] Usage limit hit: Pinecone Write Unit daily fuse"
+      subject: "[Socratic-Trade] Usage limit hit: Pinecone Write Unit daily fuse"
     });
     expect(String((calls[0]?.body as { text?: string }).text)).toContain("Inspect chunking and deduping");
-    expect(String((calls[0]?.body as { text?: string }).text)).toMatch(/\n\(sent by Socratic\.Trade\)$/);
+    expect(String((calls[0]?.body as { text?: string }).text)).toMatch(/\n\(sent by Socratic-Trade\)$/);
 
     await alertUsageLimitHit({
       userId,

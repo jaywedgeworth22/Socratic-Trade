@@ -1,7 +1,7 @@
 # 2026-07-18 — Protective-stop placement intent + atomic recovered-fill booking (CLAUDE)
 
 Branch: `claude/stop-intent-idempotency` (off `2aa53e15`, isolated worktree
-`/Users/jay/Code/Socratic.Trade/.claude/worktrees/agent-aec1758ee2b7636e0`). Committed, NOT pushed
+`/Users/jay/Code/Socratic-Trade/.claude/worktrees/agent-aec1758ee2b7636e0`). Committed, NOT pushed
 (per task instruction).
 
 ## Summary

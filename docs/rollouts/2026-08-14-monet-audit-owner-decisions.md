@@ -44,21 +44,21 @@ All eight are **MERGED**.  None remain open.
 
 | PR | State | Merged (UTC) | Squash SHA | Title |
 |---|---|---|---|---|
-| [#2680](https://github.com/jaywedgeworth22/Socratic.Trade/pull/2680) | MERGED | 2026-08-13T19:49:36Z | `caffa2fd1361` | adaptive FTS-mirror batching |
-| [#2681](https://github.com/jaywedgeworth22/Socratic.Trade/pull/2681) | MERGED | 2026-08-13T20:22:06Z | `72361e54add7` | APNs push |
-| [#2682](https://github.com/jaywedgeworth22/Socratic.Trade/pull/2682) | MERGED | 2026-08-13T21:19:26Z | `f4a0f5df03d8` | real-toggle backfill |
-| [#2684](https://github.com/jaywedgeworth22/Socratic.Trade/pull/2684) | MERGED | 2026-08-13T21:46:28Z | `77bbb77fe641` | honest server stats |
-| [#2685](https://github.com/jaywedgeworth22/Socratic.Trade/pull/2685) | MERGED | 2026-08-13T23:01:18Z | `eda339fc99d8` | litestream compaction loud |
-| [#2687](https://github.com/jaywedgeworth22/Socratic.Trade/pull/2687) | MERGED | 2026-08-14T04:09:14Z | `637939af0edb` | stop bot-merge zero-workflow |
-| [#2709](https://github.com/jaywedgeworth22/Socratic.Trade/pull/2709) | MERGED | 2026-08-14T05:38:12Z | `a8f3ad8660ba` | empty compaction level = wedge |
-| [#2712](https://github.com/jaywedgeworth22/Socratic.Trade/pull/2712) | MERGED | 2026-08-14T09:06:55Z | `f218f7e39ee2` | local gate compiles no Swift |
+| [#2680](https://github.com/jaywedgeworth22/Socratic-Trade/pull/2680) | MERGED | 2026-08-13T19:49:36Z | `caffa2fd1361` | adaptive FTS-mirror batching |
+| [#2681](https://github.com/jaywedgeworth22/Socratic-Trade/pull/2681) | MERGED | 2026-08-13T20:22:06Z | `72361e54add7` | APNs push |
+| [#2682](https://github.com/jaywedgeworth22/Socratic-Trade/pull/2682) | MERGED | 2026-08-13T21:19:26Z | `f4a0f5df03d8` | real-toggle backfill |
+| [#2684](https://github.com/jaywedgeworth22/Socratic-Trade/pull/2684) | MERGED | 2026-08-13T21:46:28Z | `77bbb77fe641` | honest server stats |
+| [#2685](https://github.com/jaywedgeworth22/Socratic-Trade/pull/2685) | MERGED | 2026-08-13T23:01:18Z | `eda339fc99d8` | litestream compaction loud |
+| [#2687](https://github.com/jaywedgeworth22/Socratic-Trade/pull/2687) | MERGED | 2026-08-14T04:09:14Z | `637939af0edb` | stop bot-merge zero-workflow |
+| [#2709](https://github.com/jaywedgeworth22/Socratic-Trade/pull/2709) | MERGED | 2026-08-14T05:38:12Z | `a8f3ad8660ba` | empty compaction level = wedge |
+| [#2712](https://github.com/jaywedgeworth22/Socratic-Trade/pull/2712) | MERGED | 2026-08-14T09:06:55Z | `f218f7e39ee2` | local gate compiles no Swift |
 
 Merge to `main` auto-deploys (`docs/rollouts/2026-07-10-auto-deploy-on.md`).
 This pass did not re-verify each live container SHA.
 
 ```bash
 gh pr view 2680 2681 2682 2684 2685 2687 2709 2712 \
-  --repo jaywedgeworth22/Socratic.Trade \
+  --repo jaywedgeworth22/Socratic-Trade \
   --json number,state,mergedAt,mergeCommit
 ```
 

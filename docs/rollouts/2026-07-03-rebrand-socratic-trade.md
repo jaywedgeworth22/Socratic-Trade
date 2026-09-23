@@ -12,7 +12,7 @@ VITEST-gated `isTradingDay` seam and is CI-green).
 
 ## What changed
 **Display brand — "Agentic Trading" → "Socratic Trade":**
-- `app/manifest.ts` — `name` "Socratic Trade"; `short_name` "Socratic.Trade" (the no-space form the
+- `app/manifest.ts` — `name` "Socratic Trade"; `short_name` "Socratic-Trade" (the no-space form the
   owner endorsed for compact contexts); `description`.
 - `app/layout.tsx` — `applicationName`, `appleWebApp.title`, meta `description`.
 - `app/mobile/page.tsx` — `description`; `app/mobile/mobile-pwa-client.tsx` — the header `<h1>`.

@@ -10,7 +10,7 @@
 #     --version 1.0.68 \
 #     [--build 202608211800] \
 #     [--apple-id 6799238379] \
-#     [--display-name "Socratic.Trade"]
+#     [--display-name "Socratic-Trade"]
 #     [--base-json path] [--out-json path] [--skip-push] [--skip-local-write]
 #
 # Writes:

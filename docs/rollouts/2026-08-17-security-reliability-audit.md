@@ -2,7 +2,7 @@
 
 ## Context & Objective
 
-Owner asked for a read-only application-security / SRE / incident-command / compliance / chaos audit of Socratic.Trade boundaries, secrets, auth, permissions, tenant isolation, supply chain, logging/PII, detection, Litestream, deploy/rollback, alerting, fail-open/closed, spend, SLOs, and DR.  Produce an evidence-backed report and a report-only PR.  Never expose secrets.
+Owner asked for a read-only application-security / SRE / incident-command / compliance / chaos audit of Socratic-Trade boundaries, secrets, auth, permissions, tenant isolation, supply chain, logging/PII, detection, Litestream, deploy/rollback, alerting, fail-open/closed, spend, SLOs, and DR.  Produce an evidence-backed report and a report-only PR.  Never expose secrets.
 
 ## Changes Made
 

@@ -81,7 +81,7 @@ const PATENTS_LOOKBACK_DAYS = 180;
 
 /**
  * Registration gate — permanently returns undefined.
- * Owner 2026-08-04: Socratic.Trade never calls QuiverQuant; congressional /
+ * Owner 2026-08-04: Socratic-Trade never calls QuiverQuant; congressional /
  * alt-data of that class comes from Congress.Trade (App A). Env keys may still
  * exist in secret stores for Congress.Trade latency probes; they must not
  * activate a producer here.

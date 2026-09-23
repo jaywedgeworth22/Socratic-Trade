@@ -1,6 +1,6 @@
 # Full-Stack Review — Desktop Web + Mobile Web + iOS (DEEPSEEK, 2026-08-20)
 
-Owner-directed top-to-bottom review of Socratic.Trade across the desktop website, the phone-width website, and the native iOS app.  This review complements (does not replace) the 2026-08-18 MONET expert review (`docs/reviews/2026-08-18-full-app-expert-review.md`), the 2026-08-17 architecture/backend and brokers/data-cascade audits (`docs/audits/`), and the open Kimi board findings.  Where a known finding was re-checked against current `main` (`41a7a438d` at review start), this document records the CURRENT state (fixed / still open / narrowed) so nobody re-files or re-fixes stale claims.
+Owner-directed top-to-bottom review of Socratic-Trade across the desktop website, the phone-width website, and the native iOS app.  This review complements (does not replace) the 2026-08-18 MONET expert review (`docs/reviews/2026-08-18-full-app-expert-review.md`), the 2026-08-17 architecture/backend and brokers/data-cascade audits (`docs/audits/`), and the open Kimi board findings.  Where a known finding was re-checked against current `main` (`41a7a438d` at review start), this document records the CURRENT state (fixed / still open / narrowed) so nobody re-files or re-fixes stale claims.
 
 Board: umbrella item `682e7e3467cd4def97a13ee67335cbb1` (claimed by DEEPSEEK).  New findings are filed individually as `review-finding` items.
 

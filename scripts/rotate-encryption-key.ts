@@ -1,6 +1,6 @@
 #!/usr/bin/env -S npx tsx
 /**
- * ENCRYPTION_KEY rotation for Socratic.Trade.
+ * ENCRYPTION_KEY rotation for Socratic-Trade.
  *
  * WHY THIS EXISTS: db-api-keys.ts's ENCRYPTION_KEY is a single module-level AES-256-GCM key with
  * NO key-versioning — decryptValue() only ever tries the current key. Swapping ENCRYPTION_KEY

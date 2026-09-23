@@ -65,7 +65,7 @@ jobs:
           DEPLOY_FRESHNESS_TREAT_UNREACHABLE: "1"
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_AGENT_NAME: ST
-          SLACK_TOPIC: Socratic.Trade
+          SLACK_TOPIC: Socratic-Trade
         shell: bash
         run: |
           set -euo pipefail

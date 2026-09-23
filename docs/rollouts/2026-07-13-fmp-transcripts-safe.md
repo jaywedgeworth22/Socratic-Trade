@@ -362,7 +362,7 @@ Round-9 remediation:
    provider outbox alongside LLM/RAG ledgers in `usage-monitor-replay.ts`; durable attempts suppress the
    older in-memory aggregate so one request is not double-counted;
 4. routes generic FMP enrichment and transcript calls through the same credential fingerprint/window
-   ledger inside Socratic.Trade; a true cross-app shared store remains an activation requirement;
+   ledger inside Socratic-Trade; a true cross-app shared store remains an activation requirement;
 5. writes managed Pinecone records as `pending`, persists exact local content/occurrence receipts,
    promotes the complete provider set, then commits local queryability. Retrieval excludes pending
    records server-side and validates every managed identity/version field against SQLite, failing closed

@@ -86,7 +86,7 @@ npx vitest run test/sec-ingest-worker.test.ts test/roic-transcripts.test.ts test
 npx tsc --noEmit   # exit 0
 ```
 
-PR: https://github.com/jaywedgeworth22/Socratic.Trade/pull/2848
+PR: https://github.com/jaywedgeworth22/Socratic-Trade/pull/2848
 
 ## Next Steps & Blockers
 

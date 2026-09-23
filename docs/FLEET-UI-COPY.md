@@ -1,6 +1,6 @@
 # Fleet UI copy conventions (owner, 2026-08-07)
 
-Binding for **Socratic.Trade**, **Congress.Trade**, and **Usage Monitor** — web + iOS.
+Binding for **Socratic-Trade**, **Congress.Trade**, and **Usage Monitor** — web + iOS.
 
 
 
@@ -17,7 +17,7 @@ Owner: default UI theme is **light**. Agents keep inventing dark-first or
 - **Screenshots / ASC / marketing / design previews:** capture in **light**
   mode unless the owner explicitly asks for dark. Existing ASC packs that
   are already light do not need a redo for this rule alone.
-- Applies to Socratic.Trade, Congress.Trade, Usage Monitor (web + iOS).
+- Applies to Socratic-Trade, Congress.Trade, Usage Monitor (web + iOS).
 - Do not "make it look cool" with dark chrome by default. Light is correct.
 
 ## Proper nouns
@@ -90,7 +90,7 @@ fragments with no sentence terminator.
 **Agent failure mode:** shipping App Store description or UI paragraphs with
 single spaces after periods. Fix on sight.
 
-## Run-once glyph = emoji bolt (owner preference 2026-08-08, Socratic.Trade)
+## Run-once glyph = emoji bolt (owner preference 2026-08-08, Socratic-Trade)
 The Run-once affordance uses the colored emoji ⚡ (U+26A1), not a line-icon Zap —
 owner: the emoji "reads better than the one on the site." Keep Start/Resume on the
 Play glyph (two "go" line-icons side-by-side read as competing primaries). When copy

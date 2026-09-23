@@ -13,7 +13,7 @@
 **From seat:** CLAUDE (Fable)
 **To seat:** MONET (superseded — CLAUDE completed in-session)
 **Branch:** `claude/todays-app-errors-716a45`
-**Worktree:** `/Users/jay/.claude/projects/Claude-Isolated-Code-Worktrees/Socratic.Trade/todays-app-errors-716a45`
+**Worktree:** `/Users/jay/.claude/projects/Claude-Isolated-Code-Worktrees/Socratic-Trade/todays-app-errors-716a45`
 **Base:** `origin/main@294694ae`
 **Status:** Code complete + focused-green + `tsc` clean; **NOT** lint-full / full-test / build / merged / deployed.
 

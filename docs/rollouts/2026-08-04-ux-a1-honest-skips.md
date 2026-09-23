@@ -3,7 +3,7 @@
 **Date:** 2026-08-04  
 **Author:** GROK  
 **Branch:** `grok/ux-a1-honest-skips`  
-**PR:** https://github.com/jaywedgeworth22/Socratic.Trade/pull/2418  
+**PR:** https://github.com/jaywedgeworth22/Socratic-Trade/pull/2418  
 **Program:** `docs/design/ux-improvement-program.md` §PR-A1
 
 ## Context & Objective

@@ -8,7 +8,7 @@ L0, L1, and L9 are healthy.  L2/L3 are still wedged at txid `000000000003a03b` (
 
 ## What shipped in this PR
 
-Operator / storage / usage alerts send Pushover when a token and user key are available, and skip Resend.  Email remains last resort and still ends with `(sent by Socratic.Trade)`.  `PUSHOVER_ST_API_TOKEN` is accepted as the app token.
+Operator / storage / usage alerts send Pushover when a token and user key are available, and skip Resend.  Email remains last resort and still ends with `(sent by Socratic-Trade)`.  `PUSHOVER_ST_API_TOKEN` is accepted as the app token.
 
 ## Host ops already done (not in this commit)
 

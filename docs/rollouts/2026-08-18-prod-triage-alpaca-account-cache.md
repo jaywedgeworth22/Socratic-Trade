@@ -2,7 +2,7 @@
 
 ## Context & Objective
 
-Owner asked to troubleshoot live Socratic.Trade issues because the prior Grok seat was too slow.  Autopilot was degraded during RTH.  Owner then sent three iOS screenshots (3:01–3:02pm CT) of Scan and Home.  This note is the triage receipt plus the unclaimed code fixes.
+Owner asked to troubleshoot live Socratic-Trade issues because the prior Grok seat was too slow.  Autopilot was degraded during RTH.  Owner then sent three iOS screenshots (3:01–3:02pm CT) of Scan and Home.  This note is the triage receipt plus the unclaimed code fixes.
 
 ## Changes Made
 

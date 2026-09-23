@@ -1,4 +1,4 @@
-# Socratic.Trade APNs send verify
+# Socratic-Trade APNs send verify
 
 #2681 already landed the HTTP/2 sender, register route, and notify channel.  This pass does not steal `monet/apns-push`.
 

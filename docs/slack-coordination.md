@@ -84,7 +84,7 @@ field:
 - **Claude Code Cloud**: paste the fleet locator from
   `ai-fleet-coordinator/docs/CLAUDE-CODE-CLOUD-ENVIRONMENTS.md` (finds
   `scripts/cloud-setup.sh` from either cwd). Equivalent:
-  `cd Socratic.Trade && bash scripts/cloud-setup.sh`.
+  `cd Socratic-Trade && bash scripts/cloud-setup.sh`.
   That platform's sandbox starts the "Setup script" field in the *parent* of
   the cloned repo, not the repo root, so a bare `bash scripts/cloud-setup.sh`
   fails with exit 127 ("No such file or directory") before the installer ever
@@ -92,7 +92,7 @@ field:
   explanation.
 - **Codespaces / devcontainer** (and any other platform whose "setup script"
   already runs from the repo root): use the bare `bash scripts/cloud-setup.sh`
-  - there is no `Socratic.Trade/` subdirectory to `cd` into, so the Claude Code
+  - there is no `Socratic-Trade/` subdirectory to `cd` into, so the Claude Code
   Cloud prefix above would itself fail there with "No such file or directory".
   This matches `.devcontainer/devcontainer.json`'s `postCreateCommand`, which
   already uses the bare form.
@@ -173,7 +173,7 @@ scripts/slack-sync.sh reply <thread_ts> "<message>"   # threaded reply
 
   | Project | `SLACK_TOPIC` |
   |---------|---------------|
-  | Socratic Trade (this repo) | `Socratic.Trade` |
+  | Socratic Trade (this repo) | `Socratic-Trade` |
   | Congress Trade | `Congress.Trade` |
   | API Usage Monitor | `API-Usage-Monitor` |
   | Congress Trading Shared | `Congress-Trading-Shared` |

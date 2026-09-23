@@ -200,7 +200,7 @@ test, see above), `test/strategy-moneypath-drawdown-flip.test.ts`,
 
 ## Next Steps & Blockers
 
-Landed: PR https://github.com/jaywedgeworth22/Socratic.Trade/pull/2682,
+Landed: PR https://github.com/jaywedgeworth22/Socratic-Trade/pull/2682,
 opened ready (not draft), auto-merge armed (squash) — merges automatically
 once the `verify` CI check goes green on the post-rebase commit. Nothing
 else known outstanding.

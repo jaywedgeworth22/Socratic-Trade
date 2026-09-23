@@ -1,4 +1,4 @@
-# Handoff: Socratic.Trade post-Codex/AG audit + app evaluation → MONET
+# Handoff: Socratic-Trade post-Codex/AG audit + app evaluation → MONET
 
 - **From:** CLAUDE (Fable/Opus), isolated worktree branch `claude/adoring-hopper-4ff51e`
 - **To:** MONET
@@ -21,8 +21,8 @@
   (== origin/main HEAD), DB ok, scheduler leased + ticking (~4s age), litestream replicating
   (1s age), all providers green (massive/fmp paid, pinecone, voyage, tiingo, twelvedata,
   yahoo, usage-monitor). No zombie deploys in the Coolify queue.
-- **No open PRs on Socratic.Trade.** Every Codex/AG PR through #1624 is merged and auto-deployed.
-- **`congress-trading-shared` is current on BOTH consumers.** Socratic.Trade and Congress.Trade
+- **No open PRs on Socratic-Trade.** Every Codex/AG PR through #1624 is merged and auto-deployed.
+- **`congress-trading-shared` is current on BOTH consumers.** Socratic-Trade and Congress.Trade
   both pin the identical shared commit `0bc26ab9` = shared `main` HEAD = v1.7.1. No drift.
 - **Effort boards** reserved (Socratic live `/Users/jay/apps/TRADING-EFFORT-LOG.md` + repo
   mirror `docs/EFFORT-LOG.md`) with an In-Progress row for this sweep; agent-sync claim posted.

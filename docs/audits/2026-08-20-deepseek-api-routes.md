@@ -1,4 +1,4 @@
-# API Surface Review — Socratic.Trade (app/api/**, app/admin/**)
+# API Surface Review — Socratic-Trade (app/api/**, app/admin/**)
 
 Repo: /Users/jay/apps/trading-deepseek @ 41a7a438d (origin/main, clean). READ-ONLY review.
 Known items not duplicated (per brief): 28996d82, 009b99f0, d97c8726, d2094c78, ecda4b71,

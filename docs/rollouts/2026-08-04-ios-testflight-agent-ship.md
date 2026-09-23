@@ -1,4 +1,4 @@
-# 2026-08-04 — iOS TestFlight agent ship (Socratic.Trade)
+# 2026-08-04 — iOS TestFlight agent ship (Socratic-Trade)
 
 ## Context & Objective
 

@@ -2,8 +2,8 @@
 
 ## Summary
 
-- Implemented server-side model ID canonicalization (`cleanModelId`) inside `aggregateModelStats` and `normalizeBenchmarkSummaries` in [model-stats.ts](file:///Users/jay/Code/Socratic.Trade/src/lib/model-stats.ts).
-- Modified model stats assertions in [model-stats.test.ts](file:///Users/jay/Code/Socratic.Trade/test/model-stats.test.ts) to verify that qualified model IDs (e.g. `xai/grok-4.3`) are correctly canonicalized and aggregated under their bare catalog names (e.g. `grok-4.3`).
+- Implemented server-side model ID canonicalization (`cleanModelId`) inside `aggregateModelStats` and `normalizeBenchmarkSummaries` in [model-stats.ts](file:///Users/jay/Code/Socratic-Trade/src/lib/model-stats.ts).
+- Modified model stats assertions in [model-stats.test.ts](file:///Users/jay/Code/Socratic-Trade/test/model-stats.test.ts) to verify that qualified model IDs (e.g. `xai/grok-4.3`) are correctly canonicalized and aggregated under their bare catalog names (e.g. `grok-4.3`).
 
 ## Why
 
@@ -13,8 +13,8 @@
 
 ## Files
 
-- [src/lib/model-stats.ts](file:///Users/jay/Code/Socratic.Trade/src/lib/model-stats.ts)
-- [test/model-stats.test.ts](file:///Users/jay/Code/Socratic.Trade/test/model-stats.test.ts)
+- [src/lib/model-stats.ts](file:///Users/jay/Code/Socratic-Trade/src/lib/model-stats.ts)
+- [test/model-stats.test.ts](file:///Users/jay/Code/Socratic-Trade/test/model-stats.test.ts)
 
 ## Verification
 

@@ -2,7 +2,7 @@
 
 ## Summary
 Refreshed dirty Cursor PR #1105 onto current `origin/main` using a Codex replacement branch,
-without editing Cursor's branch. Tightened Socratic.Trade's use of
+without editing Cursor's branch. Tightened Socratic-Trade's use of
 `@jaywedgeworth22/congress-trading-shared` so remaining local duplicates of the cross-app
 contract are gone. PR #1171 merged to `main` as `54b6d722`.
 

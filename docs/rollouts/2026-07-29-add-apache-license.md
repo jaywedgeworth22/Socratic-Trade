@@ -1,7 +1,7 @@
 # 2026-07-29 Add Apache 2.0 License
 
 ## Context & Objective
-The owner decided to open source Socratic.Trade. Added the Apache 2.0 License to the repository and removed the `"private": true` restriction from `package.json`.
+The owner decided to open source Socratic-Trade. Added the Apache 2.0 License to the repository and removed the `"private": true` restriction from `package.json`.
 
 ## Changes Made
 - Created `LICENSE` file containing the standard Apache 2.0 text.

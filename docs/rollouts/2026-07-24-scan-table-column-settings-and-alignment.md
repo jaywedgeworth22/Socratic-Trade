@@ -18,11 +18,11 @@ Refactored the console Market Scan candidates table (`ScanTable`) and column def
 - **Horizontal Scroll Fix**: Replaced `w-full min-w-max` on `table` in `scan-table.tsx` with `min-w-full` to eliminate phantom overflow and prevent horizontal scroll from extending way past the actual table content.
 
 ## Touched Files
-- [columns.tsx](file:///Users/jay/Code/Socratic.Trade/app/console/scan/columns.tsx)
-- [scan-table.tsx](file:///Users/jay/Code/Socratic.Trade/app/console/scan/scan-table.tsx)
-- [dashboard-ui.ts](file:///Users/jay/Code/Socratic.Trade/src/lib/dashboard-ui.ts)
-- [scan-table-columns.test.ts](file:///Users/jay/Code/Socratic.Trade/test/scan-table-columns.test.ts)
-- [STATUS.md](file:///Users/jay/Code/Socratic.Trade/STATUS.md)
+- [columns.tsx](file:///Users/jay/Code/Socratic-Trade/app/console/scan/columns.tsx)
+- [scan-table.tsx](file:///Users/jay/Code/Socratic-Trade/app/console/scan/scan-table.tsx)
+- [dashboard-ui.ts](file:///Users/jay/Code/Socratic-Trade/src/lib/dashboard-ui.ts)
+- [scan-table-columns.test.ts](file:///Users/jay/Code/Socratic-Trade/test/scan-table-columns.test.ts)
+- [STATUS.md](file:///Users/jay/Code/Socratic-Trade/STATUS.md)
 
 ## Verification
 - `npx vitest run test/scan-table-columns.test.ts` (all 6 tests passing)

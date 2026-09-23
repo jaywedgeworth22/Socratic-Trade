@@ -2,7 +2,7 @@
 
 ## Summary
 
-Comprehensive top-to-bottom review of Socratic.Trade on all platforms and integrations over the past month (2026-08-21..2026-09-20). Filed findings into the mac board (`d97b02035c524a999d81bb8c4e203c90`), the fleet-wide `TRADING-EFFORT-LOG.md`, the repo `docs/EFFORT-LOG.md`, and two new GitHub issues (#3424 review-finding, #3425 un-bounded DELETE). Implemented the highest-leverage fixes in this batch and held the rest for future waves.
+Comprehensive top-to-bottom review of Socratic-Trade on all platforms and integrations over the past month (2026-08-21..2026-09-20). Filed findings into the mac board (`d97b02035c524a999d81bb8c4e203c90`), the fleet-wide `TRADING-EFFORT-LOG.md`, the repo `docs/EFFORT-LOG.md`, and two new GitHub issues (#3424 review-finding, #3425 un-bounded DELETE). Implemented the highest-leverage fixes in this batch and held the rest for future waves.
 
 ## Why
 

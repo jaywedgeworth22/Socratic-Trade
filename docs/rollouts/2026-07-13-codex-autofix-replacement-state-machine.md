@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-13
 **Branch:** `agent/ag-update-status-effort-log`
-**PR:** [#1526](https://github.com/jaywedgeworth22/Socratic.Trade/pull/1526)
+**PR:** [#1526](https://github.com/jaywedgeworth22/Socratic-Trade/pull/1526)
 
 ## Summary
 

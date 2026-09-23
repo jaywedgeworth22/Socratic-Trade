@@ -18,7 +18,7 @@ Addressed two of three Codex review findings on PR #1587. The third (architectur
 ### Deferred — P1 final-size holds vs sell-to-fund ordering
 - The broker-minimum final-size review (which can add a `final_size_red_team` human-review hold) runs inside the per-proposal loop, *after* sell-to-fund planning has generated funding sells.
 - Two options proposed to the maintainer: move final-size review before sell-to-fund, or cancel/recompute funding sells after the hold is added.
-- Comment posted: https://github.com/jaywedgeworth22/Socratic.Trade/pull/1587#issuecomment-4972913768
+- Comment posted: https://github.com/jaywedgeworth22/Socratic-Trade/pull/1587#issuecomment-4972913768
 
 ## Files touched
 - `app/console/components/policy-form.tsx` — added `useEffect` import + sync logic

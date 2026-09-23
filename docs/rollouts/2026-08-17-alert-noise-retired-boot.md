@@ -3,7 +3,7 @@
 ## Context & Objective
 
 Owner All Messages screenshot at 4:23–4:38pm CT (2026-08-17) stacked connection-failed,
-budget, Litestream, and UptimeRobot cards.  Live evidence at 21:42Z showed Socratic.Trade
+budget, Litestream, and UptimeRobot cards.  Live evidence at 21:42Z showed Socratic-Trade
 healthy after the 21:35:38Z Coolify restart of `5f9b4aaf`.  Goal: stop leftover FilingAPI
 401s and expected-limit 429s from looking like outages, and stop the live boot window from
 paging every probe that 5xxs during a deploy.
@@ -110,5 +110,5 @@ Live at 2026-08-17T21:42Z (`/api/health` + ops snapshot):
 | Pinecone WU daily fuse / monthly 2M | App fuse at trial cap.  Retrieval still works.  Do not raise.  **Correction 2026-08-20:** trial is usage-billed (#2799); the 15-WU skip was a daily-fuse deadlock (#2800), now live. |
 | Alpha Vantage 25/day pool exhausted | Expected free-tier cap. |
 | Siliconflow RAG embed-budget | Was a write-budget skip, not a success.  #2800 unstuck the fuse. |
-| Anthropic $120 / $100 | Usage Monitor budget, not Socratic.Trade. |
+| Anthropic $120 / $100 | Usage Monitor budget, not Socratic-Trade. |
 | Scheduler / Autopilot | Ticking.  2 Autopilot accounts.  Market closed. |

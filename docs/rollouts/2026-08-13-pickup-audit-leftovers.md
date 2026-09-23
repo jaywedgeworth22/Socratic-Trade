@@ -116,25 +116,25 @@ Close with:
 Insert under `## Planned / Reserved Before Implementation` (do not delete other rows):
 
 ```
-- **[Socratic.Trade][GROK] Monet audit leftovers hygiene 2026-08-13 — PLANNED / DOCS.** Waves 1-4 + APNs are MERGED (#2647 #2662 #2681 `72361e54`). Do not reopen. Close #2560 with that receipt. Open leftovers: #2545 #2550 #2558 #2561 #2563 #2577. Rollout: `docs/rollouts/2026-08-13-pickup-audit-leftovers.md`.
-- **[Socratic.Trade] Litestream L2 compaction wedge (regenerates after reset) — PLANNED / UNASSIGNED.** L2 frozen ~2026-08-08, L1 ~08-10. Monitor shipped; wedge not fixed. No issue.
-- **[Socratic.Trade] APNs e2e verify (TestFlight + Infisical APNS_* ) — PLANNED / UNASSIGNED.** Code on main via #2681. Device delivery unverified. Keys in ~/.secrets chmod 600, not repo. UM App ID has no Push capability.
-- **[Socratic.Trade] Green-Team empty-response failover + credits-exhausted hint — PLANNED / UNASSIGNED.** Issue #2577.
-- **[Socratic.Trade] Deploy-freshness alert (main ahead of prod >1h) — PLANNED / UNASSIGNED.** Residual of #2545. Oracle incident is over; silent-freeze class remains.
-- **[Socratic.Trade] Wire settings-search catalog into command palette — PLANNED / UNASSIGNED.** Issue #2558. Drop phantom defaultLandingAccount.
-- **[Socratic.Trade] Console a11y batch (light chips AA, Sheet Escape stack, tooltip/columns) — PLANNED / UNASSIGNED.** Issue #2561.
-- **[Socratic.Trade] iOS watchlist quotes + mini symbol drilldown — PLANNED / UNASSIGNED.** Parity review item 10. No issue.
-- **[Socratic.Trade] Mobile `order.replace_market` (stale-limit replace) — PLANNED / UNASSIGNED.** Cancel landed #2662; replace was out of scope. No issue.
-- **[Socratic.Trade] iOS Widget + Live Activity (read-only glance) — PLANNED / UNASSIGNED.** Parity item 9. Depends on APNs + App Group snapshot cache. No Approve in a widget.
-- **[Socratic.Trade] Wire curl-only admin surfaces (tuning-dry-run, learning-ledger, backtest-ic, /api/audit) — PLANNED / UNASSIGNED.** Issue #2563.
-- **[Socratic.Trade] Usage page: attribute embedding/rerank spend — PLANNED / UNASSIGNED.** Review D4. No issue.
-- **[Socratic.Trade] Red Team prompt compaction (60-80K input) — PLANNED / UNASSIGNED.** Review D5. No issue.
+- **[Socratic-Trade][GROK] Monet audit leftovers hygiene 2026-08-13 — PLANNED / DOCS.** Waves 1-4 + APNs are MERGED (#2647 #2662 #2681 `72361e54`). Do not reopen. Close #2560 with that receipt. Open leftovers: #2545 #2550 #2558 #2561 #2563 #2577. Rollout: `docs/rollouts/2026-08-13-pickup-audit-leftovers.md`.
+- **[Socratic-Trade] Litestream L2 compaction wedge (regenerates after reset) — PLANNED / UNASSIGNED.** L2 frozen ~2026-08-08, L1 ~08-10. Monitor shipped; wedge not fixed. No issue.
+- **[Socratic-Trade] APNs e2e verify (TestFlight + Infisical APNS_* ) — PLANNED / UNASSIGNED.** Code on main via #2681. Device delivery unverified. Keys in ~/.secrets chmod 600, not repo. UM App ID has no Push capability.
+- **[Socratic-Trade] Green-Team empty-response failover + credits-exhausted hint — PLANNED / UNASSIGNED.** Issue #2577.
+- **[Socratic-Trade] Deploy-freshness alert (main ahead of prod >1h) — PLANNED / UNASSIGNED.** Residual of #2545. Oracle incident is over; silent-freeze class remains.
+- **[Socratic-Trade] Wire settings-search catalog into command palette — PLANNED / UNASSIGNED.** Issue #2558. Drop phantom defaultLandingAccount.
+- **[Socratic-Trade] Console a11y batch (light chips AA, Sheet Escape stack, tooltip/columns) — PLANNED / UNASSIGNED.** Issue #2561.
+- **[Socratic-Trade] iOS watchlist quotes + mini symbol drilldown — PLANNED / UNASSIGNED.** Parity review item 10. No issue.
+- **[Socratic-Trade] Mobile `order.replace_market` (stale-limit replace) — PLANNED / UNASSIGNED.** Cancel landed #2662; replace was out of scope. No issue.
+- **[Socratic-Trade] iOS Widget + Live Activity (read-only glance) — PLANNED / UNASSIGNED.** Parity item 9. Depends on APNs + App Group snapshot cache. No Approve in a widget.
+- **[Socratic-Trade] Wire curl-only admin surfaces (tuning-dry-run, learning-ledger, backtest-ic, /api/audit) — PLANNED / UNASSIGNED.** Issue #2563.
+- **[Socratic-Trade] Usage page: attribute embedding/rerank spend — PLANNED / UNASSIGNED.** Review D4. No issue.
+- **[Socratic-Trade] Red Team prompt compaction (60-80K input) — PLANNED / UNASSIGNED.** Review D5. No issue.
 ```
 
 Insert under `## In Progress` (hygiene only, do not delete Monet rows):
 
 ```
-- **[Socratic.Trade][GROK] Pickup hygiene: Monet iOS waves 1-4 + APNs rows below are MERGED (PRs #2647 #2662 #2681 `72361e54`).** Do not reopen. Leftovers in Planned + `docs/rollouts/2026-08-13-pickup-audit-leftovers.md`.
+- **[Socratic-Trade][GROK] Pickup hygiene: Monet iOS waves 1-4 + APNs rows below are MERGED (PRs #2647 #2662 #2681 `72361e54`).** Do not reopen. Leftovers in Planned + `docs/rollouts/2026-08-13-pickup-audit-leftovers.md`.
 ```
 
 Do not add a new row for `#2576` (already claimed by fleet-alerts GROK).

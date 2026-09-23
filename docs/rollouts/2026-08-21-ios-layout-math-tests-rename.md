@@ -52,7 +52,7 @@ Independent re-check of prior work (this session, before the rename):
 ```
 gh run view 32529663287 --json conclusion,status
 # conclusion=success, Mac job 21:41:21Z -> 21:43:11Z
-# https://github.com/jaywedgeworth22/Socratic.Trade/actions/runs/32529663287
+# https://github.com/jaywedgeworth22/Socratic-Trade/actions/runs/32529663287
 ```
 
 Local (this Linux cloud VM):
@@ -76,7 +76,7 @@ PrivacyInfo.xcprivacy in Resources
 ** TEST SUCCEEDED **
 ```
 
-Job URL: https://github.com/jaywedgeworth22/Socratic.Trade/actions/runs/32534166394
+Job URL: https://github.com/jaywedgeworth22/Socratic-Trade/actions/runs/32534166394
 
 Generated `project.pbxproj` from that job's `generated-pbxproj` artifact is
 committed on this branch (objectVersion 100, LayoutMathTests.swift, no

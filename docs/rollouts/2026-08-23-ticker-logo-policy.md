@@ -4,7 +4,7 @@
 `/api/logos/ticker` walks congress-trading-shared `sourceOrderFor` after disk cache, with GitHub-first fallback for ungraded names.  `local` is skipped.  Cache files are per symbol, theme, and source so a later jury row can change provider.
 
 ## Why
-Congress.Trade and Socratic.Trade should honor the same A/B/C/D grades without flipping ST's default cascade.
+Congress.Trade and Socratic-Trade should honor the same A/B/C/D grades without flipping ST's default cascade.
 
 ## Files
 - `app/api/logos/ticker/route.ts`

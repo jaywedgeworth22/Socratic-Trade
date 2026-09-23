@@ -2,7 +2,7 @@
 
 ## Context & Objective
 
-Direct FMP / QuiverQuant / Unusual Whales are already banned for Socratic.Trade
+Direct FMP / QuiverQuant / Unusual Whales are already banned for Socratic-Trade
 product use (`retired-direct-vendors.ts`, #2398). Admin Connections health still
 painted historical FMP failure rows as red **STOPPED**, and Settings still
 defaulted FMP policy toggles **ON**, which read as product bugs rather than

@@ -28,7 +28,7 @@ deploy.
    signature like all the rest.
 5. **AGENTS.md's app uuid was stale.** `GET /api/v1/applications/m1os7ijf31bg3fanil152e4b`
    returns a bare `{"message":...}`; the app list shows the real app is uuid
-   **`socratic-app`** (name "Socratic.Trade", branch `main`, dockerfile build pack, SSH
+   **`socratic-app`** (name "Socratic-Trade", branch `main`, dockerfile build pack, SSH
    deploy-key source). The deploy-key source is why the manual webhook endpoint (with HMAC
    validation) is in play rather than the GitHub-App integration described in the old
    stanza.
@@ -41,7 +41,7 @@ deploy.
 1. Read `manual_webhook_secret_github` from the Coolify app via API into a shell variable
    (never printed; all command output piped through inline redaction per the secret-safety
    protocol).
-2. `PATCH /repos/jaywedgeworth22/Socratic.Trade/hooks/658815433` — set `config.secret` to
+2. `PATCH /repos/jaywedgeworth22/Socratic-Trade/hooks/658815433` — set `config.secret` to
    that value (url/content_type/insecure_ssl re-sent unchanged).
 3. Deleted duplicate hook `658869484`. Proof it was a pure duplicate: once hook 1 carried
    the corrected config, patching hook 2 to the same config failed GitHub validation as an
@@ -52,7 +52,7 @@ deploy.
    the repaired hook — a re-send of an event GitHub already emitted, exercising the
    standing auto-deploy path; NOT a manual deploy trigger.
 5. **Proof of repair:** Coolify immediately created a real deployment —
-   `Socratic.Trade | in_progress | commit 19dfd51b` — after a full day in which zero
+   `Socratic-Trade | in_progress | commit 19dfd51b` — after a full day in which zero
    deployments were created. A background watch
    (`scripts/verify-deploy-sha.sh 19dfd51b`, 55-min window) is confirming the cutover.
 

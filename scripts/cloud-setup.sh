@@ -4,7 +4,7 @@
 #
 # IMPORTANT (Claude Code Cloud environments specifically): the container's working
 # directory when the "Setup script" field runs is the PARENT of the cloned repo
-# (e.g. /home/user), NOT the repo root - `git clone` creates a `Socratic.Trade/`
+# (e.g. /home/user), NOT the repo root - `git clone` creates a `Socratic-Trade/`
 # subdirectory and the sandbox drops you one level above it. A bare
 # `bash scripts/cloud-setup.sh` therefore fails with
 # `bash: scripts/cloud-setup.sh: No such file or directory` (exit 127) because
@@ -20,7 +20,7 @@
 #   echo "ERROR: scripts/cloud-setup.sh not found from $(pwd)" >&2; ls -la >&2; exit 1
 #
 # Equivalent one-liner if you prefer the repo name:
-#   cd Socratic.Trade && bash scripts/cloud-setup.sh
+#   cd Socratic-Trade && bash scripts/cloud-setup.sh
 #
 # (`.devcontainer/devcontainer.json`'s `postCreateCommand` does NOT need the `cd`
 # - devcontainers set `workspaceFolder` to the repo root automatically. This `cd`

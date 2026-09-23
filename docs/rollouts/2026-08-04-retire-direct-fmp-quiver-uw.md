@@ -1,4 +1,4 @@
-# 2026-08-04 — Retire direct FMP / QuiverQuant / Unusual Whales from Socratic.Trade
+# 2026-08-04 — Retire direct FMP / QuiverQuant / Unusual Whales from Socratic-Trade
 
 ## Context & Objective
 

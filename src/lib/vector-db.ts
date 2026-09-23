@@ -2760,7 +2760,7 @@ async function embedWithRetry(
             // OpenRouter embed path. Enrichment never breaks the call — see
             // applyOpenRouterClassifierEnrichment.
             headers["HTTP-Referer"] = "https://socratictrade.com";
-            headers["X-Title"] = "Socratic.Trade";
+            headers["X-Title"] = "Socratic-Trade";
             applyOpenRouterClassifierEnrichment(body, { userId, service: "rag", feature: "embed" });
           }
           const response = await withGenAiSpan(
@@ -2951,7 +2951,7 @@ export async function rerankMatches(
           // embed path above. Enrichment never breaks the call — see
           // applyOpenRouterClassifierEnrichment.
           rerankHeaders["HTTP-Referer"] = "https://socratictrade.com";
-          rerankHeaders["X-Title"] = "Socratic.Trade";
+          rerankHeaders["X-Title"] = "Socratic-Trade";
           applyOpenRouterClassifierEnrichment(rerankBody, { userId, service: "rag", feature: "rerank" });
         }
         const maxAttempts = 3;

@@ -98,7 +98,7 @@ completed/success, `gitleaks` completed/success, `check-pin` completed/success,
 Codex's P1 on the round-4 push (thread `PRRT_kwDOS7mOVM6kerKs`) was correct: the note's
 `## Changes Made` block said the `docs/EFFORT-LOG.md` row was "to be added manually" while the
 armed auto-merge body already claimed the file was updated.  The row is now added at the top of
-`docs/EFFORT-LOG.md` (in the `[Socratic.Trade][MUSE]` in-progress/current-state style used by the
+`docs/EFFORT-LOG.md` (in the `[Socratic-Trade][MUSE]` in-progress/current-state style used by the
 other sweep lanes), written via a full git clone — the GitHub Data API blob fetch that failed was
 a tooling limitation on this ~1MB file, not a reason to skip the record.  The `## Changes Made`
 bullet above is corrected to match.  `STATUS.md` is untouched this round; the merged Sentry

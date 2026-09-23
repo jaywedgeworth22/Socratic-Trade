@@ -19,7 +19,7 @@ the PR can land.
   `STATUS.md:70`; AGENTS.md:63 assigns the snapshot to `STATUS.md` and the running changelog
   to `docs/rollouts/`), so the stale "no local gate re-run" line no longer sits next to the
   later rerun result.
-- `docs/EFFORT-LOG.md` — new `[Socratic.Trade][MUSE]` row, marked `IN PR #3443`.
+- `docs/EFFORT-LOG.md` — new `[Socratic-Trade][MUSE]` row, marked `IN PR #3443`.
 - `docs/rollouts/2026-09-21-observability-sentry-10-75-bump.md` — this note.
 - `package.json` / `package-lock.json` — the Dependabot commit `21860abc` itself plus the
   main-merge (picks up #3445 jose 6.2.12, #3426, #3427; both bumps verified present in the merged

@@ -14,7 +14,7 @@ const FLEET = {
   updatedAt: "2026-08-24T07:44:52Z",
   apps: {
     "trade.socratic.app": {
-      displayName: "Socratic.Trade",
+      displayName: "Socratic-Trade",
       marketingVersion: "1.0.68",
       appleId: 6799238379,
     },
@@ -73,7 +73,7 @@ test("merge onto a multi-app remote keeps every sibling", () => {
     "--apple-id",
     "6799238379",
     "--display-name",
-    "Socratic.Trade",
+    "Socratic-Trade",
     "--base-json",
     base,
     "--out-json",
@@ -123,7 +123,7 @@ const STALE_SNAPSHOT = {
   updatedAt: "2026-08-21T19:00:00Z",
   apps: {
     "trade.socratic.app": {
-      displayName: "Socratic.Trade",
+      displayName: "Socratic-Trade",
       marketingVersion: "1.0.68",
       appleId: 6799238379,
     },

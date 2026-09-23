@@ -28,7 +28,7 @@ Plus the ruling itself, codified in `AGENTS.md` → "Don't" and broadcast to #ag
 The per-user key store is write-only by design (a key is written once and thereafter only
 described). That is right for secrecy and wrong for identification: when several keys exist for one
 provider — which is exactly what happened, because agents on multiple platforms minted their own
-OpenRouter keys for Socratic.Trade and Congress.Trade rather than using the single key the owner had
+OpenRouter keys for Socratic-Trade and Congress.Trade rather than using the single key the owner had
 deliberately configured spend caps and guardrails on — the UI could not answer *"which key is
 serving me?"* at all. A first-8/last-4 elision answers it without ever exposing a usable value.
 

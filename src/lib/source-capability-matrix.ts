@@ -73,7 +73,7 @@ export type DataPointId =
 export interface SourceOption {
   /** Provider / producer id as used in health logs or enrichment `name`. */
   sourceId: string;
-  /** When true, Socratic.Trade product code may call this source for this field. */
+  /** When true, Socratic-Trade product code may call this source for this field. */
   stAllowed: boolean;
   /**
    * Strategic preference within this data point only (1 = first choice when healthy).

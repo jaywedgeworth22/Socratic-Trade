@@ -1,6 +1,6 @@
 # Branch Integration Ledger
 
-Purpose: durable branch disposition record so future agents do not repeat the same inventory when reconciling Socratic.Trade work into `main`.
+Purpose: durable branch disposition record so future agents do not repeat the same inventory when reconciling Socratic-Trade work into `main`.
 
 Last updated: 2026-07-15 by CODEX.
 

@@ -4,7 +4,7 @@
 
 - Owner narrowed the shortlist to **Dialectic only**, saved in two forms:
   the standalone mark (`dialectic.svg`, v2 tails) and a new
-  **`dialectic-lockup.svg`** — the mark with `Socratic.Trade` set beside it
+  **`dialectic-lockup.svg`** — the mark with `Socratic-Trade` set beside it
   (serif, emerald period, viewBox 292×64), added as a new
   `<symbol id="dialectic-lockup">` in the showcase.
 - Showcase updated: Dialectic first with a "Selected" badge; Examined
@@ -44,7 +44,7 @@
 
 ## Summary
 
-First brand exploration for Socratic.Trade: twelve logo concepts crossing the
+First brand exploration for Socratic-Trade: twelve logo concepts crossing the
 Socratic half of the name (question, dialogue, examination, Greek antiquity)
 with the trading half (candlesticks, trend lines, delta). Delivered as:
 

@@ -1,7 +1,7 @@
 # 2026-07-18 — SEC ingest backfill: manifest schema fix + seeder + worker wiring
 
 Branch: `claude/sec-ingest-worker-wiring` (worktree
-`/Users/jay/Code/Socratic.Trade/.claude/worktrees/agent-af7fb4212d148a06c`). Not yet pushed.
+`/Users/jay/Code/Socratic-Trade/.claude/worktrees/agent-af7fb4212d148a06c`). Not yet pushed.
 
 ## Summary
 

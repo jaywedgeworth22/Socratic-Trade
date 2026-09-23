@@ -68,7 +68,7 @@ export const INFISICAL_BOOTSTRAP_CREDENTIAL_KEYS = Object.freeze([
     ...SHARED_PAIR_KEYS.flat(),
     ...GLOBAL_APP_PAIR_KEYS.flat(),
     ...GLOBAL_SHARED_PAIR_KEYS.flat(),
-    // Other app-scoped names are not resolvable for Socratic.Trade, but must
+    // Other app-scoped names are not resolvable for Socratic-Trade, but must
     // still be scrubbed before any CLI or final app process is launched.
     "INFISICAL_APP_CLIENT_ID",
     "INFISICAL_APP_CLIENT_SECRET",

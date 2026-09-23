@@ -1,7 +1,7 @@
 # 2026-07-13: Login UI updates and Apple Sign-in, Model Stats Drawer
 
 ## Summary
-- Replaced the text in the login page with Socratic.Trade Candlestick logo.
+- Replaced the text in the login page with Socratic-Trade Candlestick logo.
 - Adjusted the UI to only show the logo and the sign-in buttons.
 - Implemented a Drawer UX for the Model Stats.
 - Grouped Model Stats by provider with vertically aligned row labels on mobile devices.

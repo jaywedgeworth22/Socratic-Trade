@@ -1,4 +1,4 @@
-# Blind-spots audit — Socratic.Trade
+# Blind-spots audit — Socratic-Trade
 
 **Date:** 2026-08-17  
 **Seat:** Cursor Cloud (read-only; report-only PR)  
@@ -7,7 +7,7 @@
 
 ## 1. Context and method
 
-Socratic.Trade already has a dense review corpus (architecture, strategy, RAG, security, cockpit UX, iOS parity).  Those tracks keep rediscovering the same money-path and retrieval issues.  This panel asked a different question: **which assumptions will bite second, after the well-reviewed systems look healthy?**
+Socratic-Trade already has a dense review corpus (architecture, strategy, RAG, security, cockpit UX, iOS parity).  Those tracks keep rediscovering the same money-path and retrieval issues.  This panel asked a different question: **which assumptions will bite second, after the well-reviewed systems look healthy?**
 
 Method:
 

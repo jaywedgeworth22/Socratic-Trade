@@ -59,7 +59,7 @@ fail_usage() {
 command -v git >/dev/null 2>&1 || fail_usage "git is required."
 command -v jq >/dev/null 2>&1 || fail_usage "jq is required."
 printf '%s' "$STALE_SECONDS" | grep -Eq '^[0-9]+$' || fail_usage "STALE_SECONDS must be an integer."
-git rev-parse --git-dir >/dev/null 2>&1 || fail_usage "must run inside the Socratic.Trade git repo."
+git rev-parse --git-dir >/dev/null 2>&1 || fail_usage "must run inside the Socratic-Trade git repo."
 
 resolve_commit() {
   git rev-parse --verify --quiet "${1}^{commit}" 2>/dev/null || true
@@ -139,7 +139,7 @@ maybe_notify() {
     return 0
   fi
   SLACK_AGENT_NAME="${SLACK_AGENT_NAME:-ST}" \
-  SLACK_TOPIC="${SLACK_TOPIC:-Socratic.Trade}" \
+  SLACK_TOPIC="${SLACK_TOPIC:-Socratic-Trade}" \
     bash "$SLACK" post "$2" || log "warn: slack-sync post failed (token missing or Slack error)."
 }
 

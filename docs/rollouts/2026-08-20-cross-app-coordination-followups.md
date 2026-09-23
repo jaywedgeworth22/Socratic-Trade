@@ -3,7 +3,7 @@
 ## Context & Objective
 
 Audit #2802 (`docs/audits/2026-08-17-cross-app-coordination.md`) listed
-portfolio fixes.  This branch implements the Socratic.Trade slice of §7 so
+portfolio fixes.  This branch implements the Socratic-Trade slice of §7 so
 the pin triangle, Infisical merge order, congress docs, peer-serving Massive
 label, and call-volume durability stop rotting as "next agent" notes.
 

@@ -1,6 +1,6 @@
 # 2026-07-11 — Admin authorization fail-closed hardening
 
-PR: <https://github.com/jaywedgeworth22/Socratic.Trade/pull/1410> (ready, not merged)
+PR: <https://github.com/jaywedgeworth22/Socratic-Trade/pull/1410> (ready, not merged)
 
 Branch: `codex/admin-fail-closed`
 

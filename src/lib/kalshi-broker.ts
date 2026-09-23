@@ -3,7 +3,7 @@
  * event-contract accounts (Demo and Live).
  *
  * Translates portfolio balances, event-contract positions, orders, and market quotes
- * between Socratic.Trade standard account structures and Kalshi trade APIs.
+ * between Socratic-Trade standard account structures and Kalshi trade APIs.
  */
 
 import { audit, getConnectedAccount } from "./db";

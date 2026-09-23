@@ -1,7 +1,7 @@
 # 2026-07-09 — Widen the Model Stats drawer on desktop
 
 Branch: `monet/model-stats-drawer-wide`
-PR: https://github.com/jaywedgeworth22/Socratic.Trade/pull/1213
+PR: https://github.com/jaywedgeworth22/Socratic-Trade/pull/1213
 
 ## Summary
 

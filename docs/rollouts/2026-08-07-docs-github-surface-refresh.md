@@ -7,7 +7,7 @@ confusion / Nixpacks; GitHub About lacked homepage and broker list; paper/live l
 still used "Test/Paper/Brokerage" framing in places.
 
 ## Changes
-- **README.md** — Socratic.Trade product blurb; broker table (Alpaca / Tradier / Robinhood);
+- **README.md** — Socratic-Trade product blurb; broker table (Alpaca / Tradier / Robinhood);
   ask-first vs autopilot; production Coolify + Hetzner; paper/sandbox vs live without Test mode.
 - **docs/deployment.md** — uuid `socratic-app`, Hetzner host, dockerfile, manual webhook auto-deploy.
 - **docs/strategic-framework.md** — paper/sandbox + live brokers include Tradier.

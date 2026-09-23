@@ -2,7 +2,7 @@
 
 ## Context & Objective
 
-Socratic.Trade's Litestream level-2 compaction has been wedged since 2026-08-29.  L0 and L1
+Socratic-Trade's Litestream level-2 compaction has been wedged since 2026-08-29.  L0 and L1
 replication kept working the entire time - only the L2 fold failed - so `/api/live` stayed
 green and nothing paged.  The fleet has hand-healed this same class of wedge four times now
 (ST 2026-08-13, ST 2026-08-22, UM 2026-08-27, ST 2026-08-31/09-01), each time by deleting L1

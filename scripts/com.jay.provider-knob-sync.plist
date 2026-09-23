@@ -9,7 +9,7 @@
   Infisical prod knobs stay in sync with the plans tracked in the API-Usage-Monitor.
 
   INSTALL (owner action; see docs/rollouts/2026-07-10-provider-knob-sync.md):
-    1. Edit the paths below if this repo does not live at /Users/jay/Code/Socratic.Trade.
+    1. Edit the paths below if this repo does not live at /Users/jay/Code/Socratic-Trade.
        SSH target is launchd-inherited from the script: Host coolify (Hetzner).
     2. To enable the #agent-sync post-on-change, add your SLACK_BOT_TOKEN to
        EnvironmentVariables (otherwise slack-sync.sh is a safe no-op).
@@ -31,12 +31,12 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/jay/Code/Socratic.Trade/scripts/sync-provider-knobs.sh</string>
+    <string>/Users/jay/Code/Socratic-Trade/scripts/sync-provider-knobs.sh</string>
     <string>--apply</string>
   </array>
 
   <key>WorkingDirectory</key>
-  <string>/Users/jay/Code/Socratic.Trade</string>
+  <string>/Users/jay/Code/Socratic-Trade</string>
 
   <!-- launchd starts with a bare PATH; node/ssh/curl must be reachable. -->
   <key>EnvironmentVariables</key>
@@ -44,7 +44,7 @@
     <key>PATH</key>
     <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     <key>SLACK_TOPIC</key>
-    <string>Socratic.Trade</string>
+    <string>Socratic-Trade</string>
     <!-- Add SLACK_BOT_TOKEN here to enable the #agent-sync post-on-change:
     <key>SLACK_BOT_TOKEN</key>
     <string>xoxb-...</string>

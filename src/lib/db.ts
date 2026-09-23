@@ -4376,7 +4376,7 @@ function migrate(database: Database.Database): void {
       updated_at TEXT NOT NULL
     );
 
-    -- Socratic.Trade local caching for complete EOD bars (OHLCV), replacing the silent-failing flat-file cache.
+    -- Socratic-Trade local caching for complete EOD bars (OHLCV), replacing the silent-failing flat-file cache.
     -- Upserted continuously during live strategy runs for fast replay, avoiding expensive API network loops.
     CREATE TABLE IF NOT EXISTS history_cache_eod (
       ticker TEXT NOT NULL,

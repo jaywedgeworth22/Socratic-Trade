@@ -230,7 +230,7 @@ const NTFY_TITLE_TRANSLITERATIONS: ReadonlyArray<readonly [RegExp, string]> = [
   [/[\u201C\u201D]/g, '"'] // curly double quotes
 ];
 
-export const NOTIFY_EMAIL_SENT_BY = "(sent by Socratic.Trade)";
+export const NOTIFY_EMAIL_SENT_BY = "(sent by Socratic-Trade)";
 
 /** Plain-text Resend body.  Footer names the sending app so a shared From address cannot hide it. */
 export function formatNotifyEmailText(title: string, body: string): string {
@@ -351,7 +351,7 @@ const CHANNELS: Record<NotifyChannelId, ChannelDef> = {
       targetField: "",
       targetLabel: "Registered devices",
       placeholder: "",
-      hint: "Alerts arrive as native iPhone notifications. Devices register themselves when you allow notifications in the Socratic.Trade app — there is nothing to paste here.",
+      hint: "Alerts arrive as native iPhone notifications. Devices register themselves when you allow notifications in the Socratic-Trade app — there is nothing to paste here.",
       managedTarget: true
     }),
     async send(_target, msg, { cfg, timeoutMs, userId, apnsTransport }) {
@@ -454,7 +454,7 @@ const CHANNELS: Record<NotifyChannelId, ChannelDef> = {
       hint: "Alerts are emailed to this address."
     }),
     async send(to, msg, { cfg, fetchImpl, timeoutMs, signal }) {
-      const subject = msg.title.startsWith("[Socratic.Trade]") ? msg.title : `[Socratic.Trade] ${msg.title}`;
+      const subject = msg.title.startsWith("[Socratic-Trade]") ? msg.title : `[Socratic-Trade] ${msg.title}`;
       await postOrThrow(
         fetchImpl,
         "https://api.resend.com/emails",

@@ -2,7 +2,7 @@
 
 ## Context & Objective
 
-Three live Socratic.Trade console bugs from the 2026-08-20 desktop review were still on `main`.  This pass root-causes and fixes them in one PR so Discard, Approve, and Home Coach chips match the server and stop lying.
+Three live Socratic-Trade console bugs from the 2026-08-20 desktop review were still on `main`.  This pass root-causes and fixes them in one PR so Discard, Approve, and Home Coach chips match the server and stop lying.
 
 ## Changes Made
 

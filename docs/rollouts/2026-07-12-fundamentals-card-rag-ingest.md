@@ -10,8 +10,8 @@ This implements a hybrid RAG approach:
 This prevents lookups from hallucinating financial data while allowing the model to query both structural corporate metrics and textual disclosures concurrently.
 
 ## Touched Files
-- [src/lib/web-sources/sec-filings.ts](file:///Users/jay/Code/Socratic.Trade/src/lib/web-sources/sec-filings.ts)
-- [test/sec-filings.test.ts](file:///Users/jay/Code/Socratic.Trade/test/sec-filings.test.ts)
+- [src/lib/web-sources/sec-filings.ts](file:///Users/jay/Code/Socratic-Trade/src/lib/web-sources/sec-filings.ts)
+- [test/sec-filings.test.ts](file:///Users/jay/Code/Socratic-Trade/test/sec-filings.test.ts)
 
 ## Verification
 - Checked static analysis: `npx tsc --noEmit`

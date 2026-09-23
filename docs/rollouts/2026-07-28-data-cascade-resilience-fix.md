@@ -21,4 +21,4 @@ Investigated provider failures and missing data points across the data cascade f
 - `npm run build` (passed)
 
 ## 5. Next Steps & Action Items
-- Renew / reactivate the FMP API subscription or update `FMP_API_KEY` in Infisical (`Socratic.Trade` project ID `<ST_INFISICAL_PROJECT_ID>`) once the FMP account is unsuspended.
+- Renew / reactivate the FMP API subscription or update `FMP_API_KEY` in Infisical (`Socratic-Trade` project ID `<ST_INFISICAL_PROJECT_ID>`) once the FMP account is unsuspended.

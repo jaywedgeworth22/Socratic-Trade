@@ -1,7 +1,7 @@
 # Trading Outcomes Audit — 2026-08-17
 
 **Roles:** quantitative research, market microstructure, risk, trading-systems engineering, model validation.  
-**Scope:** read-only code and docs review of Socratic.Trade at `4980322b` (`main`).  
+**Scope:** read-only code and docs review of Socratic-Trade at `4980322b` (`main`).  
 **Constraint:** no trades, no money-path behavior changes, no policy flips.  
 **Deliverable:** this report plus a report-only PR.
 

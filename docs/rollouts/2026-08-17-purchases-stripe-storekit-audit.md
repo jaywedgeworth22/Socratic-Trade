@@ -2,7 +2,7 @@
 
 ## 1. Context & Objective
 
-Owner asked for a read-only end-to-end audit of Socratic.Trade purchases (web Stripe + native StoreKit + App Review).  Goal: pass/fail evidence and exact fix PRs, without charging cards, creating Stripe sessions, or performing StoreKit purchases.  Avoid duplicating Grok / Claude / Monet work.
+Owner asked for a read-only end-to-end audit of Socratic-Trade purchases (web Stripe + native StoreKit + App Review).  Goal: pass/fail evidence and exact fix PRs, without charging cards, creating Stripe sessions, or performing StoreKit purchases.  Avoid duplicating Grok / Claude / Monet work.
 
 ## 2. Changes Made
 
@@ -45,4 +45,4 @@ Docs-only.  Did not run `tsc` / vitest / `next build` (no runtime files touched)
 
 ## 6. Zero-Code Findings
 
-Socratic.Trade has no user-facing purchase stack.  Access is email allowlist + mailto "Request access."  Marketing JSON-LD lists price $0.  Native iOS has no StoreKit and no web checkout for digital goods (App Review 3.1.1 PASS).  Account deletion exists and is tested (5.1.1(v), adjacent).  The fleet's live Stripe/IAP product is Congress.Trade.
+Socratic-Trade has no user-facing purchase stack.  Access is email allowlist + mailto "Request access."  Marketing JSON-LD lists price $0.  Native iOS has no StoreKit and no web checkout for digital goods (App Review 3.1.1 PASS).  Account deletion exists and is tested (5.1.1(v), adjacent).  The fleet's live Stripe/IAP product is Congress.Trade.

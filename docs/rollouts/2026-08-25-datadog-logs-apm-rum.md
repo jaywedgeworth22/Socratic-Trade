@@ -2,7 +2,7 @@
 
 ## Context & Objective
 
-Socratic.Trade had no Datadog SDK.  The existing us5 org already runs a host agent on `fleet-hetzner-nbg1`, but that path only saw syslog/journald and Universal Service Monitoring `service:node` (GitHub Actions), not the Next.js app, and Coolify container stdout was not ingested.  This change adds fail-closed Logs + APM + browser RUM on that same account so the web console is observable without new Datadog spend, orgs, or paid add-ons.
+Socratic-Trade had no Datadog SDK.  The existing us5 org already runs a host agent on `fleet-hetzner-nbg1`, but that path only saw syslog/journald and Universal Service Monitoring `service:node` (GitHub Actions), not the Next.js app, and Coolify container stdout was not ingested.  This change adds fail-closed Logs + APM + browser RUM on that same account so the web console is observable without new Datadog spend, orgs, or paid add-ons.
 
 ## Changes Made
 

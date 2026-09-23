@@ -1,5 +1,5 @@
 /**
- * Sentry Application Metrics + sparse structured logs for Socratic.Trade.
+ * Sentry Application Metrics + sparse structured logs for Socratic-Trade.
  *
  * Operational telemetry only: scheduler ticks, broker calls, RAG rejections,
  * embedding failures. Dynamic-imports `@sentry/nextjs` so importing this

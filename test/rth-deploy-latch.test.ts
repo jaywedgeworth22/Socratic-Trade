@@ -157,7 +157,7 @@ describe("resolveCommitMessageForLatch", () => {
     const fetchImpl = async () =>
       new Response(JSON.stringify({ commit: { message: "from github" } }), { status: 200 });
     const fromGithub = await resolveCommitMessageForLatch(
-      { SOURCE_COMMIT: "23412af", GITHUB_REPOSITORY: "jaywedgeworth22/Socratic.Trade" },
+      { SOURCE_COMMIT: "23412af", GITHUB_REPOSITORY: "jaywedgeworth22/Socratic-Trade" },
       () => "from git",
       fetchImpl as unknown as typeof fetch
     );
@@ -185,7 +185,7 @@ describe("fetchGithubCommitFiles", () => {
   it("maps filenames and refuses a truncated 300-file page", async () => {
     const files = await fetchGithubCommitFiles(
       "23412af",
-      "jaywedgeworth22/Socratic.Trade",
+      "jaywedgeworth22/Socratic-Trade",
       async () =>
         new Response(JSON.stringify({ files: ISSUE_2811_DOCS_ONLY_PATHS.map((filename) => ({ filename })) }), {
           status: 200
@@ -195,7 +195,7 @@ describe("fetchGithubCommitFiles", () => {
 
     const truncated = await fetchGithubCommitFiles(
       "23412af",
-      "jaywedgeworth22/Socratic.Trade",
+      "jaywedgeworth22/Socratic-Trade",
       async () =>
         new Response(JSON.stringify({ files: Array.from({ length: 300 }, (_, i) => ({ filename: `docs/${i}.md` })) }), {
           status: 200
@@ -219,11 +219,11 @@ describe("resolveChangedFilesForLatch", () => {
 
 describe("fetchGithubCommitMessage", () => {
   it("rejects malformed sha or repo and swallows HTTP failures", async () => {
-    expect(await fetchGithubCommitMessage("HEAD", "jaywedgeworth22/Socratic.Trade")).toBeUndefined();
+    expect(await fetchGithubCommitMessage("HEAD", "jaywedgeworth22/Socratic-Trade")).toBeUndefined();
     expect(await fetchGithubCommitMessage("abc1234", "not a repo")).toBeUndefined();
     const failed = await fetchGithubCommitMessage(
       "abc1234",
-      "jaywedgeworth22/Socratic.Trade",
+      "jaywedgeworth22/Socratic-Trade",
       async () => new Response("nope", { status: 403 })
     );
     expect(failed).toBeUndefined();

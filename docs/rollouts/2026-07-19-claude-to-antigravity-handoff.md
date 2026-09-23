@@ -22,7 +22,7 @@ code-class failure). It also owns post-merge closeout: worktree removal
 (`.claude/worktrees/land-ag-reindex-bge-m3`), effort-board completion row, and measuring whether
 the post-merge auto-deploy actually fires (see wedge below).
 
-**Antigravity: check `gh pr view 1775 --repo jaywedgeworth22/Socratic.Trade` and #agent-sync
+**Antigravity: check `gh pr view 1775 --repo jaywedgeworth22/Socratic-Trade` and #agent-sync
 before touching this PR.** If it's already MERGED, this task is done — verify via the effort
 board / Slack closeout post. If it's still open and the CLAUDE seat has gone quiet (no
 #agent-sync activity for >1h), the shepherd likely died with the session; pick it up using the

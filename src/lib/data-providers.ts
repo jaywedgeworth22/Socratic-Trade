@@ -6479,7 +6479,7 @@ export class SecXbrlEnrichmentProvider implements MarketEnrichmentProvider {
 
 // ── RapidAPI: Financial Modeling Prep ────────────────────────────────────────
 // RETIRED (owner 2026-08-04): never call FMP (native or RapidAPI-hosted) from
-// Socratic.Trade. Class kept as a no-op so imports/tests that construct it stay stable.
+// Socratic-Trade. Class kept as a no-op so imports/tests that construct it stay stable.
 
 export class FmpRapidApiEnrichmentProvider implements MarketEnrichmentProvider {
   readonly name = "fmp-rapidapi";

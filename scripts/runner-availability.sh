@@ -35,7 +35,7 @@
 # Keep this file pure ASCII (AGENTS.md: operator shell scripts, Apple bash 3.2).
 set -u
 
-REPO="${RUNNER_AVAILABILITY_REPO:-jaywedgeworth22/Socratic.Trade}"
+REPO="${RUNNER_AVAILABILITY_REPO:-jaywedgeworth22/Socratic-Trade}"
 VAR_NAME="VERIFY_RUNNER_STATE"
 INTERVAL_SECONDS="${RUNNER_AVAILABILITY_INTERVAL:-60}"
 # CPU: 1-min loadavg / ncpu must be below this. Loosened from 0.6 to 0.8 because every

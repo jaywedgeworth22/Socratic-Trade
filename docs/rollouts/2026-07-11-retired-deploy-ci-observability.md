@@ -1,6 +1,6 @@
 # 2026-07-11 — retired deploy CI safety and observability
 
-PR: <https://github.com/jaywedgeworth22/Socratic.Trade/pull/1398> (ready, not merged)
+PR: <https://github.com/jaywedgeworth22/Socratic-Trade/pull/1398> (ready, not merged)
 
 ## Summary
 

@@ -131,7 +131,7 @@ git push origin agent/ag-sec-parser-hardening
 # Run in trading-claude worktree. Merges sequentially with a pause.
 for n in 1771 1773 1774 1778 1780 1781 1783 1784 1785 1786 1787 1788 1789 1790 1791 1792 1793 1794 1777 1775; do
   echo "=== Merging PR #$n ==="
-  gh pr merge $n --repo jaywedgeworth22/Socratic.Trade --squash --delete-branch 2>&1
+  gh pr merge $n --repo jaywedgeworth22/Socratic-Trade --squash --delete-branch 2>&1
   echo "Sleeping 90s for Coolify deploy queue..."
   sleep 90
 done

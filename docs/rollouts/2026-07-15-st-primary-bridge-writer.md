@@ -6,9 +6,9 @@ Added the production-inert writer half of API Usage Monitor PR #286's isolated
 primary-account credential bridge. It is default-off and cannot write until a
 dedicated writer identity pair is explicitly configured.
 
-The source is fixed to Socratic.Trade's `LOCAL_USER` (`local`, the primary
+The source is fixed to Socratic-Trade's `LOCAL_USER` (`local`, the primary
 `mail@jays.services` account). Only stored `gemini` and `deepseek` API-key rows
-are eligible. The destination is fixed to the Socratic.Trade Infisical project,
+are eligible. The destination is fixed to the Socratic-Trade Infisical project,
 `prod`, and `/usage-monitor/st-primary/v1`; neither a request nor environment
 configuration can select another user, provider, project, environment, path, or
 origin.
@@ -78,7 +78,7 @@ below.
 ## Follow-ups
 
 - Create two project-managed Infisical identities only after separate operator
-  approval: delete-free exact-path writer for Socratic.Trade and read-only
+  approval: delete-free exact-path writer for Socratic-Trade and read-only
   exact-path reader for API Usage Monitor.
 - Configure both apps while their feature flags remain false, then enable the
   writer first, verify one complete generation, and enable the reader second.

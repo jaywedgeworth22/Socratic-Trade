@@ -2,7 +2,7 @@
 
 ## Summary
 
-Socratic.Trade now tags every newly emitted usage-monitor event with
+Socratic-Trade now tags every newly emitted usage-monitor event with
 `project: "socratic-trade"` while preserving the producer's raw provider string. A bounded worker
 replays persisted `llm_usage` and `rag_usage` rows at Node startup and every minute, closing the
 process-crash gap left by the existing in-memory delivery retry queue.
@@ -15,7 +15,7 @@ mutate a receiver row that dedupes as already accepted.
 ## Delivery invariants
 
 - The persisted ledger row remains the source of truth for provider, usage, cost, timestamp, and
-  delivery identity. Provider aliases are not rewritten in Socratic.Trade.
+  delivery identity. Provider aliases are not rewritten in Socratic-Trade.
 - Replay uses the same `socratic-trade:<kind>:<sha256(kind + row ID)>` key as immediate delivery and
   reuses the row's exact `created_at` value.
 - Each ledger has an independent settings-table watermark ordered by `(created_at, id)`. Equal
@@ -60,4 +60,4 @@ All commands used the repository-pinned Node 24 runtime.
 
 Checkpoint only. No merge or deploy is authorized. Land and verify the API Usage Monitor receiver
 backfill first, then refresh this branch against `origin/main`, rerun the required gate, and make a
-separate Socratic.Trade landing decision.
+separate Socratic-Trade landing decision.

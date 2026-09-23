@@ -711,7 +711,7 @@ function makeOpenAITransport(url: string, provider: OpenAiCompatProvider): OpenA
     const headers: Record<string, string> = { "content-type": "application/json", authorization: `Bearer ${apiKey}` };
     if (provider === "openrouter") {
       headers["HTTP-Referer"] = "https://socratictrade.com";
-      headers["X-Title"] = "Socratic.Trade";
+      headers["X-Title"] = "Socratic-Trade";
     }
     const res = await llmFetch(url, {
       method: "POST",

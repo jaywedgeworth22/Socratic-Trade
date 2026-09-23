@@ -28,7 +28,7 @@ background; for dark grounds swap ink to `#f2f6fa` and green to `#63e6be`
 
 Wordmark-led (words are the logo):
 
-- `a-full-stop.svg` — "Socratic.Trade": bold/light weight split with a green
+- `a-full-stop.svg` — "Socratic-Trade": bold/light weight split with a green
   geometric dot; the domain itself as the logo.
 - `b-inscription.svg` — wide-tracked serif caps, inscriptional/classical read.
 - `c-dialogue.svg` — two staggered italic serif lines set like printed

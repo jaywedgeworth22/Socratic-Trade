@@ -3,7 +3,7 @@
 ## 2026-09-24 FIXER — PR #3451 tip: retarget to com.socratictrade.ios (NO-SHIP until ASC)
 
 **Current state.** Tip of `minimax/bundle-rename` (PR #3451) retargeted from the interim
-wrong ID `trade.socratic.ios` → correct **`com.socratictrade.ios`**, rebased onto
+wrong ID `com.socratictrade.ios` → correct **`com.socratictrade.ios`**, rebased onto
 `origin/main`, and patched for the coexistence window: native SIWA accepts BOTH
 `com.socratictrade.ios` and
 `trade.socratic.app` (hardcoded — do NOT rely on `APPLE_CLIENT_ID`, which is the web Service

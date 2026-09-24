@@ -294,7 +294,7 @@ async function loadRemoteMetrics(
   ) {
     const headers = {
       Authorization: `Bearer ${configuration.coolifyToken}`,
-      "User-Agent": "Socratic.Trade infrastructure monitor",
+      "User-Agent": "Socratic-Trade infrastructure monitor",
       Accept: "application/json",
     };
     const serverUrl = `https://host.jays.services/api/v1/servers/${configuration.coolifyServerUuid}`;

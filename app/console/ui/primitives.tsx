@@ -35,12 +35,12 @@ export function Card({
   if (collapsible && title) {
     return (
       <details className={cx("con-card con-disclosure", className)} open={defaultOpen}>
-        <summary className="focus:outline-none">
+        <summary>
           {/* Open: pt-3.5 pb-1 (tight bottom toward body). Collapsed: balanced
               py via .con-disclosure.con-card:not([open]) in console.css so
               one-line titles like "You're set" sit vertically centered. */}
           <div className="flex items-center gap-3 px-4 pt-3.5 pb-1">
-            <span className="con-card-title">{title}</span>
+            <h2 className="con-card-title">{title}</h2>
             {action && (
               <span className="ml-auto" onClick={(e) => e.preventDefault()}>{action}</span>
             )}

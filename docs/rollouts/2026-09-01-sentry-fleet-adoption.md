@@ -5,7 +5,7 @@
 AG already merged PR #3146: `enableLogs`, Replay defaults 0.01 session / 1.0 on error,
 `tracesSampleRate` 0.2, dropped `automaticVercelMonitors`, `tracePropagationTargets`
 already include congress.trade and usage.jays.services.  This unit finishes the remaining
-Socratic.Trade items from `sentry-fleet-adoption-report-2026-09-01.md`.
+Socratic-Trade items from `sentry-fleet-adoption-report-2026-09-01.md`.
 
 Board: `d64e1bebd8be4789bfe7671bcf01699f`.
 

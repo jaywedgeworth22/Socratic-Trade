@@ -313,8 +313,8 @@ struct LoginView: View {
             .padding(.leading, -Self.lockOutdent)
 
             HStack(spacing: 16) {
-                Link("Terms", destination: URL(string: "https://socratictrade.com/terms-and-conditions")!)
-                Link("Privacy", destination: URL(string: "https://socratictrade.com/privacy-policy")!)
+                Link("Terms", destination: store.client.baseURL.appending(path: "/terms-and-conditions"))
+                Link("Privacy", destination: store.client.baseURL.appending(path: "/privacy-policy"))
             }
             .font(.system(size: 10))
             // A Link is a Button underneath, so it picked up the same bordered system style
@@ -380,7 +380,7 @@ struct LoginView: View {
             store.error = "Could not securely start web sign-in.  Try again."
             return
         }
-        guard var callbackComponents = URLComponents(string: "https://socratictrade.com/api/mobile/auth-redirect") else {
+        guard var callbackComponents = URLComponents(url: store.client.baseURL.appending(path: "/api/mobile/auth-redirect"), resolvingAgainstBaseURL: false) else {
             store.error = "Could not prepare web sign-in."
             return
         }
@@ -392,7 +392,7 @@ struct LoginView: View {
         // on /access-denied?error=Configuration (middleware translates it for older
         // builds; new builds go straight to the initiator).
         guard let callbackURL = callbackComponents.url,
-              var components = URLComponents(string: "https://socratictrade.com/api/mobile/auth-start") else {
+              var components = URLComponents(url: store.client.baseURL.appending(path: "/api/mobile/auth-start"), resolvingAgainstBaseURL: false) else {
             store.error = "Could not prepare web sign-in."
             return
         }
@@ -419,7 +419,24 @@ struct LoginView: View {
                 let code = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "code" })?.value,
                 !code.isEmpty
             else {
-                Task { @MainActor in store.error = "Invalid callback URL from web sign-in." }
+                // 2026-09-20 MM (#3226 #3): the OAuth provider (Google / GitHub / Apple) can
+                // return a redirect without `code` and with `error` + `error_description` when
+                // the user denied consent, the account is blocked, or the IdP itself failed.
+                // The original "Invalid callback URL from web sign-in." hid every one of those
+                // behind a single opaque message — surface the provider's explanation instead.
+                Task { @MainActor in
+                    let queryItems = URLComponents(url: callbackURL ?? URL(string: "about:blank")!,
+                                                   resolvingAgainstBaseURL: false)?.queryItems ?? []
+                    let providerError = queryItems.first(where: { $0.name == "error" })?.value
+                    let providerDescription = queryItems.first(where: { $0.name == "error_description" })?.value
+                    if let providerDescription, !providerDescription.isEmpty {
+                        store.error = "Sign-in was cancelled: \(providerDescription)"
+                    } else if let providerError, !providerError.isEmpty {
+                        store.error = "Sign-in failed: \(providerError)"
+                    } else {
+                        store.error = "Invalid callback URL from web sign-in."
+                    }
+                }
                 return
             }
             Task { @MainActor in

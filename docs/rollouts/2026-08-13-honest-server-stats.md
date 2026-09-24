@@ -5,7 +5,7 @@
 Owner question: *"Why is all the server stats features on ST's admin panel and on UM's ops
 panel not working correctly?"*
 
-For Socratic.Trade the answer is two separate things, and the first one is worse than
+For Socratic-Trade the answer is two separate things, and the first one is worse than
 "not working".
 
 **(1) Six of the nine rows on `/admin/server` were invented.**
@@ -21,7 +21,7 @@ error, non-array response, thrown request, **and a successful-but-empty live lis
 - **None of `GH_TOKEN` / `GITHUB_TOKEN` / `GITHUB_MCP_TOKEN` is set in the ST prod Infisical
   project** (verified by exit-code presence check, no values read). So production took the
   fabricated branch on **100% of requests**. The panel has never once shown a real runner.
-- Ground truth via `gh api repos/jaywedgeworth22/Socratic.Trade/actions/runners`: ST has
+- Ground truth via `gh api repos/jaywedgeworth22/Socratic-Trade/actions/runners`: ST has
   **exactly one** registered runner, `mac-xcode26-socratic` (online, macOS/ARM64). Not one of
   the six hardcoded names exists in any fleet repository. Two runners that DO exist elsewhere
   are genuinely **offline** right now (`oracle-usage-ci`, `oracle-shared-ci`) — precisely the

@@ -11,9 +11,24 @@ enum AppPalette {
         }
         return UIColor(red: 0x12 / 255, green: 0x61 / 255, blue: 0x6F / 255, alpha: 1) // #12616f
     })
-    static let positive = Color.green
-    static let warning = Color.orange
-    static let negative = Color.red
+    static let positive = Color(uiColor: UIColor { traits in
+        if traits.userInterfaceStyle == .dark {
+            return .systemGreen
+        }
+        return UIColor(red: 0x1A / 255, green: 0x7F / 255, blue: 0x37 / 255, alpha: 1) // #1a7f37
+    })
+    static let warning = Color(uiColor: UIColor { traits in
+        if traits.userInterfaceStyle == .dark {
+            return .systemOrange
+        }
+        return UIColor(red: 0x9A / 255, green: 0x67 / 255, blue: 0x00 / 255, alpha: 1) // #9a6700
+    })
+    static let negative = Color(uiColor: UIColor { traits in
+        if traits.userInterfaceStyle == .dark {
+            return .systemRed
+        }
+        return UIColor(red: 0xB3 / 255, green: 0x26 / 255, blue: 0x1E / 255, alpha: 1) // #b3261e
+    })
 }
 
 enum AppFormat {
@@ -767,6 +782,10 @@ struct SnapshotScaffold<Content: View>: View {
                 if let snapshot = store.snapshot {
                     SnapshotStatusBanner(snapshot: snapshot)
                         .cardSpansAllColumns()
+                    if store.partialData {
+                        PartialDataBanner(dropCounts: snapshot.partialDropCounts)
+                            .cardSpansAllColumns()
+                    }
                     content(snapshot)
                 }
             }
@@ -774,6 +793,9 @@ struct SnapshotScaffold<Content: View>: View {
             LazyVStack(spacing: 14) {
                 if let snapshot = store.snapshot {
                     SnapshotStatusBanner(snapshot: snapshot)
+                    if store.partialData {
+                        PartialDataBanner(dropCounts: snapshot.partialDropCounts)
+                    }
                     content(snapshot)
                 }
             }
@@ -858,6 +880,69 @@ private struct SnapshotStatusBanner: View {
             }
             .padding(.horizontal, 4)
         }
+    }
+}
+
+/// 2026-09-23 MM (held-batch): surfaces the partial-decode state from the most recent
+/// snapshot decode so the user understands why Owner Approve is disabled.  Renders only when
+/// `store.partialData == true` (the parent view guards the insert).  Drops are item-level,
+/// not whole-collection — every money-path collection that lost an item is listed in the
+/// message so the user can judge whether to refresh-and-retry or back off.
+private struct PartialDataBanner: View {
+    @EnvironmentObject private var store: MobileStore
+    let dropCounts: MobileSnapshot.PartialDropCounts
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(AppPalette.warning)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Partial data — approvals paused")
+                    .font(.appSubheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(message)
+                    .font(.appCaption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Button {
+                Task { await store.load() }
+            } label: {
+                Label("Refresh", systemImage: "arrow.triangle.2.circlepath")
+                    .labelStyle(.titleAndIcon)
+                    .font(.appCaption.weight(.medium))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .accessibilityLabel("Refresh workspace")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(AppPalette.warning.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(AppPalette.warning.opacity(0.35), lineWidth: 1)
+        )
+    }
+
+    private var message: String {
+        var parts: [String] = []
+        if dropCounts.positions > 0 {
+            parts.append("\(dropCounts.positions) position\(dropCounts.positions == 1 ? "" : "s")")
+        }
+        if dropCounts.orders > 0 {
+            parts.append("\(dropCounts.orders) order\(dropCounts.orders == 1 ? "" : "s")")
+        }
+        if dropCounts.pendingProposals > 0 {
+            parts.append("\(dropCounts.pendingProposals) pending proposal\(dropCounts.pendingProposals == 1 ? "" : "s")")
+        }
+        let which = parts.isEmpty ? "snapshot items" : parts.joined(separator: ", ")
+        return "\(which) were dropped during decode. Owner Approve is paused until a clean refresh lands — a pending proposal might not be visible right now."
     }
 }
 

@@ -34,6 +34,13 @@ describe("yahooQuoteFromChartMeta", () => {
     expect(quote?.fiftyTwoWeekLow).toBeUndefined();
     expect(quote?.peRatio).toBeUndefined();
   });
+
+  it("leaves prevClose undefined when Yahoo omits chartPreviousClose — never the current price", () => {
+    const quote = yahooQuoteFromChartMeta({ regularMarketPrice: 100 });
+    expect(quote?.price).toBe(100);
+    // Falling back to the price here fabricates a 0% intraday change.
+    expect(quote?.prevClose).toBeUndefined();
+  });
 });
 
 describe("yahooFundamentalsFromRecord", () => {
@@ -55,5 +62,39 @@ describe("yahooFundamentalsFromRecord", () => {
       trailingPE: 0,
       fiftyTwoWeekHigh: -1
     })).toEqual({});
+  });
+});
+
+describe("fetchYahooFinanceQuotesBatch prevClose", () => {
+  it("leaves prevClose undefined when regularMarketPreviousClose is omitted — never substitutes price", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          quoteResponse: {
+            result: [
+              {
+                symbol: "AAPL",
+                regularMarketPrice: 190,
+                bid: 189.9,
+                ask: 190.1,
+                regularMarketVolume: 1_000_000,
+                regularMarketTime: 1_723_579_200
+                // deliberately omit regularMarketPreviousClose
+              }
+            ]
+          }
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      )) as typeof fetch;
+    try {
+      const { fetchYahooFinanceQuotesBatch } = await import("../src/lib/yahoo-finance");
+      const result = await fetchYahooFinanceQuotesBatch(["AAPL"]);
+      const quote = result.get("AAPL");
+      expect(quote?.price).toBe(190);
+      expect(quote?.prevClose).toBeUndefined();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

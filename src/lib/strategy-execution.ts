@@ -365,7 +365,7 @@ export async function executeProposal(
         audit("protective_exit_reprice_reapproval", { ...repriceChange, reason, persisted }, userId, policy.connectedAccountId);
         if (!persisted) {
           const current = getProposal(proposalId, userId)?.status ?? "removed";
-          return { status: current, reasons: [`Proposal was ${current} before it could be executed.`] };
+          throw new Error([`Proposal was ${current} before it could be executed.`].join(" "));
         }
         await sendNotification(
           {
@@ -375,7 +375,7 @@ export async function executeProposal(
           },
           { policy, userId }
         );
-        return { status: "proposed", reasons: [reason] };
+        throw new Error([reason].join(" "));
       }
       // Persist the repriced order BEFORE claiming/placing so trade_proposals.proposal (Recent,
       // Activity, getProposal) shows the order the broker actually received, never the stale
@@ -383,7 +383,7 @@ export async function executeProposal(
       // this approval was in flight, stop here like the other pending guards.
       if (!updatePendingProposalReprice(proposalId, { proposal, estimatedNotional: repricedNotional }, userId)) {
         const current = getProposal(proposalId, userId)?.status ?? "removed";
-        return { status: current, reasons: [`Proposal was ${current} before it could be executed.`] };
+        throw new Error([`Proposal was ${current} before it could be executed.`].join(" "));
       }
       audit("protective_exit_repriced", repriceChange, userId, policy.connectedAccountId);
     }
@@ -457,7 +457,7 @@ export async function executeProposal(
           audit("approval_limit_reprice_reapproval", { ...repriceChange, reason, persisted }, userId, policy.connectedAccountId);
           if (!persisted) {
             const current = getProposal(proposalId, userId)?.status ?? "removed";
-            return { status: current, reasons: [`Proposal was ${current} before it could be executed.`] };
+            throw new Error([`Proposal was ${current} before it could be executed.`].join(" "));
           }
           await sendNotification(
             {
@@ -467,13 +467,13 @@ export async function executeProposal(
             },
             { policy, userId }
           );
-          return { status: "proposed", reasons: [reason] };
+          throw new Error([reason].join(" "));
         }
         // Persist the repriced order BEFORE claiming/placing (same CAS-on-'proposed' rationale as
         // the protective reprice): the row must show the order the broker actually received.
         if (!updatePendingProposalReprice(proposalId, { proposal, estimatedNotional: repricedNotional }, userId)) {
           const current = getProposal(proposalId, userId)?.status ?? "removed";
-          return { status: current, reasons: [`Proposal was ${current} before it could be executed.`] };
+          throw new Error([`Proposal was ${current} before it could be executed.`].join(" "));
         }
         audit("approval_limit_repriced", repriceChange, userId, policy.connectedAccountId);
       }
@@ -494,7 +494,7 @@ export async function executeProposal(
         },
         { policy, userId }
       );
-      return { status: "blocked", reasons: [reason] };
+      throw new Error([reason].join(" "));
     }
 
     let review = await gateway.reviewEquityOrder({ accountNumber: policy.accountNumber, ...proposal });
@@ -715,7 +715,7 @@ export async function executeProposal(
               );
               if (!persisted) {
                 const current = getProposal(proposalId, userId)?.status ?? "removed";
-                return { status: current, reasons: [`Proposal was ${current} before the final-size review could be saved.`] };
+                throw new Error([`Proposal was ${current} before the final-size review could be saved.`].join(" "));
               }
               await sendNotification(
                 {
@@ -725,7 +725,7 @@ export async function executeProposal(
                 },
                 { policy, userId }
               );
-              return { status: "proposed", reasons: [ownerApprovalReason] };
+              throw new Error([ownerApprovalReason].join(" "));
             }
           }
 
@@ -733,7 +733,7 @@ export async function executeProposal(
           // checks blocks, the ledger/case still describes the exact order it evaluated.
           if (!updatePendingProposalReprice(proposalId, { proposal, review, estimatedNotional: review.estimatedNotional }, userId)) {
             const current = getProposal(proposalId, userId)?.status ?? "removed";
-            return { status: current, reasons: [`Proposal was ${current} before the broker-adjusted size could be saved.`] };
+            throw new Error([`Proposal was ${current} before the broker-adjusted size could be saved.`].join(" "));
           }
         } else {
           Object.assign(proposal, originalSizing);
@@ -762,7 +762,7 @@ export async function executeProposal(
           { policy, userId }
         );
       }
-      return { status: "blocked", reasons: [brokerMinimumBlockReason] };
+      throw new Error([brokerMinimumBlockReason].join(" "));
     }
 
     if (ownerApprovedStoredFinalSize) {
@@ -815,7 +815,7 @@ export async function executeProposal(
         );
         if (!persisted) {
           const current = getProposal(proposalId, userId)?.status ?? "removed";
-          return { status: current, reasons: [`Proposal was ${current} before the updated owner consent could be saved.`] };
+          throw new Error([`Proposal was ${current} before the updated owner consent could be saved.`].join(" "));
         }
         await sendNotification(
           {
@@ -825,7 +825,7 @@ export async function executeProposal(
           },
           { policy, userId }
         );
-        return { status: "proposed", reasons: [driftReason] };
+        throw new Error([driftReason].join(" "));
       }
 
       const approvedAt = new Date().toISOString();
@@ -841,7 +841,7 @@ export async function executeProposal(
       }
       if (!updatePendingProposalReprice(proposalId, { proposal, review, estimatedNotional: review.estimatedNotional }, userId)) {
         const current = getProposal(proposalId, userId)?.status ?? "removed";
-        return { status: current, reasons: [`Proposal was ${current} before owner approval could be recorded.`] };
+        throw new Error([`Proposal was ${current} before owner approval could be recorded.`].join(" "));
       }
       audit(
         "final_size_red_review_owner_override",
@@ -1023,7 +1023,7 @@ export async function executeProposal(
           },
           { policy, userId }
         );
-        return { status: "proposed", reasons: decision.reasons };
+        throw new Error(decision.reasons.join(" "));
       }
 
       // Same in-flight window as the re-escalation above: retire the card as blocked only if it
@@ -1087,7 +1087,7 @@ export async function executeProposal(
     const stillPending = getProposal(proposalId, userId);
     if (!stillPending || stillPending.status !== "proposed") {
       const current = stillPending?.status ?? "removed";
-      return { status: current, reasons: [`Proposal was ${current} before it could be executed.`] };
+      throw new Error([`Proposal was ${current} before it could be executed.`].join(" "));
     }
 
     const heldExit = evaluateBrokerHeldExitAvailability(proposal, account.positions, orders);
@@ -1109,7 +1109,7 @@ export async function executeProposal(
         },
         { policy, userId }
       );
-      return { status: "blocked", reasons: heldDecision.reasons };
+      throw new Error(heldDecision.reasons.join(" "));
     }
 
     // Pre-flight live-order guard on the human-approval path too (parity with the autonomous run
@@ -1132,7 +1132,7 @@ export async function executeProposal(
         { type: "block", title: `${proposal.symbol} live order blocked (pre-flight)`, payload: { proposalId, proposal, review, reason: message, decision: blockedDecision } },
         { policy, userId }
       );
-      return { status: "blocked", reasons: [message] };
+      throw new Error([message].join(" "));
     }
 
     // Re-prove ownership at the final safe boundary. A lost/failed lease leaves the proposal
@@ -1201,11 +1201,11 @@ export async function executeProposal(
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           audit("proposal_claim_receipt_failed", { proposalId, symbol: proposal.symbol, side: proposal.side, error: message }, userId, policy.connectedAccountId);
-          return { status: "error", reasons: [`Decision receipt could not be persisted; no order was submitted: ${message}`] };
+          throw new Error([`Decision receipt could not be persisted; no order was submitted: ${message}`].join(" "));
         }
         if (!claimed) {
           const current = getProposal(proposalId, userId)?.status ?? "removed";
-          return { status: current, reasons: [`Proposal was ${current} before it could be executed.`] };
+          throw new Error([`Proposal was ${current} before it could be executed.`].join(" "));
         }
 
         // Stop/close-only/liquidating is authoritative even for an approval that was already in
@@ -1248,7 +1248,7 @@ export async function executeProposal(
             },
             { policy, userId }
           );
-          return { status: "blocked", reasons: [protectiveStateBlock] };
+          throw new Error([protectiveStateBlock].join(" "));
         }
 
         let execution: Awaited<ReturnType<typeof gateway.placeEquityOrder>>;
@@ -1298,7 +1298,7 @@ export async function executeProposal(
               },
               { policy, userId }
             );
-            return { status: "blocked", reasons: [message] };
+            throw new Error([message].join(" "));
           }
           if (isRetryableBrokerHttpError(message)) {
             const note = `Broker rate-limited or timed out (${message}). Safe to retry.`;
@@ -1317,7 +1317,7 @@ export async function executeProposal(
               },
               { policy, userId }
             );
-            return { status: "not_placed", reasons: [note] };
+            throw new Error([note].join(" "));
           }
           if (isTerminalBrokerHttpError(message)) {
             updateProposalStatus(proposalId, "rejected_by_broker", undefined, review, review.estimatedNotional, userId, undefined, message);
@@ -1335,7 +1335,7 @@ export async function executeProposal(
               },
               { policy, userId }
             );
-            return { status: "error", reasons: [message] };
+            throw new Error([message].join(" "));
           }
           // A lost mutation lease (mutationCtx.assertOwned() above) is ALSO a deterministic
           // pre-submission refusal — the order provably never reached the broker — so it gets the
@@ -1354,7 +1354,7 @@ export async function executeProposal(
               { type: "run_failed", title: `${sym} order not placed — mutation lease lost (safe to retry)`, payload: { proposalId, refId, error: message } },
               { policy, userId }
             );
-            return { status: "not_placed", reasons: [note] };
+            throw new Error([note].join(" "));
           }
           // Ask the broker what actually happened (via the refId idempotency key) rather than firing a
           // perpetual "verify with broker" alert. Mirrors the autonomous run-loop catch above.
@@ -1400,7 +1400,7 @@ export async function executeProposal(
               { type: "run_failed", title: `${sym} order declined by broker (${outcome.state})`, payload: { proposalId, refId, orderId: outcome.orderId, state: outcome.state, reconcile: "declined" } },
               { policy, userId }
             );
-            return { status: "error", reasons: [declinedMsg], orderId: outcome.orderId, brokerState: outcome.state };
+            throw new Error([declinedMsg].join(" "));
           }
           if (outcome.kind === "not_placed") {
             const note = "Broker reachable; no order carries our idempotency key — the order never reached the broker. Safe to retry.";
@@ -1410,7 +1410,7 @@ export async function executeProposal(
               { type: "run_failed", title: `${sym} order was NOT placed — safe to retry`, payload: { proposalId, refId, error: message, reconcile: "not_placed" } },
               { policy, userId }
             );
-            return { status: "not_placed", reasons: [`Order not placed (safe to retry): ${message}`] };
+            throw new Error([`Order not placed (safe to retry): ${message}`].join(" "));
           }
           // uncertain: broker unreachable — KEEP status 'placing' so flagStalePlacingIntents retries.
           updateProposalStatus(proposalId, "placing", undefined, review, review.estimatedNotional, userId, undefined, outcome.error);
@@ -1419,7 +1419,7 @@ export async function executeProposal(
             { type: "run_failed", title: `${sym} order placement uncertain — verify with broker`, payload: { proposalId, refId, error: outcome.error, reconcile: "uncertain" } },
             { policy, userId }
           );
-          return { status: "error", reasons: [`Order placement failed/uncertain: ${outcome.error}`] };
+          throw new Error([`Order placement failed/uncertain: ${outcome.error}`].join(" "));
         }
 
         // See the matching comment in the autonomous run-loop placement path above: a non-throwing
@@ -1433,7 +1433,7 @@ export async function executeProposal(
             { type: "run_failed", title: `${proposal.symbol} order declined by broker (${execution.state})`, payload: { proposalId, refId, orderId: execution.orderId, state: execution.state } },
             { policy, userId }
           );
-          return { status: "error", reasons: [message], orderId: execution.orderId, brokerState: execution.state };
+          throw new Error([message].join(" "));
         }
 
         const fillStatus = reconciledFillStatus(execution);
@@ -1446,7 +1446,7 @@ export async function executeProposal(
             { type: "run_failed", title: `${proposal.symbol} order accepted without broker id — recovery pending`, payload: { proposalId, refId, state: execution.state, reconcile: "uncertain" } },
             { policy, userId }
           );
-          return { status: "error", reasons: [message], brokerState: execution.state };
+          throw new Error([message].join(" "));
         }
         const executedNotional = brokerExecutedNotional(execution);
         const preFillPosition = positions.find((p) => normalizeSymbol(p.symbol) === normalizeSymbol(proposal.symbol));
@@ -1489,7 +1489,7 @@ export async function executeProposal(
             { type: "run_failed", title: `${proposal.symbol} broker order confirmed — local receipt recovery pending`, payload: { proposalId, refId, orderId: execution.orderId, state: execution.state, error: detail, reconcile: "uncertain" } },
             { policy, userId }
           );
-          return { status: "error", reasons: [message], orderId: execution.orderId, brokerState: execution.state };
+          throw new Error([message].join(" "));
         }
         audit("proposal_approved", {
           proposalId,

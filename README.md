@@ -1,4 +1,4 @@
-# Socratic.Trade
+# Socratic-Trade
 
 Next.js agentic trading console for real broker accounts — **production at
 [socratictrade.com](https://socratictrade.com)** (Coolify). Local `npm run dev` is
@@ -91,7 +91,7 @@ For one-off local development, open `http://127.0.0.1:3000`.
 
 Previews are **retired** (owner decision, 2026-07-08): no per-agent PM2 preview lanes and no
 `*.jays.services` preview hostnames. Production is the only hosted environment
-(`https://socratictrade.com`, Coolify app **uuid `socratic-app`**, name "Socratic.Trade" —
+(`https://socratictrade.com`, Coolify app **uuid `socratic-app`**, name "Socratic-Trade" —
 see `docs/deployment.md`). Fleet host: Coolify on Hetzner (post–2026-08 Oracle cutover;
 dashboard/API `https://host.jays.services`). Auto-deploy: every merge to `main` via the
 GitHub → Coolify **manual** webhook (not announce-then-deploy). To see in-progress edits,

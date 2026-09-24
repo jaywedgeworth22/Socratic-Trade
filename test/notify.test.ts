@@ -114,7 +114,7 @@ describe("notify multi-channel delivery", () => {
     expect(calls).toEqual(["https://api.pushover.net/1/messages.json"]);
   });
 
-  it("email body ends with a Socratic.Trade sign-off", async () => {
+  it("email body ends with a Socratic-Trade sign-off", async () => {
     setNotifyPrefs("u-email-signoff", { channels: ["email"], email: "ops@example.test" });
     const calls: Array<{ text?: string; subject?: string }> = [];
     const fetchImpl = (async (_url: string | URL, init?: RequestInit) => {
@@ -128,11 +128,11 @@ describe("notify multi-channel delivery", () => {
       { config: baseCfg(), fetchImpl, resolveHost }
     );
     expect(results[0]?.ok).toBe(true);
-    expect(calls[0]?.subject).toBe("[Socratic.Trade] Storage Warning: litestream tier 2 stale");
+    expect(calls[0]?.subject).toBe("[Socratic-Trade] Storage Warning: litestream tier 2 stale");
     expect(calls[0]?.text).toBe(
       formatNotifyEmailText("Storage Warning: litestream tier 2 stale", "Deep compaction is stale.")
     );
-    expect(calls[0]?.text).toMatch(/\n\(sent by Socratic\.Trade\)$/);
+    expect(calls[0]?.text).toMatch(/\n\(sent by Socratic-Trade\)$/);
     expect(formatNotifyEmailText("T", "B")).toBe(`T\n\nB\n\n${NOTIFY_EMAIL_SENT_BY}`);
   });
 

@@ -2,7 +2,7 @@
 
 ## Summary
 Updated `.env.example` to fix the `CONGRESS_TRADE_AUTOFORWARD` to `CONGRESS_SHARE_ENABLED` variable mismatch, reflecting the true environment variable name used in the codebase.
-Prepared Infisical flag changes to enable the bidirectional Congress.Trade (App A) <-> Socratic.Trade (App B) integration.
+Prepared Infisical flag changes to enable the bidirectional Congress.Trade (App A) <-> Socratic-Trade (App B) integration.
 
 ### Autofix Round 2
 Addressed 4 additional Codex P2 threads:

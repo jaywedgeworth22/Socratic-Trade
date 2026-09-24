@@ -30,6 +30,8 @@ import { STOP_PLAN_FALLBACK_STOP_PCT } from "./types";
 import type { EquityOrder, EquityPosition, ExecutionMode, FillSource, StopPlanStyle, TradeProposal, TradingPolicy } from "./types";
 import type { PositionStopPlan } from "./db-api-keys";
 import { sendNotification } from "./notifications";
+import { sqliteYieldRetry, yieldIfDue } from "./sqlite-event-loop";
+import { yieldEventLoop } from "./slow-sync-guard";
 
 const BAD_TICK_PCT = 0.1; // ignore a single print deviating >10% from the last good price
 
@@ -251,7 +253,9 @@ export async function runSyntheticStopMonitor(
   } catch {
     return result; // can't evaluate safely without positions
   }
+  await yieldEventLoop();
   const liveSymbols = new Set(positions.filter((p) => Math.abs(p.quantity) > 0.000001).map((p) => normalizeSymbol(p.symbol)));
+  const yieldClock = { ms: Date.now() };
 
   // Per-position stop PLANS (LLM-chosen stop TYPE, persisted at fill time): self-loaded here rather
   // than threaded through the scheduler, since this monitor already owns its own DB reads. A
@@ -269,7 +273,7 @@ export async function runSyntheticStopMonitor(
   let stopPlanBySymbol: Record<string, StopPlanStyle> = {};
   let stopPlanFullBySymbol: Record<string, PositionStopPlan> = {};
   try {
-    const raw = getStopPlans(accountNumber, userId);
+    const raw = await sqliteYieldRetry(() => getStopPlans(accountNumber, userId));
     stopPlanFullBySymbol = filterFullStopPlansByLiveBasis(raw, positions);
     stopPlanBySymbol = filterStopPlansByLiveBasis(raw, positions);
   } catch {
@@ -301,7 +305,10 @@ export async function runSyntheticStopMonitor(
   // refreshed again after reconcile runs (below) to reflect any placement/cancellation THIS tick
   // made, for the fire pass later in this same call.
   let brokerHeldOrderIdBySymbol = new Map<string, string>(
-    listBrokerProtectiveStops(accountNumber, userId).map((r) => [normalizeSymbol(r.symbol), r.brokerOrderId])
+    (await sqliteYieldRetry(() => listBrokerProtectiveStops(accountNumber, userId))).map((r) => [
+      normalizeSymbol(r.symbol),
+      r.brokerOrderId
+    ])
   );
   // Quantity-BLIND presence check — used only by the confirmed-terminal gate, where ANY live exit
   // order OTHER than the account's own recognized broker-held stop (excluded above) must block a
@@ -322,7 +329,7 @@ export async function runSyntheticStopMonitor(
   // placement, finalized by reconcilePendingFills from broker truth). While one is pending for a
   // symbol, that exit may still have executed — never treat the attempt as dead.
   const pendingExitSymbols = new Set(
-    listPendingBrokerReconciliationFills(accountNumber, userId)
+    (await sqliteYieldRetry(() => listPendingBrokerReconciliationFills(accountNumber, userId)))
       .filter((f) => Boolean((f.raw as Record<string, unknown> | undefined)?.syntheticStop))
       .map((f) => normalizeSymbol(f.symbol))
   );
@@ -363,11 +370,15 @@ export async function runSyntheticStopMonitor(
   // Purge stops whose position has closed (size hit 0) — including 'triggered' ones, whose exit
   // order has by then done its job. A lingering triggered row would otherwise block auto-registering
   // a fresh stop if the symbol is re-entered later.
-  for (const stop of [...listSyntheticStops(accountNumber, userId), ...listSyntheticStops(accountNumber, userId, "triggered")]) {
+  for (const stop of await sqliteYieldRetry(() => [
+    ...listSyntheticStops(accountNumber, userId),
+    ...listSyntheticStops(accountNumber, userId, "triggered")
+  ])) {
     if (!liveSymbols.has(stop.symbol.toUpperCase())) {
-      deleteSyntheticStop(stop.id, userId);
+      await sqliteYieldRetry(() => deleteSyntheticStop(stop.id, userId));
       result.purged++;
     }
+    await yieldIfDue(yieldClock);
   }
 
   // Re-arm 'triggered' stops whose protective exit order is confirmed dead while the position is
@@ -379,17 +390,22 @@ export async function runSyntheticStopMonitor(
   // moment), so the next fire places under a fresh "-g<n>" client_order_id instead of 422-colliding
   // with the dead order's id forever.
   if (brokerOrdersListed) {
-    for (const stop of listSyntheticStops(accountNumber, userId, "triggered")) {
+    for (const stop of await sqliteYieldRetry(() => listSyntheticStops(accountNumber, userId, "triggered"))) {
       if (!liveSymbols.has(normalizeSymbol(stop.symbol))) continue; // position closed — purged above
       if (!confirmedPriorExitDead(stop, true)) continue;
-      advanceSyntheticStopGeneration(stop.id, userId);
-      revertSyntheticStopClaim(stop.id, userId);
-      audit("synthetic_stop_rearmed", {
-        symbol: stop.symbol,
-        side: stop.side,
-        fireGeneration: stop.fireGeneration + 1,
-        note: "protective exit order confirmed terminal with the position still open — trailing protection restored"
-      }, userId, policy.connectedAccountId);
+      // fire_generation += 1 is not idempotent — retry each statement on its own so a
+      // SQLITE_BUSY on audit cannot advance generation twice.
+      await sqliteYieldRetry(() => advanceSyntheticStopGeneration(stop.id, userId));
+      await sqliteYieldRetry(() => revertSyntheticStopClaim(stop.id, userId));
+      await sqliteYieldRetry(() =>
+        audit("synthetic_stop_rearmed", {
+          symbol: stop.symbol,
+          side: stop.side,
+          fireGeneration: stop.fireGeneration + 1,
+          note: "protective exit order confirmed terminal with the position still open — trailing protection restored"
+        }, userId, policy.connectedAccountId)
+      );
+      await yieldIfDue(yieldClock);
     }
   }
 
@@ -421,7 +437,10 @@ export async function runSyntheticStopMonitor(
   // row's extreme isn't live protection). Passed into reconcile so a broker-held trail is never
   // seeded looser than the trail already protecting the position after a rally-then-pullback.
   const extremePriceBySymbol = Object.fromEntries(
-    listSyntheticStops(accountNumber, userId).map((s) => [normalizeSymbol(s.symbol), s.extremePrice])
+    (await sqliteYieldRetry(() => listSyntheticStops(accountNumber, userId))).map((s) => [
+      normalizeSymbol(s.symbol),
+      s.extremePrice
+    ])
   );
   try {
     // Best-effort, independent of everything else this monitor does — a bracket teardown never
@@ -464,8 +483,12 @@ export async function runSyntheticStopMonitor(
   // `hasAnyLiveExitOrder`'s exclusion (see its doc comment) reflects any placement/cancellation
   // reconcile just made this tick.
   brokerHeldOrderIdBySymbol = new Map(
-    listBrokerProtectiveStops(accountNumber, userId).map((r) => [normalizeSymbol(r.symbol), r.brokerOrderId])
+    (await sqliteYieldRetry(() => listBrokerProtectiveStops(accountNumber, userId))).map((r) => [
+      normalizeSymbol(r.symbol),
+      r.brokerOrderId
+    ])
   );
+  await yieldEventLoop();
 
   // A "none" plan is a real, owner-accepted no-stop choice — purge any ACTIVE row regardless of
   // kind. A "fixed"/"atr" plan excludes the TRAILING lane specifically (its protection is the
@@ -484,11 +507,18 @@ export async function runSyntheticStopMonitor(
   // trailingStopPct > 0, leave the row alone — it already trails at a real, still-applicable
   // account distance.
   const accountTrailPctForReset = policy.riskRules?.trailingStopPct ?? 0;
-  for (const stop of listSyntheticStops(accountNumber, userId)) {
+  for (const stop of await sqliteYieldRetry(() => listSyntheticStops(accountNumber, userId))) {
     const plan = stopPlanBySymbol[normalizeSymbol(stop.symbol)];
     if (plan === "none") {
-      deleteSyntheticStop(stop.id, userId);
-      audit("synthetic_stop_purged_by_plan", { symbol: stop.symbol, plan: "none", note: "per-position stop plan is 'none' — protection removed" }, userId, policy.connectedAccountId);
+      // The delete and the audit are independent retries on purpose: a busy
+      // audit table used to retry the whole pair, so a row that succeeded
+      // its delete was deleted again on the retry.  Audit-after-delete
+      // also means a delete that wins on retry still gets its audit row.
+      await sqliteYieldRetry(() => deleteSyntheticStop(stop.id, userId));
+      await sqliteYieldRetry(() =>
+        audit("synthetic_stop_purged_by_plan", { symbol: stop.symbol, plan: "none", note: "per-position stop plan is 'none' — protection removed" }, userId, policy.connectedAccountId)
+      );
+      await yieldIfDue(yieldClock);
       continue;
     }
     if ((stop.kind ?? "trailing") === "fixed") {
@@ -499,17 +529,23 @@ export async function runSyntheticStopMonitor(
       // quantity-aware double-exit guard already no-ops a redundant fire, so continuously
       // re-checking coverage at purge time would add complexity without a safety benefit.
       if (plan !== "fixed" && plan !== "atr") {
-        deleteSyntheticStop(stop.id, userId);
-        audit("synthetic_stop_purged_by_plan", { symbol: stop.symbol, plan: plan ?? "default", kind: "fixed", note: `per-position stop plan is '${plan ?? "default"}' — fixed/ATR tick-level protection removed` }, userId, policy.connectedAccountId);
+        await sqliteYieldRetry(() => deleteSyntheticStop(stop.id, userId));
+        await sqliteYieldRetry(() =>
+          audit("synthetic_stop_purged_by_plan", { symbol: stop.symbol, plan: plan ?? "default", kind: "fixed", note: `per-position stop plan is '${plan ?? "default"}' — fixed/ATR tick-level protection removed` }, userId, policy.connectedAccountId)
+        );
       }
+      await yieldIfDue(yieldClock);
       continue;
     }
     const isPlanExcluded = plan === "fixed" || plan === "atr";
     const isResetWithNoAccountTrail = (plan === undefined || plan === "default") && accountTrailPctForReset <= 0;
     if (isPlanExcluded || isResetWithNoAccountTrail) {
-      deleteSyntheticStop(stop.id, userId);
-      audit("synthetic_stop_purged_by_plan", { symbol: stop.symbol, plan: plan ?? "default", note: isPlanExcluded ? `per-position stop plan is '${plan}' — trailing protection removed` : "per-position stop plan reset to account default with no account-wide trailing % configured — trailing protection removed" }, userId, policy.connectedAccountId);
+      await sqliteYieldRetry(() => deleteSyntheticStop(stop.id, userId));
+      await sqliteYieldRetry(() =>
+        audit("synthetic_stop_purged_by_plan", { symbol: stop.symbol, plan: plan ?? "default", note: isPlanExcluded ? `per-position stop plan is '${plan}' — trailing protection removed` : "per-position stop plan reset to account default with no account-wide trailing % configured — trailing protection removed" }, userId, policy.connectedAccountId)
+      );
     }
+    await yieldIfDue(yieldClock);
   }
 
   // Auto-register a trailing stop for each open position when a trail % is configured account-wide,
@@ -537,8 +573,10 @@ export async function runSyntheticStopMonitor(
       // resting at the broker (e.g. a market sell placed after hours). Re-registering over it flipped
       // the row back to 'active' and re-fired the same stop every tick all night (MU, 2026-07-08).
       const existing = new Set(
-        [...listSyntheticStops(accountNumber, userId), ...listSyntheticStops(accountNumber, userId, "triggered")]
-          .map((s) => s.symbol.toUpperCase())
+        (await sqliteYieldRetry(() => [
+          ...listSyntheticStops(accountNumber, userId),
+          ...listSyntheticStops(accountNumber, userId, "triggered")
+        ])).map((s) => s.symbol.toUpperCase())
       );
       for (const pos of positions) {
         const sym = normalizeSymbol(pos.symbol);
@@ -590,19 +628,22 @@ export async function runSyntheticStopMonitor(
         const effectiveCoveredQty = coverage.coveredQty + justPlacedPartialQty;
         if (coverage.unknownQty || effectiveCoveredQty >= Math.abs(pos.quantity) - QTY_EPSILON) continue;
         const mark = pos.marketValue / pos.quantity; // sign-correct for long (+/+) and short (-/-)
-        upsertSyntheticStop({
-          id: `synstop-${userId}-${accountNumber}-${sym}`,
-          userId,
-          accountNumber,
-          symbol: sym,
-          side: isShort ? "short" : "long",
-          quantity: Math.abs(pos.quantity),
-          entryPrice: pos.averageCost,
-          extremePrice: isShort ? Math.min(mark, pos.averageCost) : Math.max(mark, pos.averageCost),
-          trailPercent: effectiveTrailPct,
-          status: "active",
-          kind: "trailing"
-        });
+        await sqliteYieldRetry(() =>
+          upsertSyntheticStop({
+            id: `synstop-${userId}-${accountNumber}-${sym}`,
+            userId,
+            accountNumber,
+            symbol: sym,
+            side: isShort ? "short" : "long",
+            quantity: Math.abs(pos.quantity),
+            entryPrice: pos.averageCost,
+            extremePrice: isShort ? Math.min(mark, pos.averageCost) : Math.max(mark, pos.averageCost),
+            trailPercent: effectiveTrailPct,
+            status: "active",
+            kind: "trailing"
+          })
+        );
+        await yieldIfDue(yieldClock);
       }
     }
   }
@@ -621,8 +662,10 @@ export async function runSyntheticStopMonitor(
   // proactive hourly check remains the run-cadence backstop either way, unchanged).
   if (policy.systemState !== "halted") {
     const existingFixed = new Set(
-      [...listSyntheticStops(accountNumber, userId), ...listSyntheticStops(accountNumber, userId, "triggered")]
-        .map((s) => s.symbol.toUpperCase())
+      (await sqliteYieldRetry(() => [
+        ...listSyntheticStops(accountNumber, userId),
+        ...listSyntheticStops(accountNumber, userId, "triggered")
+      ])).map((s) => s.symbol.toUpperCase())
     );
     const baseStopPct = policy.riskRules?.stopLossPct ?? 0;
     const baseShortStopPct = policy.riskRules?.shortStopLossPct ?? 0;
@@ -656,31 +699,34 @@ export async function runSyntheticStopMonitor(
       const justPlacedPartialQty = justPlacedPartialBrokerStopQty.get(sym) ?? 0;
       const effectiveCoveredQty = coverage.coveredQty + justPlacedPartialQty;
       if (coverage.unknownQty || effectiveCoveredQty >= Math.abs(pos.quantity) - QTY_EPSILON) continue;
-      upsertSyntheticStop({
-        id: `synstop-${userId}-${accountNumber}-${sym}`,
-        userId,
-        accountNumber,
-        symbol: sym,
-        side: isShort ? "short" : "long",
-        quantity: Math.abs(pos.quantity),
-        entryPrice: pos.averageCost,
-        extremePrice: pos.averageCost, // pinned — the fire loop below re-pins this every tick, never ratchets
-        trailPercent: stopPct,
-        status: "active",
-        kind: "fixed"
+      await sqliteYieldRetry(() => {
+        upsertSyntheticStop({
+          id: `synstop-${userId}-${accountNumber}-${sym}`,
+          userId,
+          accountNumber,
+          symbol: sym,
+          side: isShort ? "short" : "long",
+          quantity: Math.abs(pos.quantity),
+          entryPrice: pos.averageCost,
+          extremePrice: pos.averageCost, // pinned — the fire loop below re-pins this every tick, never ratchets
+          trailPercent: stopPct,
+          status: "active",
+          kind: "fixed"
+        });
+        audit("synthetic_stop_registered_fixed", {
+          symbol: sym,
+          side: isShort ? "short" : "long",
+          plan: planStyle,
+          stopPct,
+          entryPrice: pos.averageCost,
+          note: "fixed/ATR plan given a static-trigger tick-level backstop — no live broker-held protection currently covers this position"
+        }, userId, policy.connectedAccountId);
       });
-      audit("synthetic_stop_registered_fixed", {
-        symbol: sym,
-        side: isShort ? "short" : "long",
-        plan: planStyle,
-        stopPct,
-        entryPrice: pos.averageCost,
-        note: "fixed/ATR plan given a static-trigger tick-level backstop — no live broker-held protection currently covers this position"
-      }, userId, policy.connectedAccountId);
+      await yieldIfDue(yieldClock);
     }
   }
 
-  const stops = listSyntheticStops(accountNumber, userId);
+  const stops = await sqliteYieldRetry(() => listSyntheticStops(accountNumber, userId));
   if (stops.length === 0) return result;
 
   let quotes: Record<string, { price?: number; bid?: number; ask?: number; syntheticBid?: boolean; syntheticAsk?: boolean; symbol?: string }> = {};
@@ -778,13 +824,16 @@ export async function runSyntheticStopMonitor(
     // Persist the updated extreme + last good price (a bad tick keeps the previous lastPrice). A
     // 'fixed'-kind row NEVER persists the ratcheted newExtreme — always re-pinned to entryPrice, or
     // a favorable excursion this tick would leak into the next tick's evalBasis and start trailing.
-    upsertSyntheticStop({
-      ...stop,
-      extremePrice: stopKind === "fixed" ? stop.entryPrice : evaln.newExtreme,
-      lastPrice: evaln.badTick ? stop.lastPrice : price,
-      suspectPrice: finalSuspectPrice,
-      suspectCount: finalSuspectCount
-    });
+    await sqliteYieldRetry(() =>
+      upsertSyntheticStop({
+        ...stop,
+        extremePrice: stopKind === "fixed" ? stop.entryPrice : evaln.newExtreme,
+        lastPrice: evaln.badTick ? stop.lastPrice : price,
+        suspectPrice: finalSuspectPrice,
+        suspectCount: finalSuspectCount
+      })
+    );
+    await yieldIfDue(yieldClock);
     if (!evaln.triggered) continue;
     result.triggered++;
 
@@ -797,7 +846,7 @@ export async function runSyntheticStopMonitor(
     const posQty = positions.find((p) => normalizeSymbol(p.symbol) === normalizeSymbol(stop.symbol))?.quantity ?? stop.quantity;
     const positionQty = Math.abs(posQty); // order/fill quantity is always a positive magnitude (cover qty for shorts)
     if (positionQty <= QTY_EPSILON) {
-      deleteSyntheticStop(stop.id, userId);
+      await sqliteYieldRetry(() => deleteSyntheticStop(stop.id, userId));
       continue;
     }
     // Reconcile PLACED (or cancel/REPLACED) a broker-held protective stop for this symbol THIS
@@ -883,7 +932,7 @@ export async function runSyntheticStopMonitor(
       return undefined;
     });
     if (!portfolio) continue;
-    const daily = dailyExecutionStats(accountNumber, new Date(), userId);
+    const daily = await sqliteYieldRetry(() => dailyExecutionStats(accountNumber, new Date(), userId));
     const policyDecision = evaluateTradeProposal(exitProposal, {
       policy,
       portfolio,
@@ -901,7 +950,7 @@ export async function runSyntheticStopMonitor(
     // monitor is still mid-placement (slow broker call spanning the next 60s tick), it already
     // claimed the stop and this run skips it — so the same protective exit can't fire twice. The
     // claim also serializes the generation/refId bookkeeping below against concurrent monitor runs.
-    if (!claimSyntheticStop(stop.id, userId)) {
+    if (!(await sqliteYieldRetry(() => claimSyntheticStop(stop.id, userId)))) {
       audit("synthetic_stop_skipped_inflight", { symbol: stop.symbol, note: "already claimed/triggered by a concurrent monitor run" }, userId, policy.connectedAccountId);
       continue;
     }
@@ -921,22 +970,30 @@ export async function runSyntheticStopMonitor(
     //    market sell costs money.
     // The id is persisted (recordSyntheticStopAttempt) BEFORE the broker call, so even a placement
     // that throws mid-flight leaves a durable record of the possibly-live order.
+    //
+    // These post-claim writes MUST stay inside the try and go through sqliteYieldRetry.
+    // Serving busy_timeout is only SQLITE_BUSY_PIN_MS (100).  An unwrapped SQLITE_BUSY after
+    // claim() leaves status=triggered with no last_attempt_ref_id, so the fire loop skips the
+    // row and the 15-min re-arm grace leaves the position naked.  Wrap each statement on its
+    // own — insertFillEvent is not idempotent, so it must not share a retry envelope with
+    // upsertSyntheticStop.
     let generation = stop.fireGeneration;
     let refId: string | undefined;
-    if (stop.lastAttemptRefId) {
-      if (confirmedPriorExitDead(stop, false)) {
-        advanceSyntheticStopGeneration(stop.id, userId);
-        generation += 1;
-      } else {
-        refId = stop.lastAttemptRefId;
-      }
-    }
-    // Generate within the broker-portable charset so the tag round-trips exactly for the secondary
-    // client-order-id dedup (see brokerPortableRefId). A reused stop.lastAttemptRefId was itself
-    // stored portable, so both branches stay consistent.
-    refId ??= brokerPortableRefId(`sstop-${stop.id}-${Math.round(evaln.triggerPrice * 100)}${generation > 0 ? `-g${generation}` : ""}`);
-    recordSyntheticStopAttempt(stop.id, refId, userId);
     try {
+      if (stop.lastAttemptRefId) {
+        if (confirmedPriorExitDead(stop, false)) {
+          await sqliteYieldRetry(() => advanceSyntheticStopGeneration(stop.id, userId));
+          generation += 1;
+        } else {
+          refId = stop.lastAttemptRefId;
+        }
+      }
+      // Generate within the broker-portable charset so the tag round-trips exactly for the secondary
+      // client-order-id dedup (see brokerPortableRefId). A reused stop.lastAttemptRefId was itself
+      // stored portable, so both branches stay consistent.
+      const attemptRefId = refId ?? brokerPortableRefId(`sstop-${stop.id}-${Math.round(evaln.triggerPrice * 100)}${generation > 0 ? `-g${generation}` : ""}`);
+      refId = attemptRefId;
+      await sqliteYieldRetry(() => recordSyntheticStopAttempt(stop.id, attemptRefId, userId));
       // Mutation-lease fence: fail closed before the risk-CREATING exit placement if the
       // window's lease was lost (another sequence may already be mutating this account).
       fence?.();
@@ -949,13 +1006,13 @@ export async function runSyntheticStopMonitor(
         limitPrice: routing.limitPrice,
         timeInForce: "gfd",
         marketHours: routing.marketHours,
-        refId
+        refId: attemptRefId
       });
       // A non-throwing broker response can still be a synchronous rejection/cancellation (same
       // trap as the strategy placement paths). No order will ever execute — don't book a fill,
       // and re-arm the stop so the position isn't left unprotected behind a stuck 'triggered' row.
       if (isRejectedOrCanceledState(exec.state)) {
-        revertSyntheticStopClaim(stop.id, userId);
+        await sqliteYieldRetry(() => revertSyntheticStopClaim(stop.id, userId));
         auditSyntheticStopError(stop.id, stop.symbol, `Broker declined the protective exit (state: ${exec.state}).`, userId, policy, { orderId: exec.orderId });
         continue;
       }
@@ -974,20 +1031,22 @@ export async function runSyntheticStopMonitor(
       const exitPrice = filledNow
         ? (source === "live" ? exec.averagePrice ?? price : applyPaperExitCost(price, exitSide, source))
         : price;
-      insertFillEvent({
-        userId,
-        accountNumber,
-        source,
-        executionMode,
-        symbol: normalizeSymbol(stop.symbol),
-        side: exitSide,
-        quantity: qty,
-        price: exitPrice,
-        notional: qty * exitPrice,
-        status: filledNow ? "filled" : "pending_reconciliation",
-        brokerOrderId: exec.orderId,
-        raw: { syntheticStop: true, triggerPrice: evaln.triggerPrice }
-      });
+      await sqliteYieldRetry(() =>
+        insertFillEvent({
+          userId,
+          accountNumber,
+          source,
+          executionMode,
+          symbol: normalizeSymbol(stop.symbol),
+          side: exitSide,
+          quantity: qty,
+          price: exitPrice,
+          notional: qty * exitPrice,
+          status: filledNow ? "filled" : "pending_reconciliation",
+          brokerOrderId: exec.orderId,
+          raw: { syntheticStop: true, triggerPrice: evaln.triggerPrice }
+        })
+      );
       // If a broker-held protective stop is resting for this symbol, cancel it — but ONLY when
       // this exit closes the WHOLE position (qty covers everything the broker stop didn't). A
       // PARTIAL synthetic fire (qty < positionQty) means a broker-held stop is already covering
@@ -1000,7 +1059,9 @@ export async function runSyntheticStopMonitor(
         await cancelBrokerProtectiveStop(userId, accountNumber, stop.symbol, gateway, policy.connectedAccountId).catch(() => {});
       }
       // Already 'triggered' via the claim; this just records the final lastPrice.
-      upsertSyntheticStop({ ...stop, status: "triggered", lastPrice: price, suspectPrice: finalSuspectPrice, suspectCount: finalSuspectCount });
+      await sqliteYieldRetry(() =>
+        upsertSyntheticStop({ ...stop, status: "triggered", lastPrice: price, suspectPrice: finalSuspectPrice, suspectCount: finalSuspectCount })
+      );
       result.exited++;
       audit("synthetic_stop_triggered", { symbol: stop.symbol, side: stop.side, exitSide, price, triggerPrice: evaln.triggerPrice, quantity: qty, orderId: exec.orderId, kind: stopKind }, userId, policy.connectedAccountId);
     } catch (err) {
@@ -1009,7 +1070,7 @@ export async function runSyntheticStopMonitor(
       // KEEPS last_attempt_ref_id (and never touches fire_generation): the broker may have accepted
       // this order before the call threw, and remembering its client_order_id is what lets the
       // retry reuse the same id (422-safe) until that order is positively confirmed dead.
-      revertSyntheticStopClaim(stop.id, userId);
+      await sqliteYieldRetry(() => revertSyntheticStopClaim(stop.id, userId));
       auditSyntheticStopError(stop.id, stop.symbol, err instanceof Error ? err.message : String(err), userId, policy);
     }
   }

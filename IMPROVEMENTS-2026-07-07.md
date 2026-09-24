@@ -1,4 +1,4 @@
-# Socratic.Trade — Improvement Review (2026-07-07)
+# Socratic-Trade — Improvement Review (2026-07-07)
 
 Review artifact (uncommitted, not part of `docs/`). Findings are grounded in the
 actual code as of `main` @ `add1bd29`; each cites file:line. Most are **CONFIRMED**

@@ -1,4 +1,4 @@
-# Socratic.Trade backup policy
+# Socratic-Trade backup policy
 
 **Status:** canonical.  Supersedes the backup sections scattered across `docs/litestream.md`
 and the rollout notes.  Those remain the record of *how each piece was built*; this is the

@@ -17,7 +17,7 @@
 
 ## Goal
 
-Make Socratic.Trade **more intuitive, faster-feeling, and aesthetically coherent** across:
+Make Socratic-Trade **more intuitive, faster-feeling, and aesthetically coherent** across:
 
 1. **Web console** (`/console/*`) — primary operator desk  
 2. **Public / marketing** (`/welcome`, `/login`, landing)  

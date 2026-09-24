@@ -141,12 +141,12 @@ export function makeOrchestrator(deps: ToolDeps, llm?: ChatLLM) {
     const model = llm ?? getLLM(userId);
     writeAudit("chat.turn", { userId, message_len: message.length, prompt_version: PROMPT_VERSION, turnKey });
     // Prior turns (redacted) for multi-turn context — fetched BEFORE appending the current message.
-    const history = listTurns(userId, 10).map((t) => ({ role: t.role, text: t.text }));
+    const history = listTurns(userId, 10, connectedAccountId).map((t) => ({ role: t.role, text: t.text }));
     // Idempotent user-turn recording: a Retry reuses the same clientTurnId, so when that id is
     // already in the transcript we skip the duplicate append but STILL run the provider call —
     // the retry's whole point is getting the reply the failed attempt never produced.
     const alreadyRecorded = clientTurnId != null && findChatTurnByClientId(userId, clientTurnId) != null;
-    if (!alreadyRecorded) appendTurn(userId, { role: "user", text: message, clientTurnId: clientTurnId ?? null }, writeEpoch);
+    if (!alreadyRecorded) appendTurn(userId, { role: "user", text: message, clientTurnId: clientTurnId ?? null, connectedAccountId }, writeEpoch);
 
     const mem = ingestMessage(userId, message, writeEpoch);
     // Coach → durable learning: explicit strategy directives ("from now on…") and pasted article
@@ -482,7 +482,8 @@ export function makeOrchestrator(deps: ToolDeps, llm?: ChatLLM) {
       text: reply.text,
       citations: reply.citations.map((c) => c.chunk_id ?? c.source),
       intent: reply.intent,
-      model: usedModel
+      model: usedModel,
+      connectedAccountId
     }, writeEpoch);
     if (fmpProvenance.length > 0 && fmpRightsClaim) {
       persistFmpTranscriptDerivedArtifact({

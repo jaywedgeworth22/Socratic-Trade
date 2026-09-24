@@ -1,5 +1,7 @@
 # 2026-08-06 — iOS login 522 + Oracle host hard-down
 
+> **2026-09-22 [MM] archaeology note:** historical reference to the iOS bundle ID `trade.socratic.app` is kept verbatim as it was live at rollout time.  Renamed on 2026-09-22 to `com.socratictrade.ios` (PR forthcoming).  The Apple capability / provisioning steps in this rollout still apply — only the bundle ID string changes.  See `docs/rollouts/2026-09-22-bundle-id-migration.md`.
+
 ## Context & Objective
 
 Owner reported native iOS sign-in failures on the Socratic Trade login screen:

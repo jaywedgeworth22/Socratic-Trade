@@ -250,17 +250,23 @@ export function getTaskJournalSummary(sinceIso: string): TaskJournalLaneSummary[
 // high-volume and low-value, so they age out fast. ok/error rows are the actual history.
 export const TASK_JOURNAL_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
 export const TASK_JOURNAL_SKIPPED_RETENTION_MS = 24 * 60 * 60 * 1_000;
+/** Cap one tick's DELETE so retention cannot hold the write lock across the whole table. */
+export const TASK_JOURNAL_PRUNE_BATCH_LIMIT = 500;
 
-/** Delete aged rows. Returns rows deleted. Never throws. */
+/** Delete aged rows. Returns rows deleted. Never throws. Bounded per call — the scheduler
+ *  drains a backlog across ticks rather than pinning the event loop on one unbounded DELETE. */
 export function pruneTaskJournal(now: Date = new Date()): number {
   try {
     const okCutoff = new Date(now.getTime() - TASK_JOURNAL_RETENTION_MS).toISOString();
     const skippedCutoff = new Date(now.getTime() - TASK_JOURNAL_SKIPPED_RETENTION_MS).toISOString();
     const info = getDb()
       .prepare(
-        `DELETE FROM task_journal
-         WHERE (status = 'skipped' AND started_at < ?)
-            OR (status != 'skipped' AND started_at < ?)`
+        `DELETE FROM task_journal WHERE id IN (
+           SELECT id FROM task_journal
+           WHERE (status = 'skipped' AND started_at < ?)
+              OR (status != 'skipped' AND started_at < ?)
+           LIMIT ${TASK_JOURNAL_PRUNE_BATCH_LIMIT}
+         )`
       )
       .run(skippedCutoff, okCutoff);
     return info.changes;

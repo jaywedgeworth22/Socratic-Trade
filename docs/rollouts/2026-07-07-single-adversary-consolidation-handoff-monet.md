@@ -39,7 +39,7 @@ commits behind `origin/main`**, so the work is handed to you (a gate-capable lan
 
 - **The authored edits are UNVERIFIED** — no `tsc`/`lint`/`test`/`build` was run. Treat them as a
   reviewed starting diff, not known-good. Re-verify everything.
-- **They live UNCOMMITTED in the owner's `~/Code/Socratic.Trade` `main` worktree, on a stale base
+- **They live UNCOMMITTED in the owner's `~/Code/Socratic-Trade` `main` worktree, on a stale base
   (12 behind `origin/main`).** Do NOT land them from there. Start a fresh branch off **current
   `origin/main`**, re-apply the changes (this doc describes each precisely so you can reproduce them
   even if the raw diff doesn't transfer cleanly — anchors have drifted), then verify.

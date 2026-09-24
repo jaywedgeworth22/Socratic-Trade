@@ -12,7 +12,7 @@ The user requested:
 ## 2. Changes Made
 - **Xcode App Configuration (`ios/SocraticTrade.xcodeproj/project.pbxproj` & `ios/SocraticTrade/Info.plist`)**:
   - **App Category**: Configured `LSApplicationCategoryType` / `INFOPLIST_KEY_LSApplicationCategoryType` = `"public.app-category.finance"` (Finance).
-  - **Display Name**: Configured `CFBundleDisplayName` / `INFOPLIST_KEY_CFBundleDisplayName` = `"Socratic.Trade"`.
+  - **Display Name**: Configured `CFBundleDisplayName` / `INFOPLIST_KEY_CFBundleDisplayName` = `"Socratic-Trade"`.
   - **Build & Versioning**: Configured `MARKETING_VERSION` = `1.0.0`, `CURRENT_PROJECT_VERSION` = `1`, `CFBundleShortVersionString` = `$(MARKETING_VERSION)`, `CFBundleVersion` = `$(CURRENT_PROJECT_VERSION)`.
 - **Apple Sign-In Autolayout Constraint Fix (`ios/SocraticTrade/LoginView.swift`)**:
   - Added `.frame(maxWidth: 375)` to `SignInWithAppleButton`.

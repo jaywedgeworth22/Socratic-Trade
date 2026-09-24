@@ -2,7 +2,7 @@
 # Pre-commit hook to prevent agents from committing in the main integration tree
 
 WORKTREE_DIR=$(git rev-parse --show-toplevel)
-MAIN_TREE="/Users/jay/Code/Socratic.Trade"
+MAIN_TREE="/Users/jay/Code/Socratic-Trade"
 
 if [ "$WORKTREE_DIR" = "$MAIN_TREE" ]; then
     BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")

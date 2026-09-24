@@ -70,7 +70,7 @@ The product’s **control model is basically correct** (sticky chrome scope + ST
 
 ### P2
 
-Insights IA vs Home attention, Settings touch targets (32px avatar), LiveTag min type size, Markets section index, palette dirty-guard, brand name “Socratic.Trade” consistency.
+Insights IA vs Home attention, Settings touch targets (32px avatar), LiveTag min type size, Markets section index, palette dirty-guard, brand name “Socratic-Trade” consistency.
 
 ---
 

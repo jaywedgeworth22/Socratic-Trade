@@ -45,7 +45,7 @@ logs showed multi-object Put bursts every second under normal app write load.
 3. **Pace projections** are linear MTD extrapolations. They **do not zero out**
    when a kill-switch stops new writes — ST still shows ~99% pace while Class A
    has been essentially flat since the Aug 4 kill.
-4. Labels differed: ST used `Socratic.Trade`; UM used `Congress Trade` (space).
+4. Labels differed: ST used `Socratic-Trade`; UM used `Congress Trade` (space).
 
 ## Changes made
 

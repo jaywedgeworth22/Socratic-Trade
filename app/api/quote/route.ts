@@ -12,11 +12,14 @@ import { enforceRateLimit } from "@/lib/rate-limit";
 import { runQuoteEnrichmentSingleFlight } from "@/lib/quote-singleflight";
 import {
   CASCADE_BUDGET_MS,
+  LIVE_CASCADE_OVERLAY_GRACE_MS,
   YAHOO_SUMMARY_GRACE_MS,
   startCascadeBudget,
   withinBudget
 } from "@/lib/quote-cascade-budget";
 import { fetchYahooFinanceQuote } from "@/lib/yahoo-finance";
+import { fetchFreshQuotesCascade, isQuoteFresh } from "@/lib/quotes-cascade";
+import type { BrokerQuote } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -34,9 +37,11 @@ export const dynamic = "force-dynamic";
 // symbol against the scan's candidate universe and would be fabricated for a symbol
 // fetched outside a scan run.
 //
-// Yahoo chart + quoteSummary grace (YAHOO_SUMMARY_GRACE_MS) is the HTTP floor.  The 6s
-// CASCADE_BUDGET_MS still aborts Wave C, but the response does not wait for it when the
-// floor is already returnable.
+// Yahoo chart + quoteSummary grace (YAHOO_SUMMARY_GRACE_MS) is the HTTP floor.  The live
+// cascade gets only a brief overlay window (LIVE_CASCADE_OVERLAY_GRACE_MS) once the chart
+// resolves — the response never waits for the full cascade.  The 6s CASCADE_BUDGET_MS
+// still aborts Wave C, but the response does not wait for it when the floor is already
+// returnable.
 
 const SYMBOL_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/;
 
@@ -78,13 +83,87 @@ export async function GET(request: Request) {
         richPeek = { status: "failed", error };
       }
     );
-    const fastPromise = fetchYahooFinanceQuote(symbol)
-      .then((quote): EnrichmentOutcome =>
-        quote
-          ? { status: "ready", data: fastQuoteEnrichment(quote) }
-          : { status: "failed", error: new Error("no current quote returned") }
-      )
-      .catch((error) => ({ status: "failed" as const, error }));
+    const fastPromise: Promise<EnrichmentOutcome> = (async (): Promise<EnrichmentOutcome> => {
+      const yahooQuotePromise = fetchYahooFinanceQuote(symbol).catch(() => undefined);
+      const liveQuotePromise = (async (): Promise<BrokerQuote | undefined> => {
+        if (!userId) return undefined;
+        try {
+          const quotes = await fetchFreshQuotesCascade([symbol], userId, undefined, undefined, { signal: budget.signal });
+          const q = quotes[symbol];
+          // Validate cascade freshness instead of relying solely on the Yahoo-specific
+          // delayedFallback flag: a stale fallback (e.g. provider "session-close") must
+          // not overlay a newer Yahoo price (Codex P2 review).
+          return q && typeof q.price === "number" && q.price > 0 && isQuoteFresh(q, Date.now()) ? q : undefined;
+        } catch {
+          return undefined;
+        }
+      })();
+
+      // Keep the live cascade off the bounded Yahoo floor: once the chart resolves,
+      // give the cascade only a brief overlay window instead of awaiting it in full
+      // (Codex P1 / Sentry HIGH review).  A slow broker can no longer hold the
+      // response through its 16s first wait / 30s I/O deadline.
+      const yahooQuote = await yahooQuotePromise;
+      let liveQuote: BrokerQuote | undefined;
+      if (yahooQuote) {
+        liveQuote = await Promise.race([
+          liveQuotePromise,
+          new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), LIVE_CASCADE_OVERLAY_GRACE_MS))
+        ]);
+        if (liveQuote === undefined) {
+          // The floor is returnable — stop the still-running cascade so scarce
+          // providers do not keep spending after the response is fixed.
+          budget.abort(new Error("yahoo floor ready"));
+        }
+      } else {
+        // No Yahoo floor: the cascade is the only price source, so wait for it.
+        liveQuote = await liveQuotePromise;
+      }
+      if (liveQuote && typeof liveQuote.price === "number" && yahooQuote) {
+        const livePrice = liveQuote.price;
+        const base = fastQuoteEnrichment(yahooQuote);
+        // prevClose is undefined when Yahoo omitted it — never substitute the live
+        // price, which would fabricate a 0% intraday change (Sentry review).
+        const yahooPrevClose = yahooQuote.prevClose;
+        const intradayChangePct =
+          typeof yahooPrevClose === "number" && yahooPrevClose > 0
+            ? Math.round(((livePrice - yahooPrevClose) / yahooPrevClose) * 10_000) / 100
+            : base.intradayChangePct;
+        return {
+          status: "ready",
+          data: {
+            ...base,
+            price: livePrice,
+            ...(liveQuote.volume && liveQuote.volume > 0 ? { volume: liveQuote.volume } : {}),
+            ...(intradayChangePct !== undefined ? { intradayChangePct } : {}),
+            asOf: liveQuote.asOf ?? liveQuote.fetchedAt ?? base.asOf,
+            sources: {
+              ...base.sources,
+              price: liveQuote.provider ?? "quotes-cascade",
+              ...(liveQuote.asOf ? { asOf: liveQuote.provider ?? "quotes-cascade" } : {})
+            }
+          }
+        };
+      }
+      if (yahooQuote) {
+        return { status: "ready", data: fastQuoteEnrichment(yahooQuote) };
+      }
+      if (liveQuote) {
+        return {
+          status: "ready",
+          data: {
+            price: liveQuote.price,
+            ...(liveQuote.volume && liveQuote.volume > 0 ? { volume: liveQuote.volume } : {}),
+            asOf: liveQuote.asOf ?? liveQuote.fetchedAt,
+            sources: {
+              price: liveQuote.provider ?? "quotes-cascade",
+              ...(liveQuote.asOf ? { asOf: liveQuote.provider ?? "quotes-cascade" } : {})
+            }
+          }
+        };
+      }
+      return { status: "failed", error: new Error("no current quote returned") };
+    })().catch((error) => ({ status: "failed" as const, error }));
     const yahooPromise: Promise<EnrichmentOutcome> = enrichYahooFinanceSymbol(symbol)
       .then((data) => ({ status: "ready" as const, data }))
       .catch((error) => ({ status: "failed" as const, error }));

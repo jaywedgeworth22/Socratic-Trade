@@ -95,7 +95,7 @@ Also removed two imports the rewrite left unused (`getDb`, `getVectorStoreStats`
 
 ## Verification
 
-Run in `/Users/jay/Code/Socratic.Trade/.claude/worktrees/land-ag-reindex-bge-m3` with the node@24
+Run in `/Users/jay/Code/Socratic-Trade/.claude/worktrees/land-ag-reindex-bge-m3` with the node@24
 PATH override (system node is v26 and ABI-breaks `better-sqlite3`):
 
 - `npx vitest run test/corpus-reembed.test.ts` — **9 passed** (7 pre-existing + 2 new).

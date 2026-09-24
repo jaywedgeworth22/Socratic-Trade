@@ -13,7 +13,7 @@
 
 ## Files
 
-- [AGENTS.md](file:///Users/jay/Code/Socratic.Trade/AGENTS.md) — updated the dashboard URL reference to `https://host.jays.services`.
+- [AGENTS.md](file:///Users/jay/Code/Socratic-Trade/AGENTS.md) — updated the dashboard URL reference to `https://host.jays.services`.
 
 ## Verification
 

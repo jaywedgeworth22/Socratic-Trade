@@ -7,7 +7,7 @@
 ---
 
 ## 1. Context & Objective
-The owner requested a comprehensive, top-to-bottom system review of Socratic.Trade across Desktop Web, Mobile Web (PWA), iOS App (SwiftUI), Backend Pipelines (SEC EDGAR ingest, RAG vector engine, trading engine), Database Concurrency, Latency Monitoring, and Competitor Benchmarking (Quiver, TradingView, Composer, Seeking Alpha). Following the audit, actionable resiliency improvements were implemented for the native iOS SwiftUI client.
+The owner requested a comprehensive, top-to-bottom system review of Socratic-Trade across Desktop Web, Mobile Web (PWA), iOS App (SwiftUI), Backend Pipelines (SEC EDGAR ingest, RAG vector engine, trading engine), Database Concurrency, Latency Monitoring, and Competitor Benchmarking (Quiver, TradingView, Composer, Seeking Alpha). Following the audit, actionable resiliency improvements were implemented for the native iOS SwiftUI client.
 
 ---
 

@@ -15,6 +15,7 @@ import { isEarningsCallsRefreshDue, refreshEarningsCallsTranscriptsIfDue } from 
 import { isRoicTranscriptRefreshDue, refreshRoicTranscriptsIfDue } from "./web-sources/roic-transcripts";
 import { runDailyLearningReviewIfDue } from "./learning-review";
 import { isRunAllowedNow } from "./market-hours";
+import { shouldDeferRagIngestDuringRth, sqliteYieldRetry } from "./sqlite-event-loop";
 import { runProviderTierCheckIfDue } from "./provider-tier";
 import { refreshLitestreamRemoteInventoryIfDue } from "./litestream-remote-inventory";
 import { runR2UsageCheckIfDue, runR2UsageDailyDigestIfDue } from "./r2-usage";
@@ -121,6 +122,9 @@ export async function reconcileManagedVectorRecordsIfDue(now = Date.now()): Prom
 
   const run = (async (): Promise<ManagedVectorReconcileRun | null> => {
     try {
+      // Defer heavy whole-index vector inventory during Regular Trading Hours (RTH):
+      if (process.env.NODE_ENV !== "test" && shouldDeferRagIngestDuringRth(new Date(now))) return null;
+
       // Live `9d71dda4`: thousands of Pinecone list/fetch ran in the same
       // window as gather.  Pause whole-index inventory while a run/request is
       // queued or running.  Do not consume the attempt marker so the next
@@ -129,11 +133,19 @@ export async function reconcileManagedVectorRecordsIfDue(now = Date.now()): Prom
         return { status: "busy", result: { skipped: true } };
       }
 
-      const lastAttemptAt = getInternalSetting<PersistedTimestamp>(MANAGED_VECTOR_RECONCILE_LAST_ATTEMPT_KEY);
-      const lastSuccessAt = getInternalSetting<PersistedTimestamp>(MANAGED_VECTOR_RECONCILE_LAST_SUCCESS_KEY);
+      const lastAttemptAt = await sqliteYieldRetry(() =>
+        getInternalSetting<PersistedTimestamp>(MANAGED_VECTOR_RECONCILE_LAST_ATTEMPT_KEY)
+      );
+      const lastSuccessAt = await sqliteYieldRetry(() =>
+        getInternalSetting<PersistedTimestamp>(MANAGED_VECTOR_RECONCILE_LAST_SUCCESS_KEY)
+      );
       if (!isManagedVectorReconcileDue(now, lastAttemptAt, lastSuccessAt)) return null;
 
-      setInternalSetting(MANAGED_VECTOR_RECONCILE_LAST_ATTEMPT_KEY, new Date(now).toISOString());
+      // Timestamp writes are each their own retry envelope so a BUSY on lastSuccess
+      // cannot re-stamp lastAttempt (or re-run the provider pass).
+      await sqliteYieldRetry(() =>
+        setInternalSetting(MANAGED_VECTOR_RECONCILE_LAST_ATTEMPT_KEY, new Date(now).toISOString())
+      );
       const { reconcileManagedVectorRecords } = await import("./vector-db");
       // Scheduled maintenance is observation-only. Provider list inventory is eventually
       // consistent, so destructive repair requires an explicit operator invocation after review.
@@ -143,7 +155,9 @@ export async function reconcileManagedVectorRecordsIfDue(now = Date.now()): Prom
         return { status: "busy", result };
       }
 
-      setInternalSetting(MANAGED_VECTOR_RECONCILE_LAST_SUCCESS_KEY, new Date(now).toISOString());
+      await sqliteYieldRetry(() =>
+        setInternalSetting(MANAGED_VECTOR_RECONCILE_LAST_SUCCESS_KEY, new Date(now).toISOString())
+      );
       return { status: "success", result };
     } catch (error) {
       console.error(`[scheduler] managed-vector reconciliation failed: ${safeErrorMessage(error)}`);
@@ -303,6 +317,7 @@ export async function sendSentrySchedulerCheckIn(
 }
 
 let timer: NodeJS.Timeout | null = null;
+const schedulerStartHost = globalThis as unknown as { __schedulerStartInFlight?: boolean };
 // Schedule state is per (userId, connectedAccountId): each connected account runs autonomously on
 // its own cadence/state, so two accounts of the same user neither share a cadence clock nor block
 // each other. Keyed by scheduleKey(userId, accountId).
@@ -596,7 +611,7 @@ function startTickWatchdog(): void {
  * The env var is a global override — when set, ALL users resume regardless of their per-user
  * toggle. When not set, each user's `autoResumeOnBoot` setting controls their own accounts.
  */
-export function reconcileAutonomyOnBoot(): void {
+export async function reconcileAutonomyOnBoot(): Promise<void> {
   if (process.env.AUTONOMY_RESUME_ON_BOOT === "1") {
     console.log("[scheduler] AUTONOMY_RESUME_ON_BOOT=1 — persisted 'active' autonomy will resume");
     return;
@@ -622,8 +637,16 @@ export function reconcileAutonomyOnBoot(): void {
       try {
         const policy = getPolicy(userId, accountId);
         if (policy.systemState === "active") {
-          setPolicy({ ...policy, systemState: "halted" }, userId, accountId);
-          audit("autonomy_halted_on_boot", { from: "active", to: "halted", reason: "autoResumeOnBoot not enabled" }, userId, accountId);
+          // Wrap the policy write and the audit row separately so a contended
+          // write on one cannot take down the other; both used to throw
+          // straight out of the boot reconcile on a SQLITE_BUSY, leaving the
+          // policy halted but the audit row missing.
+          await sqliteYieldRetry(() =>
+            setPolicy({ ...policy, systemState: "halted" }, userId, accountId)
+          );
+          await sqliteYieldRetry(() =>
+            audit("autonomy_halted_on_boot", { from: "active", to: "halted", reason: "autoResumeOnBoot not enabled" }, userId, accountId)
+          );
           console.warn(`[scheduler] autonomy was 'active' for ${userId}/${accountId ?? "(base)"} at boot; reverted to 'halted' (enable autoResumeOnBoot in Settings to auto-resume).`);
           const label = accountId ? (accounts.find((a) => a.id === accountId)?.label ?? accountId) : "(base account)";
           const labels = haltedByUser.get(userId) ?? [];
@@ -691,7 +714,8 @@ export function getSchedulerState(userId: string = "local", connectedAccountId?:
 }
 
 export function startScheduler(): void {
-  if (timer) return; // guard against double-start
+  if (timer || schedulerStartHost.__schedulerStartInFlight) return; // guard against double-start
+  schedulerStartHost.__schedulerStartInFlight = true;
 
   // Release only after the event loop drains. SIGTERM/SIGINT intentionally retain the lease until
   // its TTL: signal shutdown can kill detached synthetic-stop/broker work, and immediate release
@@ -706,17 +730,23 @@ export function startScheduler(): void {
     for (const event of SCHEDULER_LEASE_RELEASE_EVENTS) process.on(event, release);
   }
 
-  // Boot interlock runs once, before any tick, so a restored/copied DB cannot resume live
-  // execution unattended.
-  reconcileAutonomyOnBoot();
-
-  // Run a tick immediately on start to schedule Next Run right away
-  void tick();
-
-  timer = setInterval(tick, TICK_MS);
-  timer.unref(); // don't hold the process open in dev
-  startTickWatchdog();
-  console.log("[scheduler] started (tick every 60s; watchdog every 15s)");
+  // Boot interlock must finish before the first tick so a restored/copied DB cannot resume
+  // live execution unattended.  Halt writes go through sqliteYieldRetry (async), so the
+  // interval is armed only after they settle.  A throw here must not start ticks — failing
+  // to halt and then running would resume persisted 'active' accounts.
+  void (async () => {
+    try {
+      await reconcileAutonomyOnBoot();
+      void tick();
+      timer = setInterval(tick, TICK_MS);
+      timer.unref(); // don't hold the process open in dev
+      startTickWatchdog();
+      console.log("[scheduler] started (tick every 60s; watchdog every 15s)");
+    } catch (err) {
+      schedulerStartHost.__schedulerStartInFlight = false;
+      console.error("[scheduler] boot autonomy reconcile failed; scheduler not started:", err);
+    }
+  })();
 }
 
 async function tickInner(signal?: AbortSignal): Promise<void> {
@@ -892,7 +922,8 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
   // this guard a breached ceiling would still let the weekly filing-body ingest spend.
   const filingIngestDue = isFilingIngestDue();
   const transcriptIngestDue = isFmpTranscriptRefreshDue();
-  if ((filingIngestDue || transcriptIngestDue) && checkMonthlyLlmSpendCeiling().ok) {
+  const deferRagIngest = shouldDeferRagIngestDuringRth();
+  if ((filingIngestDue || transcriptIngestDue) && checkMonthlyLlmSpendCeiling().ok && !deferRagIngest) {
     // DEMAND-FIRST: held-by-value, watchlist, technical, policy universe, then the
     // 1k-issuer manifest.  Insertion order is the ingest order; a Set union used to
     // drop value ranking so the desk's names waited behind the alphabet.
@@ -928,7 +959,7 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
   // with them via the shared durable RAG_REINDEX operation lease (acquired inside the producer,
   // like refreshFilingBodies/refreshFmpTranscripts; a busy lease is a benign deferred pass —
   // the daily watermark is untouched, so a later tick retries). Self-guarded.
-  if (isEarningsCallsRefreshDue() && checkMonthlyLlmSpendCeiling().ok) {
+  if (isEarningsCallsRefreshDue() && checkMonthlyLlmSpendCeiling().ok && !deferRagIngest) {
     void journalLane("earningscalls-refresh", {}, () => refreshEarningsCallsTranscriptsIfDue()).catch((err) =>
       console.error("[scheduler] earningscalls transcript refresh error:", err instanceof Error ? err.message : err)
     );
@@ -939,7 +970,7 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
   // Cached earningscalls_transcripts + data/roic-artifacts never re-list or re-fetch.
   // Holdings → watchlist, last N fiscal quarters, cap ROIC_TRANSCRIPTS_MAX_PER_RUN.
   // Library helpers existed earlier without a scheduler caller — that left zero ROIC saves.
-  if (isRoicTranscriptRefreshDue() && !hasInFlightStrategyWork() && checkMonthlyLlmSpendCeiling().ok) {
+  if (isRoicTranscriptRefreshDue() && !hasInFlightStrategyWork() && checkMonthlyLlmSpendCeiling().ok && !deferRagIngest) {
     void journalLane("roic-transcript-refresh", {}, () => refreshRoicTranscriptsIfDue()).catch((err) =>
       console.error("[scheduler] roic transcript refresh error:", err instanceof Error ? err.message : err)
     );
@@ -1471,7 +1502,9 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
     // never reach this finally. A completed tick (ok or error) proves the loop is alive;
     // the watchdog does not write lastTick on unwedge.
     try {
-      setInternalSetting("scheduler:lastTick", new Date().toISOString());
+      // SQLITE_BUSY after the 100ms pin must yield and retry.  A later success is a live
+      // leader — it must not incrementHealthFailures or releaseLease.
+      await sqliteYieldRetry(() => setInternalSetting("scheduler:lastTick", new Date().toISOString()));
       if (getHealthFailures() > 0) resetHealthFailures();
     } catch (err) {
       console.error("[scheduler] heartbeat write error:", err);

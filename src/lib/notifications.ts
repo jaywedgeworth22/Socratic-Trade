@@ -426,7 +426,7 @@ export async function sendPolicyWebhookTest(
       type: "budget_alert",
       title: "Test notification",
       payload: {
-        provider: "Socratic.Trade",
+        provider: "Socratic-Trade",
         recommendation: "If you received this, your policy webhook URL is working."
       }
     },
@@ -976,6 +976,8 @@ export async function checkAndDispatchOptionAlerts(
     try {
       const event = await sendNotification(input, { userId, connectedAccountId });
       delivered = event.status === "sent";
+    } catch (err) {
+      console.warn(`[OptionAlerts] failed to deliver alert for ${key}:`, err);
     } finally {
       if (delivered) {
         sentAlerts.add(key);

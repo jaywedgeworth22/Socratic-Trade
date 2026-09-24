@@ -267,7 +267,7 @@ while IFS= read -r out; do
     plan="$(printf '%s' "$rec" | cut -f5)"
     st="$(printf '%s' "$rec" | cut -f6)"
     log "wrote $key: $old -> $new"
-    MSG="repo: Socratic.Trade | [CLAUDE->FLEET] knob-sync applied: $key $old->$new (plan $plan $st); rides next deploy"
+    MSG="repo: Socratic-Trade | [CLAUDE->FLEET] knob-sync applied: $key $old->$new (plan $plan $st); rides next deploy"
     if [ -x "$SLACK" ]; then
       "$SLACK" post "$MSG" >/dev/null 2>&1 || log "slack post failed for $key (write still succeeded)"
     fi

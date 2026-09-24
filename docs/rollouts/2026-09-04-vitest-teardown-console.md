@@ -57,5 +57,5 @@ Node v24.16.0.  Full `npm run lint` / `npx tsc --noEmit` / `npm test` / `npm run
 
 ## Next Steps & Blockers
 
-- PR: https://github.com/jaywedgeworth22/Socratic.Trade/pull/3163  SHA `4fba321ff`.
+- PR: https://github.com/jaywedgeworth22/Socratic-Trade/pull/3163  SHA `4fba321ff`.
 - CI `verify` is the remaining gate (full tsc / vitest / next build).  Do not merge, Coolify-nudge, or extra-ship from this seat.

@@ -7,8 +7,10 @@ import "server-only";
 import Database from "better-sqlite3";
 import { mkdirSync } from "fs";
 import { dirname, resolve } from "path";
+import { resetDrizzleForTesting } from "./db/client";
 import crypto from "crypto";
 import { DEFAULT_POLICY, DEFAULT_SCORING_WEIGHTS, DEFAULT_STRATEGY_PROMPT } from "./defaults";
+import { SQLITE_BUSY_PIN_MS } from "./sqlite-event-loop";
 import type { NotificationEventType, TradingPolicy } from "./types";
 
 let db: Database.Database | undefined;
@@ -91,14 +93,12 @@ export function getDb(): Database.Database {
   db.function("account_subject_token", { deterministic: true }, (value: unknown) => accountSubjectToken(String(value ?? "")));
   db.function("account_setting_matches_subject", { deterministic: true }, accountSettingMatchesSubject);
   db.pragma("journal_mode = WAL");
-  // With WAL, a concurrent writer otherwise throws SQLITE_BUSY immediately; wait
-  // up to 60s for the lock instead. NORMAL durability is the WAL-recommended pairing.
-  // Raised from 30s (2026-07-18, PR #1728) after "database is locked" kept surfacing
-  // in prod under heavy concurrent write load (bulk RAG backfill/reindex + scheduler
-  // + burst ingest all writing the same file); WAL already lets readers proceed
-  // during a writer, so a longer wait here only affects genuinely-contended writers,
-  // not the common read path.
-  db.pragma("busy_timeout = 60000");
+  // Short pin, not a 60s sleep. better-sqlite3 waits for SQLITE_BUSY ON THE EVENT LOOP,
+  // so a 60s busy_timeout (raised 5s → 30s → 60s to hide "database is locked") froze
+  // GET /api/live and GET /api/health for the whole wait — Traefik 503 while Docker
+  // still said healthy. WAL readers *can* proceed during a writer only if the loop is
+  // free to run them. Async writers keep the 60s lock budget via sqliteYieldRetry.
+  db.pragma(`busy_timeout = ${SQLITE_BUSY_PIN_MS}`);
   db.pragma("synchronous = NORMAL");
   // Larger page cache + memory-mapped I/O: the dashboard replays fill/proposal history on every
   // request, so a ~20MB page cache (negative = KB) and 256MB mmap keep those hot reads off the
@@ -122,6 +122,12 @@ export function resetDbForTesting(): void {
     } catch {}
     db = undefined;
   }
+  // Drop the cached Drizzle wrapper too — it captures the underlying Database handle
+  // at construction time, so resetting only the raw sqlite connection would leave a
+  // dangling wrapper that throws "The database connection is not open" on the next
+  // query. Test-only helper, no production effect (resetDrizzleForTesting is a no-op
+  // outside the test runtime in practice — getDrizzle is module-private to tests).
+  resetDrizzleForTesting();
 }
 
 // ── Versioned migrations ─────────────────────────────────────────────────────
@@ -3267,6 +3273,32 @@ const MIGRATIONS: Migration[] = [
            ON document_chunks_fts_index (symbol, source, accession)`
       );
     }
+  },
+  {
+    version: 89,
+    name: "chat_turns_connected_account_id",
+    up: (database) => {
+      if (!tableExists(database, "chat_turns")) return;
+      if (!columnExists(database, "chat_turns", "connected_account_id")) {
+        database.exec("ALTER TABLE chat_turns ADD COLUMN connected_account_id TEXT");
+      }
+    }
+  },
+  {
+    // 2026-09-20 MM comprehensive review: the audit-prune observability+default DELETE does
+    // NOT constrain user_id (audit-prune.ts:115-132) but the only existing kind-prefixed
+    // index is (kind, user_id, created_at DESC) — without a user_id bound, SQLite scans
+    // kind-ranges across every user. Add a tighter (kind, created_at) compound so the prune
+    // path can range-scan created_at inside a single kind without dragging user_id through
+    // the sorter. Idempotent via IF NOT EXISTS.
+    version: 90,
+    name: "audit_events_kind_created_index",
+    up: (database) => {
+      if (!tableExists(database, "audit_events")) return;
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_audit_events_kind_created ON audit_events (kind, created_at)"
+      );
+    }
   }
 ];
 
@@ -3437,7 +3469,7 @@ export function hasEncryptedCredentials(database: Database.Database): boolean {
  * Fail loudly at boot rather than silently decrypting stored creds to '' (which a
  * per-process random ENCRYPTION_KEY fallback does). Triggers only when the key is absent
  * (ephemeral random fallback) AND the DB already holds ciphertext. `ephemeral` is read
- * from process.env at call time so it reflects any .env.local loaded during import.
+ * from process.env at call time so it reflects any local dotenv-style file loaded during import.
  */
 export function assertEncryptionKeyAvailable(
   database: Database.Database,
@@ -4345,7 +4377,7 @@ function migrate(database: Database.Database): void {
       updated_at TEXT NOT NULL
     );
 
-    -- Socratic.Trade local caching for complete EOD bars (OHLCV), replacing the silent-failing flat-file cache.
+    -- Socratic-Trade local caching for complete EOD bars (OHLCV), replacing the silent-failing flat-file cache.
     -- Upserted continuously during live strategy runs for fast replay, avoiding expensive API network loops.
     CREATE TABLE IF NOT EXISTS history_cache_eod (
       ticker TEXT NOT NULL,

@@ -4,27 +4,20 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 process.env.DATABASE_URL = `file:${path.join(os.tmpdir(), `llm-catalog-test-${Date.now()}.db`)}`;
 
+// 21 rows as of the 2026-09-18 model-catalog cleanup (down from 32) — see
+// docs/rollouts/2026-09-18-model-catalog-cleanup.md for the removed rows and why.
 const OWNER_ROWS: Array<[string, string, string]> = [
   ["gpt-6-astra-pro", "openai/gpt-6-astra-pro", "gpt-6-astra-pro"],
   ["gpt-6-astra", "openai/gpt-6-astra", "gpt-6-astra"],
   ["minimax-m3", "minimax/minimax-m3", "MiniMax-M3"],
-  ["minimax-m2.7", "minimax/minimax-m2.7", "MiniMax-M2.7"],
   ["muse-spark-1.3", "meta/muse-spark-1.3", "muse-spark-1.3"],
   ["muse-glimmer-30b", "meta/muse-glimmer-30b", "muse-glimmer-30b"],
-  ["llama-4-maverick", "meta-llama/llama-4-maverick", "llama-4-maverick"],
-  ["llama-4-scout", "meta-llama/llama-4-scout", "llama-4-scout"],
   ["gpt-5.6-sol", "openai/gpt-5.6-sol", "gpt-5.6-sol"],
-  ["gpt-5.6-terra", "openai/gpt-5.6-terra", "gpt-5.6-terra"],
   ["gpt-5.6-luna", "openai/gpt-5.6-luna", "gpt-5.6-luna"],
-  ["gpt-mini-latest", "~openai/gpt-mini-latest", "gpt-5.4-mini"],
-  ["gpt-5.4-nano", "openai/gpt-5.4-nano", "gpt-5.4-nano"],
-  ["gpt-4o", "openai/gpt-4o", "gpt-4o"],
-  ["gpt-4o-mini", "openai/gpt-4o-mini", "gpt-4o-mini"],
   ["claude-sonnet-latest", "~anthropic/claude-sonnet-latest", "claude-sonnet-5"],
   ["claude-haiku-latest", "~anthropic/claude-haiku-latest", "claude-haiku-4-5-20251001"],
   ["claude-opus-latest", "~anthropic/claude-opus-latest", "claude-opus-5"],
   ["claude-fable-latest", "~anthropic/claude-fable-latest", "claude-fable-5-1"],
-  ["grok-build-0.1", "x-ai/grok-build-0.1", "grok-build-0.1"],
   ["grok-latest", "~x-ai/grok-latest", "grok-4.6"],
   ["gemini-flash-lite-latest", "google/gemini-3.5-flash-lite", "gemini-flash-lite-latest"],
   ["gemini-flash-latest", "~google/gemini-flash-latest", "gemini-flash-latest"],
@@ -34,13 +27,10 @@ const OWNER_ROWS: Array<[string, string, string]> = [
   ["mistral-small-latest", "mistralai/mistral-small-2603", "mistral-small-latest"],
   ["kimi-latest", "~moonshotai/kimi-latest", "kimi-latest"],
   ["deepseek-flash-latest", "deepseek/deepseek-v4-flash-0731", "deepseek-v4-flash"],
-  ["deepseek-pro-latest", "deepseek/deepseek-v4-pro-0813", "deepseek-v4-pro"],
-  ["deepseek-r1", "deepseek/deepseek-r1", "deepseek-reasoner"],
-  ["llama-3.3-70b-instruct", "meta-llama/llama-3.3-70b-instruct", "llama-3.3-70b-instruct"]
+  ["deepseek-pro-latest", "deepseek/deepseek-v4-pro-0813", "deepseek-v4-pro"]
 ];
 
 const ALIASES: Array<[string, string]> = [
-  ["gpt-5.4-mini", "gpt-mini-latest"],
   ["claude-sonnet-5", "claude-sonnet-latest"],
   ["claude-haiku-4.5", "claude-haiku-latest"],
   ["claude-opus-5", "claude-opus-latest"],
@@ -48,7 +38,6 @@ const ALIASES: Array<[string, string]> = [
   ["grok-4.5", "grok-latest"],
   ["deepseek-v4-flash", "deepseek-flash-latest"],
   ["deepseek-v4-pro", "deepseek-pro-latest"],
-  ["deepseek-reasoner", "deepseek-r1"],
   ["gemini-3.5-flash-lite", "gemini-flash-lite-latest"],
   ["google/gemini-3.7-flash", "gemini-flash-latest"],
   ["mistral-medium-3.5", "mistral-medium-latest"],
@@ -58,7 +47,8 @@ const ALIASES: Array<[string, string]> = [
 describe("three-column LLM catalog", () => {
   let CURATED_LLM_MODEL_IDS: string[];
   let CATALOG_DISPLAY_SLUGS: readonly string[];
-  let LLM_MODEL_CATALOG: ReadonlyArray<{ displaySlug: string }>;
+  let LLM_MODEL_CATALOG: ReadonlyArray<{ displaySlug: string; openRouterSlug: string; label: string }>;
+  let CURATED_LLM_MODEL_GROUPS: ReadonlyArray<{ label: string; options: ReadonlyArray<{ label: string }> }>;
   let displaySlugFor: (model: string | null | undefined) => string;
   let nativeSlugFor: (model: string | null | undefined) => string;
   let openRouterSlugFor: (model: string | null | undefined) => string;
@@ -82,6 +72,7 @@ describe("three-column LLM catalog", () => {
     openRouterSlugFor = catalog.openRouterSlugFor;
     const ui = await import("../app/ui/llm-model-catalog");
     CURATED_LLM_MODEL_IDS = ui.CURATED_LLM_MODEL_IDS;
+    CURATED_LLM_MODEL_GROUPS = ui.CURATED_LLM_MODEL_GROUPS;
     const provider = await import("../src/lib/llm-provider");
     nativeModelSlugForProvider = provider.nativeModelSlugForProvider;
     normalizeOpenRouterModelId = provider.normalizeOpenRouterModelId;
@@ -113,21 +104,21 @@ describe("three-column LLM catalog", () => {
   });
 
   it("never sends a display slug to OpenRouter when the wire slug differs", () => {
-    expect(normalizeOpenRouterModelId("gpt-mini-latest")).toBe("~openai/gpt-mini-latest");
+    expect(normalizeOpenRouterModelId("grok-latest")).toBe("~x-ai/grok-latest");
     expect(normalizeOpenRouterModelId("gemini-flash-lite-latest")).toBe("google/gemini-3.5-flash-lite");
     expect(normalizeOpenRouterModelId("deepseek-flash-latest")).toBe("deepseek/deepseek-v4-flash-0731");
-    expect(normalizeOpenRouterModelId("deepseek-r1")).toBe("deepseek/deepseek-r1");
+    expect(normalizeOpenRouterModelId("deepseek-pro-latest")).toBe("deepseek/deepseek-v4-pro-0813");
     expect(normalizeOpenRouterModelId("mistral-small-latest")).toBe("mistralai/mistral-small-2603");
     expect(normalizeOpenRouterModelId("mistral-medium-latest")).toBe("mistralai/mistral-medium-3-5");
-    expect(nativeSlugFor("openai/gpt-mini-latest")).toBe("gpt-5.4-mini");
+    expect(nativeSlugFor("openai/gpt-5.6-sol")).toBe("gpt-5.6-sol");
     expect(nativeSlugFor("anthropic/claude-sonnet-latest")).toBe("claude-sonnet-5");
   });
 
   it("constructs live OpenRouter calls with the wire slug", () => {
     upsertUserApiKey("catalog-or-user", "openrouter", "sk-or-catalog-test");
-    const endpoint = resolveLlmEndpoint({ llmModel: "gpt-mini-latest" }, "catalog-or-user");
+    const endpoint = resolveLlmEndpoint({ llmModel: "grok-latest" }, "catalog-or-user");
     expect(endpoint.provider).toBe("openrouter");
-    expect(endpoint.model).toBe("~openai/gpt-mini-latest");
+    expect(endpoint.model).toBe("~x-ai/grok-latest");
     const aliased = resolveLlmEndpoint({ llmModel: "claude-sonnet-5" }, "catalog-or-user");
     expect(aliased.model).toBe("~anthropic/claude-sonnet-latest");
   });
@@ -142,5 +133,31 @@ describe("three-column LLM catalog", () => {
     }
     expect(openRouterSlugFor("gemini-flash-latest:batch")).toBe("google/gemini-3.8-flash:batch");
     expect(normalizeOpenRouterModelId("google/gemini-3.6-flash:batch")).toBe("google/gemini-3.8-flash:batch");
+  });
+
+  // Owner formatting/copy rules (2026-09-18 model-catalog cleanup) — see
+  // docs/rollouts/2026-09-18-model-catalog-cleanup.md.
+  it("formats every dropdown row like the stats/benchmark page (slug-first) and never mentions OpenRouter", () => {
+    for (const row of LLM_MODEL_CATALOG) {
+      expect(row.label.startsWith(row.displaySlug), row.displaySlug).toBe(true);
+      expect(row.label, row.displaySlug).not.toMatch(/openrouter/i);
+    }
+    for (const group of CURATED_LLM_MODEL_GROUPS) {
+      expect(group.label).not.toMatch(/openrouter/i);
+      for (const option of group.options) {
+        expect(option.label).not.toMatch(/openrouter/i);
+      }
+    }
+  });
+
+  it("never routes two rows to the same OpenRouter wire slug (astra / astra-pro excepted)", () => {
+    const astraPair = new Set(["gpt-6-astra", "gpt-6-astra-pro"]);
+    const seen = new Map<string, string>();
+    for (const row of LLM_MODEL_CATALOG) {
+      if (astraPair.has(row.displaySlug)) continue;
+      const prior = seen.get(row.openRouterSlug);
+      expect(prior, `${row.displaySlug} and ${prior} both route to ${row.openRouterSlug}`).toBeUndefined();
+      seen.set(row.openRouterSlug, row.displaySlug);
+    }
   });
 });

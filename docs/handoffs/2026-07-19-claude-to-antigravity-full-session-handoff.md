@@ -1,7 +1,7 @@
 # Handoff: CLAUDE session (2026-07-19) → Antigravity
 
 Full state of an owner-directed multi-day execution program: a top-to-bottom expert
-review of Socratic.Trade, the Codex 46-item audit fix wave, a bge-m3 embedding
+review of Socratic-Trade, the Codex 46-item audit fix wave, a bge-m3 embedding
 migration + RAG backfill program, and an EarningsCalls transcript program. This note
 is the single source of truth for picking the work up cold — read it before touching
 any of the branches below.
@@ -99,7 +99,7 @@ the new merge commit before considering the lane done (merge == auto-deploy on t
   (currently ~$49 remaining).
 - `PR #1771` (MONET, open): fixes a SiliconFlow bge-m3 price-table bug my verifier
   originally filed — not mine to land, just don't duplicate it.
-- `RAG_EMBED_PROVIDER=openrouter` — set directly in Infisical prod (Socratic.Trade
+- `RAG_EMBED_PROVIDER=openrouter` — set directly in Infisical prod (Socratic-Trade
   project `39d93bb7-76f9-498c-8b50-a7def52e072f`, env `prod`) by me this session. Already
   live (confirmed in prod health above). No action needed.
 - UptimeRobot monitors added this session (all UP): `congress.trade` health,
@@ -214,9 +214,9 @@ work, roughly in priority order):
 ## 9. Standing coordination notes
 
 - Fleet is very active on other repos (Congress.Trade, Usage-Monitor/API-usage-monitor)
-  doing an Oracle cloud cutover and effort-log normalization — unrelated to Socratic.Trade,
+  doing an Oracle cloud cutover and effort-log normalization — unrelated to Socratic-Trade,
   safe to ignore unless a message explicitly names this repo.
-- CODEX has been actively fixing CI-runner routing and landing its own Socratic.Trade
+- CODEX has been actively fixing CI-runner routing and landing its own Socratic-Trade
   lanes in parallel (PRs #1751, #1759, #1761, #1775, #1776, #1778, #1779 in the list
   above) — check for overlap before assuming any given file is untouched.
 - Two PRs I don't recognize from this session appeared during handoff prep: **#1780

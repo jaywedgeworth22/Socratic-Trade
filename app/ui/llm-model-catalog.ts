@@ -49,7 +49,11 @@ const PROVIDER_LABEL: Record<CatalogProviderId, string> = {
   moonshot: "Moonshot AI (Kimi)",
   minimax: "MiniMax",
   deepseek: "DeepSeek",
-  meta: "Meta (via OpenRouter)"
+  // Was "Meta (via OpenRouter)" — every catalog model is served over OpenRouter whenever an
+  // OpenRouter credential is configured (src/lib/llm-provider.ts resolveLlmEndpoint), so
+  // singling out Meta implied a routing distinction that does not exist. See
+  // docs/rollouts/2026-09-18-model-catalog-cleanup.md.
+  meta: "Meta"
 };
 
 const PROVIDER_ORDER: CatalogProviderId[] = [

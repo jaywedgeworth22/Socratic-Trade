@@ -20,4 +20,4 @@ Coolify parses Docker's health status to report service health in its API (`runn
 
 ## Verification
 - `docker ps` on the Hetzner box now shows the container as `(healthy)`.
-- The Socratic.Trade admin page `/admin` should now correctly reflect Qdrant's status as `running:healthy`.
+- The Socratic-Trade admin page `/admin` should now correctly reflect Qdrant's status as `running:healthy`.

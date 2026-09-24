@@ -2,7 +2,7 @@
 
 ## Summary
 
-Socratic.Trade production sat on `e0a4959a73a7` (2026-08-20 17:53 UTC) while
+Socratic-Trade production sat on `e0a4959a73a7` (2026-08-20 17:53 UTC) while
 `main` moved 39 commits ahead.  Coolify received the GitHub push webhooks
 (HTTP 200) and started image builds.  The Dockerfile RTH latch correctly
 refused every weekday-hours build (`rth-blocked`, keep last healthy

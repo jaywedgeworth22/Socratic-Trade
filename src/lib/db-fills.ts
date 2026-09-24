@@ -136,6 +136,30 @@ export function insertPortfolioSnapshot(input: {
 }
 
 /**
+ * Removes portfolio_snapshots older than maxAgeDays, in bounded LIMIT batches.
+ *
+ * Called automatically by the audit-prune scheduler (audit-prune.ts:154) which passes a
+ * per-run budget so a first-ever backlog drains across multiple daily passes instead of
+ * holding the SQLite write lock for one massive un-bounded DELETE — the same write-lock
+ * class that the audit_events sweep already fixed (#3383/#3386/#3408).
+ *
+ * Returns the number of rows deleted in THIS call; the caller can re-invoke until the
+ * returned count is below batchLimit (no more backlog).
+ */
+export function sweepPortfolioSnapshots(
+  now: Date = new Date(),
+  maxAgeDays: number = 90,
+  batchLimit: number = 5_000
+): number {
+  const db = getDb();
+  const cutoff = new Date(now.getTime() - maxAgeDays * 24 * 3600_000).toISOString();
+  return db
+    .prepare(
+      "DELETE FROM portfolio_snapshots WHERE id IN (SELECT id FROM portfolio_snapshots WHERE created_at < ? LIMIT ?)"
+    )
+    .run(cutoff, batchLimit).changes;
+}
+/**
  * Symbols with a non-zero position in the LATEST portfolio snapshot of every (user, account)
  * pair, restricted to snapshots recent enough to reflect a live account (default 7 days —
  * snapshots are written every strategy run, so an older latest-snapshot means the account

@@ -25,6 +25,7 @@ import { isAbortOrTimeoutError, isTransientNetworkError } from "./network-errors
 // they are broker-agnostic helpers exported from ./alpaca (no Alpaca SDK behavior involved).
 import { fillMissingQuotesWithClose, estimateReviewNotional } from "./alpaca";
 import { mergeAccountCapabilities } from "./venue-contract";
+import { normalizeVenueOrder } from "./venue-normalization";
 import { TRADIER_BROKER_IO_DEADLINE_MS, equityOrdersDefaultSinceIso, withDeadline } from "./inflight-deadline";
 
 /**
@@ -751,6 +752,15 @@ class TradierBrokerGateway implements BrokerGateway {
           const close = optionalNumber(q.close);
           const ask = optionalNumber(q.ask);
           const bid = optionalNumber(q.bid);
+          const prevClose = optionalNumber(q.prevclose);
+          const open = optionalNumber(q.open);
+          const high = optionalNumber(q.high);
+          const low = optionalNumber(q.low);
+          const change = optionalNumber(q.change);
+          const changePct = optionalNumber(q.change_percentage);
+          const bidSize = optionalNumber(q.bidsize);
+          const askSize = optionalNumber(q.asksize);
+          const companyName = optionalString(q.description);
           quotes[symbol] = {
             symbol,
             price: last ?? close ?? ask ?? bid ?? 0,
@@ -758,7 +768,17 @@ class TradierBrokerGateway implements BrokerGateway {
             ask,
             volume: optionalNumber(q.volume),
             asOf: optionalIso(q.trade_date ?? q.bid_date),
-            provider: "tradier"
+            provider: "tradier",
+            ...(prevClose !== undefined && prevClose > 0 ? { prevClose } : {}),
+            ...(open !== undefined && open > 0 ? { open } : {}),
+            ...(high !== undefined && high > 0 ? { high } : {}),
+            ...(low !== undefined && low > 0 ? { low } : {}),
+            ...(close !== undefined && close > 0 ? { close } : {}),
+            ...(change !== undefined ? { change } : {}),
+            ...(changePct !== undefined ? { changePct } : {}),
+            ...(bidSize !== undefined && bidSize > 0 ? { bidSize } : {}),
+            ...(askSize !== undefined && askSize > 0 ? { askSize } : {}),
+            ...(companyName ? { companyName } : {})
           };
         }
       } catch (error) {
@@ -795,7 +815,8 @@ class TradierBrokerGateway implements BrokerGateway {
     return { estimatedNotional, alerts, raw: { tradier: true } };
   }
 
-  async placeEquityOrder(input: EquityOrderInput & { refId: string }): Promise<ExecutedOrder> {
+  async placeEquityOrder(rawInput: EquityOrderInput & { refId: string }): Promise<ExecutedOrder> {
+    const input = normalizeVenueOrder(rawInput, "tradier", this.userId) as typeof rawInput;
     // WHOLE-SHARE resolution: Tradier has no notional field AND no broker-side notional cap, so WE
     // size a dollar order into shares at an anchor price and must not overspend the budget. Never
     // default to 1 — a $500 order must not become 500 shares.

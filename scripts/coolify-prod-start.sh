@@ -115,7 +115,13 @@ if [ -z "${COOLIFY_PROD_PHASE2:-}" ]; then
   fi
   export PATH="$BIN_DIR:$PATH"
   export COOLIFY_PROD_PHASE2=1
-  log "binaries ready; re-exec under infisical-run"
+  # Arm the fail-closed boot guard at the source (src/lib/secrets-source.ts). Owner directive
+  # 2026-09-18: prod is Infisical-only, no .env files anywhere. Default OFF remains for local
+  # dev / tests / CI; flipping it on at the boot script makes the policy visible at the shell
+  # level instead of buried in Infisical config. Escape hatch: unset this line and rebuild if
+  # Infisical is down during a recovery drill (see docs/secrets.md).
+  export REQUIRE_SECRETS_MANAGER=1
+  log "binaries ready; re-exec under infisical-run (REQUIRE_SECRETS_MANAGER=1)"
   exec node scripts/infisical-run.mjs -- bash "$0" "$@"
 fi
 

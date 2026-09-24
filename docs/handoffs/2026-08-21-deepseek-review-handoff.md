@@ -16,9 +16,9 @@
 ## 2. Claim protocol (binding)
 
 1. `board claim <full-id> --by <SEAT> --env Mac|cloud --where "<worktree> @ <branch>"`.
-2. Post the claim to #agent-sync with the standard header (repo: Socratic.Trade, claim, state: WIP, cadence).
+2. Post the claim to #agent-sync with the standard header (repo: Socratic-Trade, claim, state: WIP, cadence).
 3. Add/update the effort-log row (`docs/EFFORT-LOG.md` + `/Users/jay/apps/TRADING-EFFORT-LOG.md`) — Planned → In Progress.
-4. Implement in YOUR seat worktree (never `~/Code/Socratic.Trade`), branch under your seat's prefix.
+4. Implement in YOUR seat worktree (never `~/Code/Socratic-Trade`), branch under your seat's prefix.
 5. Verify: `npm run lint` → `npx tsc --noEmit` → `npm test` → `npm run build`; Swift changes additionally `xcodebuild build` + `xcodebuild test` (see `ios/CLAUDE.md`); shell changes `bash -n` + ASCII scan.
 6. Land via `bash scripts/land.sh` (or push branch + PR; never push main directly).  Add `docs/rollouts/YYYY-MM-DD-*.md` + STATUS/PLAN updates.
 7. Close out: `board status <id> completed --resolution "Landed in #<PR>."` + Slack DONE + effort-log COMPLETED row.

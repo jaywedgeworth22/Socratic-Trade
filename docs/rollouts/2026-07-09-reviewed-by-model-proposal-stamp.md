@@ -12,12 +12,12 @@
 
 ## Files
 
-- [src/lib/types.ts](file:///Users/jay/Code/Socratic.Trade/src/lib/types.ts)
-- [src/lib/strategy.ts](file:///Users/jay/Code/Socratic.Trade/src/lib/strategy.ts)
-- [src/lib/performance.ts](file:///Users/jay/Code/Socratic.Trade/src/lib/performance.ts)
-- [app/api/llm-usage/model-stats/route.ts](file:///Users/jay/Code/Socratic.Trade/app/api/llm-usage/model-stats/route.ts)
-- [src/lib/model-stats.ts](file:///Users/jay/Code/Socratic.Trade/src/lib/model-stats.ts)
-- [test/model-stats.test.ts](file:///Users/jay/Code/Socratic.Trade/test/model-stats.test.ts)
+- [src/lib/types.ts](file:///Users/jay/Code/Socratic-Trade/src/lib/types.ts)
+- [src/lib/strategy.ts](file:///Users/jay/Code/Socratic-Trade/src/lib/strategy.ts)
+- [src/lib/performance.ts](file:///Users/jay/Code/Socratic-Trade/src/lib/performance.ts)
+- [app/api/llm-usage/model-stats/route.ts](file:///Users/jay/Code/Socratic-Trade/app/api/llm-usage/model-stats/route.ts)
+- [src/lib/model-stats.ts](file:///Users/jay/Code/Socratic-Trade/src/lib/model-stats.ts)
+- [test/model-stats.test.ts](file:///Users/jay/Code/Socratic-Trade/test/model-stats.test.ts)
 
 ## Verification
 

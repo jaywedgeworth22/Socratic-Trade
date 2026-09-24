@@ -2,7 +2,7 @@
 
 ## Context & Objective
 
-Resolve reviewer and fleet audit findings in Socratic.Trade across Guardrails capabilities merging, broker-specific synthetic stop hours hints, synthetic stop trail fallbacks, and unmanaged short derivations.
+Resolve reviewer and fleet audit findings in Socratic-Trade across Guardrails capabilities merging, broker-specific synthetic stop hours hints, synthetic stop trail fallbacks, and unmanaged short derivations.
 
 ## Changes Made
 

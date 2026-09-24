@@ -3,7 +3,7 @@
 Date: 2026-07-11
 Owner: CODEX
 Branch: `codex/runtime-release-backup-health`
-PR: <https://github.com/jaywedgeworth22/Socratic.Trade/pull/1405> (ready, not merged)
+PR: <https://github.com/jaywedgeworth22/Socratic-Trade/pull/1405> (ready, not merged)
 
 ## Summary
 

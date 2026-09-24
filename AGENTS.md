@@ -1,5 +1,8 @@
 # Agent Instructions
 
+> [!IMPORTANT]
+> **2026-09-22 [MM] bundle-ID migration landed.** The iOS bundle identifier changed from `trade.socratic.app` → `com.socratictrade.ios`, the iOS test bundle from `trade.socratic.app.tests` → `com.socratictrade.ios.tests`, the App Group `group.com.socratictrade` was added, and the Associated Domain `socratic.trade` was added (`applinks` + `webcredentials`) on top of the existing `socratictrade.com`. The Sign in with Apple native audience is now `com.socratictrade.ios`. The server-side AASA `appIDs` claim `CC8UTF7ATG.com.socratictrade.ios`. See `docs/rollouts/2026-09-22-bundle-id-migration.md` for the rollout doc, the new IDs table, the archaeology list, and the owner action items (Apple Developer Portal App ID + App Group registration on the new bundle IDs, `socratic.trade` DNS + AASA). **2026-09-24 FIXER tip:** interim `trade.socratic.ios` was wrong — retargeted to `com.socratictrade.ios` + `group.com.socratictrade`. Server coexistence patches landed in PR #3451 (dual native SIWA audiences, dual APNs topics, dual AASA appIDs + webcredentials, ios-fleet pin refresh). **2026-09-24 update:** Jay created the new ASC app for `com.socratictrade.ios` — `appleId` `6815511597` (owner-supplied via iMessage 2026-09-23 ~11:05 PM CT); `6799238379` is the old record.
+
 Read this before making changes. It exists to save you (and whichever other AI
 tool touches this repo next — Claude Code, Codex, Antigravity/Gemini, Cursor,
 etc.) the time/tokens of re-deriving things a previous session already learned
@@ -8,7 +11,7 @@ the hard way.
 ## Before you start
 
 > [!CAUTION]
-> **CRITICAL RULE: DO NOT WORK IN `/Users/jay/Code/Socratic.Trade` (OR WHATEVER THE MAIN WORKTREE IS).**
+> **CRITICAL RULE: DO NOT WORK IN `/Users/jay/Code/Socratic-Trade` (OR WHATEVER THE MAIN WORKTREE IS).**
 > That is the human owner's integration tree and the fleet's review base. If you check out your branch in the main folder, you will corrupt the review base for other agents (causing it to be drastically out-of-sync with production).
 > **You MUST `cd` into your designated agent lane (`~/apps/trading-<name>` — Claude → `trading-claude`, Codex → `trading-codex`, Antigravity → `trading-antigravity`, Cursor → `trading-cursor`, Monet → `trading-monet`, Kimi → `trading-kimi`) BEFORE doing any work.** A `pre-commit` hook is installed to block agent commits in the main folder.
 
@@ -165,7 +168,9 @@ owner 2026-07-09, so per-preview records would need re-creating), the Preview UR
 is a UI-only Coolify field, and
 `socratic-trade-prod` carries a preview-scoped `DB_BOOTSTRAP=fresh` so a PR preview can
 never restore the production DB and trade. To check
-your work: `npm run dev` locally in your own worktree + the verify CI gate.
+your work: `npm run dev:secrets` locally in your own worktree (Infisical runner) +
+the verify CI gate. Plain `npm run dev` no longer reads `.env.local` (2026-09-18
+strict-Infisical cutover, `cursor/strict-infisical-no-env-files`).
 The old preview-provisioning scripts (`setup-agent-previews.sh`, `sync-preview-lanes.sh`,
 `sync-watchdog.sh`) and the CI workflow (`sync-previews.yml`) were deleted 2026-07-09 (all
 dead after the preview retirement; the pre-push hook they used to install is now installed
@@ -217,6 +222,20 @@ current Hetzner host (app env lives in Coolify's DB, not a `/data/coolify` tree)
 **Infisical merge order (fleet, 2026-08-20):** the shared Infisical project loads first; the app project shadows it.  Fleet coordination keys (`AGENT_SYNC_*`, Slack bot token, the shared Coolify read-only stats token) belong ONLY in the shared project.  Do not copy them into the ST / CT / UM app projects — a rotate-in-shared then leftover-in-app leaves the old value winning.  LLM runtime keys are not Infisical at all (see Don't).  Use `scripts/infisical-secrets-safe.sh`.
 
 **Handoff-file grep trap (2026-08-14, binding):** `~/.secrets/global-api-keys` is a multi-secret file.  `grep '^[A-Z0-9_]+='` / `grep '^ADMIN'` / `rg TOKEN file` print **values** (the whole matching line).  Names only: `grep -oE '^[A-Z][A-Z0-9_]*' ~/.secrets/global-api-keys`.  Never `cat` or open that file with a Read tool.  One Grok session leaked the whole store this way.
+
+**Strict Infisical, no `.env` files (owner, 2026-09-18, binding):** Infisical is the sole source
+of truth for every secret. No `.env`, `.env.local`, `.env.*`, `.env.yml`, or `.env.yaml` anywhere
+— the only env-shaped file in the repo is the committed `.env.example`, which is bootstrap-only
+(Infisical machine identity + `ENCRYPTION_KEY` + the optional `REQUIRE_SECRETS_MANAGER` arming
+flag). The dev-only `.env.local` loader in `src/lib/db-api-keys.ts:32-60` is gone (kept the
+`~/.secrets/global-api-keys` handoff paths — that's the documented owner-side identity store,
+NOT an `.env` file). `scripts/cloud-setup.sh` no longer seeds `.env.local`. Prod
+`scripts/coolify-prod-start.sh` phase-2 explicitly exports `REQUIRE_SECRETS_MANAGER=1` so the
+fail-closed boot guard in `src/lib/secrets-source.ts` (called from `instrumentation.ts:51`)
+fires visibly from the boot script. Local dev: use `npm run dev:secrets`. Plain `npm run dev`
+is for tests-only; `predev` prints a one-time notice when no Infisical identity is in scope.
+`test/no-env-loader-or-dotenv-yaml.test.ts` is the regression guard — it grep-asserts no
+production code path reads `.env.local`, imports dotenv, or parses `.env.yml/.yaml/.json`.
 **Build caveats:** the box's `concurrent_builds` is
 pinned to **1** (two parallel `next build`s OOM-wedged the old 4 GB box on 2026-07-07,
 console reboot required; unproven on the 8 GB box — loosen only deliberately), and Docker
@@ -225,7 +244,7 @@ cleanup thresholds matter — a build burst filled the old box's disk on 2026-07
 rollout note).
 
 **PRODUCTION IS ON COOLIFY (cut over 2026-07-07, owner-directed, MONET; verified).**
-`socratictrade.com` = Coolify app **uuid `socratic-app`** (name "Socratic.Trade", branch `main`,
+`socratictrade.com` = Coolify app **uuid `socratic-app`** (name "Socratic-Trade", branch `main`,
 dockerfile build pack, SSH deploy-key git source). The old uuid `m1os7ijf31bg3fanil152e4b` and the
 nixpacks note are STALE — the app was recreated during the Oracle migration; API calls against the
 old uuid return a bare `{"message":...}` that is easy to misread as a permissions problem.
@@ -343,8 +362,9 @@ must not silently drift behind beta after work lands.
   `~/apps/trading-codex`, Antigravity → `~/apps/trading-antigravity`, Monet →
   `~/apps/trading-monet`, Cursor (background/agent mode) → `~/apps/trading-cursor`, Kimi →
   `~/apps/trading-kimi` on branch `agent/kimi-lane`). Edit
-  only there, on your `agent/<name>` branch. To see your edits live, run `npm run dev` in
-  your own worktree (localhost; the old always-on PM2/HMR previews are retired).
+  only there, on your `agent/<name>` branch. To see your edits live, run
+  `npm run dev:secrets` in your own worktree (Infisical runner; localhost; the old
+  always-on PM2/HMR previews are retired).
 - **Do not edit in another agent's worktree, nor in the `main` integration worktree.**
 - **Land work via the landing script — never push directly to main:**
   ```bash
@@ -369,7 +389,7 @@ must not silently drift behind beta after work lands.
   - Refuses any push originating from `~/Code/Agentic Trading` (integration worktree).
   - Emergency human override (use sparingly): `HOOKS_ALLOW_MAIN_PUSH=1 git push origin ...`
 - **`npm run build` only affects YOUR worktree.** If a build wipes your `.next` and a local
-  `npm run dev` starts erroring (`ENOENT .next/...`), restart that worktree's dev server.
+`npm run dev:secrets` starts erroring (`ENOENT .next/...`), restart that worktree's dev server.
 - **PM2:** leftover `pm2 restart trading-<you>` / `pm2 list` are fine on the Mac if those
   apps still exist; do **not** `pm2 delete`/rename another agent's app or `trading`; run
   `pm2 save` after intentional changes.  Never run a build/`next dev` *inside*
@@ -385,10 +405,10 @@ called Cursor "not a 4th agent lane" — that's outdated; corrected 2026-07-06, 
 1. **A full peer autonomous lane**, on par with Claude Code, Codex, and Antigravity/Gemini.
    The owner runs Cursor's background/agent mode on **DeepSeek**, producing work in its own
    worktree (`~/apps/trading-cursor`), on its own branch (`agent/cursor`).  Preview
-   hostnames are retired — check work with `npm run dev` locally plus the verify CI gate.
-   Treat it exactly like the Claude/Codex/Antigravity/Monet rows: don't edit in it from
-   another agent, land via `scripts/land.sh`, keep the Pre-Commit/Handoff Protocol current
-   from it like any other lane.
+   hostnames are retired — check work with `npm run dev:secrets` locally (Infisical runner)
+   plus the verify CI gate.  Treat it exactly like the Claude/Codex/Antigravity/Monet rows:
+   don't edit in it from another agent, land via `scripts/land.sh`, keep the Pre-Commit/
+   Handoff Protocol current from it like any other lane.
 2. **The human-in-the-loop review seat.** The owner still also uses Cursor interactively —
    reviewing/merging `agent/*` branches, fast surgical hand-edits, in-editor debugging,
    codebase Q&A — from the existing `main` integration worktree (`~/Code/Agentic Trading`).
@@ -409,7 +429,7 @@ A local `next dev` listening on a port does **not** mean another agent is mid-ta
 infer "someone is working" from an open 3000/3001/3002 (or a leftover 4000/4001/4100-4104).
 Coordinate ONLY via `git status` / `git log` / the branch list and `STATUS.md` — never by
 inspecting ports.  Per-agent PM2 preview lanes and `*.jays.services` preview hostnames are
-retired; use `npm run dev` in your own worktree only.
+retired; use `npm run dev:secrets` (Infisical runner) in your own worktree only.
 
 Host-local deployment details (tunnel, pm2 ecosystem) live in `~/apps/README.md` on the
 deployment machine.
@@ -431,7 +451,7 @@ installed by `scripts/setup-slack-sync.sh` (run automatically by `scripts/cloud-
 injects the recent channel into each session. Gated on `SLACK_BOT_TOKEN` (env secret;
 silent no-op without it — safe in any repo). Optional env: `SLACK_AGENT_NAME` (prefixes
 `[name]`), `SLACK_TOPIC` (project tag — filters reads to your lane, auto-prefixes posts;
-canonical tags: `Socratic.Trade`, `Congress.Trade`, `API-Usage-Monitor`,
+canonical tags: `Socratic-Trade`, `Congress.Trade`, `API-Usage-Monitor`,
 `Congress-Trading-Shared`), `SLACK_CHANNEL_ID` (per-repo channel override). Setup and FAQ:
 `docs/slack-coordination.md`.
 
@@ -649,7 +669,7 @@ paternalism that keeps creeping back in from every agent (Claude, Codex, others)
  Cursor, Monet, cloud sessions, and any sub-agent they spawn.) The owner
  maintains exactly ONE intended key per provider per app, with spend caps and
  rate guardrails deliberately configured on that key. Agents provisioning their
- own keys — for Socratic.Trade and Congress.Trade both — silently routed
+ own keys — for Socratic-Trade and Congress.Trade both — silently routed
  production spend around those guardrails and made "which key is even in use?"
  unanswerable. That is the failure this rule exists to prevent.
   - Do not create, mint, rotate, or regenerate a key in ANY provider console or
@@ -680,7 +700,13 @@ paternalism that keeps creeping back in from every agent (Claude, Codex, others)
     the runtime names. Prior code-only PRs (#1856 closed; #2210/#2213 then
     *allowed* env to overwrite tombstones) did not remove the Infisical source.
 
-## Cursor Cloud specific instructions
+## - Run the dev server with `npm run dev:secrets` (Infisical runner on port `3000`).
+  Do not use `npm run dev` plain — it no longer reads `.env.local` (2026-09-18
+  strict-Infisical cutover) and will be missing any keys.  Do not use `npm run dev:codex`
+  (port 3001) or `npm run dev:clean` (it kills port 3000). `npm run build` deletes/
+  regenerates `.next/`, so restart `npm run dev:secrets` after a build.
+
+Cursor Cloud specific instructions
 
 These notes apply when running in the Cursor Cloud agent VM. They override the
 host-machine "Hosting & dev servers" section above, which describes the user's
@@ -780,9 +806,33 @@ and runs `scripts/ios-ship-testflight.sh`, which execs in-repo
 gh workflow run ios-ship.yml
 ```
 
-Bundle ID `trade.socratic.app`, team `CC8UTF7ATG`. Do not mint a new App Store
+Bundle ID `com.socratictrade.ios` (renamed 2026-09-22 from `trade.socratic.app`; rollout `docs/rollouts/2026-09-22-bundle-id-migration.md`), team `CC8UTF7ATG`. Do not mint a new App Store
 Connect key. Do not exec `/Users/jay/apps/ios-fleet/ship-testflight.sh` from a
 cloud seat -- that path does not exist on hosted runners.
+
+## Bundle identifiers (canonical table — 2026-09-22)
+
+| Surface | Identifier | Notes |
+|---|---|---|
+| iOS app target (`PRODUCT_BUNDLE_IDENTIFIER`) | `com.socratictrade.ios` | Source: `ios/project.yml` (regenerated by `xcodegen generate` into `ios/Socratic Trade.xcodeproj/project.pbxproj`). Was `trade.socratic.app` until 2026-09-22. |
+| iOS test target (`PRODUCT_BUNDLE_IDENTIFIER`) | `com.socratictrade.ios.tests` | `ios/SocraticTradeTests/`. Was `trade.socratic.app.tests`. |
+| Sign in with Apple native audience (`NATIVE_APPLE_CLIENT_ID`) | `com.socratictrade.ios` (+ legacy `trade.socratic.app` during coexistence) | `src/lib/auth/apple-client-id.ts` hardcodes BOTH native IDs in `resolveAppleClientIds` until old TF is retired. `APPLE_CLIENT_ID` is the web Service ID — do NOT rely on it for the legacy native audience. |
+| APNs topic | `com.socratictrade.ios` (+ legacy `trade.socratic.app` during coexistence) | `resolveAcceptedApnsBundleIds` always accepts both; register rejects unknowns; `sendApnsPush` uses per-device `topic` (stored bundleId). Optional `APNS_BUNDLE_IDS` CSV extends the set. Flip Infisical `APNS_BUNDLE_ID` only after new TF is live. |
+| App Group (new) | `group.com.socratictrade` | `com.apple.security.application-groups` in `ios/SocraticTrade/SocraticTrade.entitlements` + `ios/project.yml` entitlements block. Must be registered per App ID in the Apple Developer Portal before any shared-container `UserDefaults` writes work. |
+| Associated Domain — applinks | `socratic.trade` (new), `socratictrade.com` (existing) | `com.apple.developer.associated-domains` in `ios/SocraticTrade/SocraticTrade.entitlements` + `ios/project.yml`. The existing `socratictrade.com` universal-link surface is preserved. |
+| Associated Domain — webcredentials | `socratic.trade` (new) | Same key; webcredentials is required for Shared Safari Credentials on the new domain. |
+| Server-side AASA `appIDs` + `webcredentials.apps` | both `CC8UTF7ATG.com.socratictrade.ios` and `CC8UTF7ATG.trade.socratic.app` | `app/.well-known/apple-app-site-association/route.ts`. Keep BOTH appIDs until old TF retired; top-level `webcredentials` required for `webcredentials:socratic.trade`. |
+| Server-side URL scheme (deep links) | `socratictrade://` | Unchanged. iOS routes the tap, not the bundle ID. |
+
+Internal namespaces (NOT bundle IDs — do not rename in a future cleanup):
+
+- `com.apple.developer.teamid.appleSignIn` audience list — keep as web service ID (`AUTH_APPLE_ID`).
+- `NATIVE_APPLE_CLIENT_ID` — native bundle ID (this row above).
+- `APNS_BUNDLE_ID` env — native bundle ID (this row above).
+- Keychain service strings — out of scope per fleet-wide decision (see rollout doc).
+- `~/Library/Application Support/Socratic Trade/` — internal storage path, not a bundle ID.
+
+Full archaeology list and owner action items in `docs/rollouts/2026-09-22-bundle-id-migration.md`.
 
 ## Theme default = light (owner 2026-08-10)
 

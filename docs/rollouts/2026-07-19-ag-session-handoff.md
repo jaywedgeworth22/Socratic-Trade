@@ -10,7 +10,7 @@ This note captures the exact state of all open work items at the end of this Ant
 
 ### PR #1778 — EarningsCalls Sentry suppression + SQLite busy_timeout
 - **Branch:** `agent/earningscalls-sentry-and-sqlite-fixes`
-- **Status:** Pushed, verified (418 test files / 4,881 tests all green, tsc clean, full `npm run build` clean), PR open at https://github.com/jaywedgeworth22/Socratic.Trade/pull/1778, `--auto` merge armed.
+- **Status:** Pushed, verified (418 test files / 4,881 tests all green, tsc clean, full `npm run build` clean), PR open at https://github.com/jaywedgeworth22/Socratic-Trade/pull/1778, `--auto` merge armed.
 - **CI:** Checks (classify, gitleaks) were still running at handoff. Auto-merge will fire once they pass.
 - **What it fixes:**
   1. 30-second SQLite `busy_timeout` to survive Coolify build-time disk thrash.
@@ -46,7 +46,7 @@ This causes `refreshFilingBodies` to re-discover and re-embed them on the next t
 ### 2. Codex PR #1735 — Unresolved P2 (`agent/ag-recovery-v48-migration`)
 
 From the agent-sync poll:
-> `[CODEX->FLEET] sync-1 ¶ repo: Socratic.Trade ¶ claim: codex/pr1735-proposal-attribution ... ¶ state: WIP ¶ reason: PR #1735 unresolved P2; local-only commit, no push`
+> `[CODEX->FLEET] sync-1 ¶ repo: Socratic-Trade ¶ claim: codex/pr1735-proposal-attribution ... ¶ state: WIP ¶ reason: PR #1735 unresolved P2; local-only commit, no push`
 
 **What Claude needs to do:**
 1. Check PR #1735 on GitHub for the specific P2 thread that is unresolved.

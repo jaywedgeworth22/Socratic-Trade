@@ -89,7 +89,7 @@ final class APNSEnvironmentTests: XCTestCase {
     func testReadsDevelopmentProfiles() {
         let profile = wrappedProfile(entitlements: """
                     <key>application-identifier</key>
-                    <string>CC8UTF7ATG.trade.socratic.app</string>
+                    <string>CC8UTF7ATG.com.socratictrade.ios</string>
                     <key>aps-environment</key>
                     <string>development</string>
         """)
@@ -130,7 +130,7 @@ final class PushRegistrationRequestTests: XCTestCase {
         let request = PushRegistrationRequest(
             deviceToken: Data(repeating: 0xAB, count: 32),
             environment: .production,
-            bundleId: "trade.socratic.app"
+            bundleId: "com.socratictrade.ios"
         )
         XCTAssertEqual(request?.token.count, 64)
         XCTAssertEqual(request?.token, String(repeating: "ab", count: 32))
@@ -140,7 +140,7 @@ final class PushRegistrationRequestTests: XCTestCase {
         // A blank token would become a server row that can never be delivered to and never
         // invalidated, because APNs never answers 410 for something it never issued.
         XCTAssertNil(
-            PushRegistrationRequest(deviceToken: Data(), environment: .production, bundleId: "trade.socratic.app")
+            PushRegistrationRequest(deviceToken: Data(), environment: .production, bundleId: "com.socratictrade.ios")
         )
     }
 
@@ -148,11 +148,11 @@ final class PushRegistrationRequestTests: XCTestCase {
         let request = PushRegistrationRequest(
             token: "abc123",
             environment: .sandbox,
-            bundleId: "trade.socratic.app"
+            bundleId: "com.socratictrade.ios"
         )
         XCTAssertEqual(
             request.jsonBody,
-            ["token": "abc123", "environment": "sandbox", "bundleId": "trade.socratic.app"]
+            ["token": "abc123", "environment": "sandbox", "bundleId": "com.socratictrade.ios"]
         )
     }
 
@@ -331,6 +331,7 @@ final class PushDeepLinkContractTests: XCTestCase {
         Row("kill_switch", "https://socratictrade.com/console/activity?tab=alerts", .activity),
         Row("block", "https://socratictrade.com/console/activity?tab=notifications", .activity),
         Row("provider_degraded", "https://socratictrade.com/console/activity?tab=notifications", .activity),
+        Row("liveness_warning", "https://socratictrade.com/console/activity?tab=notifications", .activity),
         Row("budget_alert", "https://socratictrade.com/console/activity?tab=notifications", .activity),
         Row("learning_review", "https://socratictrade.com/console/activity?tab=notifications", .activity),
         Row("deterministic_bear_veto", "https://socratictrade.com/console/activity?tab=notifications", .activity),

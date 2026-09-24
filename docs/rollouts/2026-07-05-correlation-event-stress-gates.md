@@ -131,7 +131,7 @@ reuses the existing `preVetoReasons` fold-in from PR #814 so the earnings tag is
 
 ## Verification
 
-Run from the worktree root (`/Users/jay/Code/Socratic.Trade/.claude/worktrees/monet-corr-stress`):
+Run from the worktree root (`/Users/jay/Code/Socratic-Trade/.claude/worktrees/monet-corr-stress`):
 
 - `npx tsc --noEmit` → clean, no output.
 - Focused: `npx vitest run test/correlation-ewma.test.ts test/stress-scenario.test.ts test/risk-receipts.test.ts test/hard-gate-classification.test.ts test/policy.test.ts test/red-team.test.ts test/market-regime.test.ts test/regime-gate-adoption.test.ts test/deterministic-bear.test.ts test/correlation-cluster-gate.test.ts`

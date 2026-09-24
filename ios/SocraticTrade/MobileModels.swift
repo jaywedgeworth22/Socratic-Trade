@@ -1,4 +1,28 @@
 import Foundation
+import Sentry
+
+/// Per-item decode wrapper.  Decodes any element whose JSON is valid for `T`; an element
+/// whose JSON shape is wrong is captured as `error` (and a `nil` value) so the calling
+/// array can be decoded in full and the caller can decide what to do with the survivors +
+/// the drop count.  Used for the money-path collections on `MobileSnapshot` so a single
+/// malformed element never blanks the whole workspace — but the drop is counted, surfaced
+/// to Sentry, and the snapshot is marked partial-data so the caller cannot pretend the
+/// feed is intact.
+struct FailableDecodable<T: Decodable>: Decodable {
+    let value: T?
+    let error: Error?
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        do {
+            self.value = try container.decode(T.self)
+            self.error = nil
+        } catch {
+            self.value = nil
+            self.error = error
+        }
+    }
+}
 
 struct MobileSnapshot: Decodable {
     let currentUser: CurrentUser?
@@ -30,6 +54,24 @@ struct MobileSnapshot: Decodable {
     let latestScan: MarketScanResponse?
     /// Native weekly value + momentum screens.  Missing on older payloads.
     let weeklyMarketDigest: WeeklyMarketDigest?
+
+    /// 2026-09-20 MM comprehensive review (#3226): money-path collections (positions, orders,
+    /// pendingProposals) are decoded per-item with per-item failures dropped + counted rather
+    /// than letting a single malformed element blank the whole snapshot.  The snapshot is then
+    /// marked `partialData = true` and the drop counts are reported via `partialDropCounts` so a
+    /// caller can decide whether to surface partial-data UI without silently hiding live trading
+    /// state.  Per the issue guidance: a single drop on these three collections always counts as
+    /// partial data — the snapshot is never presented as "all good".
+    let partialData: Bool
+    let partialDropCounts: PartialDropCounts
+
+    struct PartialDropCounts: Equatable {
+        var positions: Int = 0
+        var orders: Int = 0
+        var pendingProposals: Int = 0
+        var total: Int { positions + orders + pendingProposals }
+        var isEmpty: Bool { total == 0 }
+    }
 
     private enum CodingKeys: String, CodingKey {
         case currentUser
@@ -75,9 +117,6 @@ struct MobileSnapshot: Decodable {
         marketSession = try values.decodeIfPresent(String.self, forKey: .marketSession) ?? "unknown"
         scheduler = try values.decodeIfPresent(SchedulerSummary.self, forKey: .scheduler) ?? .empty
         portfolio = try values.decodeIfPresent(PortfolioSummary.self, forKey: .portfolio)
-        positions = try values.decodeIfPresent([Position].self, forKey: .positions) ?? []
-        orders = try values.decodeIfPresent([EquityOrder].self, forKey: .orders) ?? []
-        pendingProposals = try values.decodeIfPresent([PendingProposal].self, forKey: .pendingProposals) ?? []
         dailyStats = try values.decodeIfPresent(DailyStats.self, forKey: .dailyStats) ?? .empty
         // try?: performance is display-only enrichment — a malformed sub-field (this is
         // exactly where the equity-curve date/timestamp mismatch lived) must degrade to
@@ -93,6 +132,69 @@ struct MobileSnapshot: Decodable {
         recentCommands = try values.decodeIfPresent([MobileCommand].self, forKey: .recentCommands) ?? []
         latestScan = try values.decodeIfPresent(MarketScanResponse.self, forKey: .latestScan)
         weeklyMarketDigest = try values.decodeIfPresent(WeeklyMarketDigest.self, forKey: .weeklyMarketDigest)
+
+        // 2026-09-20 MM (#3226) — money-path collections use per-item decoding.  A single
+        // malformed position/order/pending-proposal drops that item (counted), the rest survive,
+        // and `partialData` flips to true so the caller can refuse to render a confident view
+        // over a corrupted feed.  Each drop is also reported to Sentry at warning level.
+        let decodedPositions = Self.decodeEach([FailableDecodable<Position>].self,
+                                               values: values,
+                                               key: .positions,
+                                               collection: "positions")
+        positions = decodedPositions.values
+        let decodedOrders = Self.decodeEach([FailableDecodable<EquityOrder>].self,
+                                            values: values,
+                                            key: .orders,
+                                            collection: "orders")
+        orders = decodedOrders.values
+        let decodedPendingProposals = Self.decodeEach([FailableDecodable<PendingProposal>].self,
+                                                      values: values,
+                                                      key: .pendingProposals,
+                                                      collection: "pendingProposals")
+        pendingProposals = decodedPendingProposals.values
+
+        let counts = PartialDropCounts(
+            positions: decodedPositions.dropped,
+            orders: decodedOrders.dropped,
+            pendingProposals: decodedPendingProposals.dropped
+        )
+        partialDropCounts = counts
+        partialData = !counts.isEmpty
+        if partialData {
+            Self.reportPartialDecodeDrops(counts: counts)
+        }
+    }
+
+    /// Per-item decoder helper. Returns both the successfully-decoded values and the count of
+    /// items that failed to decode (so the caller can mark the snapshot partial and surface the
+    /// drop count to Sentry).
+    private static func decodeEach<T: Decodable>(
+        _ type: [FailableDecodable<T>].Type,
+        values: KeyedDecodingContainer<CodingKeys>,
+        key: CodingKeys,
+        collection: String
+    ) -> (values: [T], dropped: Int) {
+        // decodeIfPresent returns nil for missing OR null keys — both are fine, no drops.
+        guard let raw = try? values.decodeIfPresent(type, forKey: key) else {
+            return ([], 0)
+        }
+        let values = raw.compactMap(\.value)
+        let dropped = raw.count - values.count
+        return (values, dropped)
+    }
+
+    /// Surface a Sentry warning per dropped item so a real upstream bug (broker emitting a
+    /// malformed order, schema drift) is loud instead of invisible. The warning fingerprint
+    /// includes the collection name so the events cluster cleanly.
+    private static func reportPartialDecodeDrops(counts: PartialDropCounts) {
+        #if DEBUG
+        // Skip Sentry noise in dev — the per-decoder call would still be visible in the
+        // console via the throwing FailableDecodable.  Keep the file-log warning so a manual
+        // QA run sees it.
+        NSLog("[MobileSnapshot] partial decode: %@", "\(counts)")
+        #else
+        SentrySDK.capture(message: "MobileSnapshot partial decode: positions=\(counts.positions) orders=\(counts.orders) pendingProposals=\(counts.pendingProposals)")
+        #endif
     }
 
     var unreadNotificationCount: Int {

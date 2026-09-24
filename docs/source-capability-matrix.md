@@ -1,4 +1,4 @@
-# Source × data-point capability matrix (Socratic.Trade)
+# Source × data-point capability matrix (Socratic-Trade)
 
 **Canonical lookup for agents and humans.** When you need one fundamental, quote field,
 calendar fact, narrative artifact (e.g. earnings-call transcript), or macro series —
@@ -21,7 +21,7 @@ a field or a quota reality changes.
 
 ## 0. Policy (binding)
 
-| Vendor / path | Socratic.Trade (ST) | Congress.Trade (CT) |
+| Vendor / path | Socratic-Trade (ST) | Congress.Trade (CT) |
 |---|---|---|
 | **FMP** (direct, RapidAPI FMP, FMP transcripts) | **Forbidden** for product enrichment. Do not call. Admin health should show **OFF** (grey), not STOPPED red. | Latency race / probe + CT-owned enrichment where CT already uses FMP |
 | **QuiverQuant** | **Remove / disconnect** — no registration, no keys, no settings | CT may keep for its own products if licensed |

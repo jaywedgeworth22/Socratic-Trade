@@ -63,7 +63,7 @@ Per subscription element (`provider{id,name,displayName}`, `name`, `status`,
 - **Dry run by default:** with no flag the script prints the diff and exits 0,
   writing nothing and posting nothing. `--apply` performs the writes.
 - **On each applied change**, one line to `#agent-sync`:
-  `repo: Socratic.Trade | [CLAUDE->FLEET] knob-sync applied: KEY old->new (plan <name> <status>); rides next deploy`
+  `repo: Socratic-Trade | [CLAUDE->FLEET] knob-sync applied: KEY old->new (plan <name> <status>); rides next deploy`
 
 ## Infisical write path (mirrors the proven universal-auth flow)
 
@@ -89,7 +89,7 @@ on argv, and dropped from the shell after the fetch.
 ## launchd install (owner action - NOT done here)
 
 ```bash
-# 1. edit paths in the plist if the repo is not at /Users/jay/Code/Socratic.Trade
+# 1. edit paths in the plist if the repo is not at /Users/jay/Code/Socratic-Trade
 # 2. (optional) add SLACK_BOT_TOKEN to EnvironmentVariables to enable the Slack post
 cp scripts/com.jay.provider-knob-sync.plist ~/Library/LaunchAgents/
 launchctl load -w ~/Library/LaunchAgents/com.jay.provider-knob-sync.plist

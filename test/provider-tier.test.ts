@@ -230,7 +230,7 @@ describe("runProviderTierCheck", () => {
     // Massive → free (old window empty). FMP is never probed from this app.
     const fetcher = (async (u: string) => {
       if (u.includes("financialmodelingprep.com")) {
-        throw new Error("FMP must not be probed from Socratic.Trade");
+        throw new Error("FMP must not be probed from Socratic-Trade");
       }
       return jsonRes({ results: isOld(u) ? [] : [{ c: 9 }] });
     }) as unknown as typeof fetch;
@@ -254,7 +254,7 @@ describe("runProviderTierCheck", () => {
     getDb().prepare("DELETE FROM notification_events").run();
     const fetcher = (async (u: string) => {
       if (u.includes("financialmodelingprep.com")) {
-        throw new Error("FMP must not be probed from Socratic.Trade");
+        throw new Error("FMP must not be probed from Socratic-Trade");
       }
       return jsonRes({ results: isOld(u) ? [] : [{ c: 9 }] });
     }) as unknown as typeof fetch;
@@ -272,7 +272,7 @@ describe("runProviderTierCheck", () => {
     });
     const fetcher = (async (u: string) => {
       if (u.includes("financialmodelingprep.com")) {
-        throw new Error("FMP must not be probed from Socratic.Trade");
+        throw new Error("FMP must not be probed from Socratic-Trade");
       }
       return jsonRes({ results: [{ c: 9 }] }); // both windows return data → paid
     }) as unknown as typeof fetch;

@@ -1,5 +1,7 @@
 # 2026-08-19 — iOS Scan keeps last-good on a 503 refresh
 
+> **2026-09-22 [MM] archaeology note:** historical reference to the Socratic.Trade bundle ID `trade.socratic.app` and the App Store Connect app `6799238379` is kept verbatim as they were live at rollout time.  The bundle ID was renamed on 2026-09-22 to `com.socratictrade.ios` (PR forthcoming); the appleId is unchanged.  See `docs/rollouts/2026-09-22-bundle-id-migration.md`.
+
 ## Context & Objective
 
 Jay's signed-in web `/console/scan` on live `4abfb7fa` clicked Refresh scan once (not Run once).  Fresh refresh showed “Market scan failed (503). Showing the last good scan from Aug 18, 2026, 7:25:13 PM.”  The fallback cache still had the universe: Market scan (70), Smart money (20), 5069 quotes / 50 ranked + 5 held + 15 outliers / 5073 scanned, names including BRK-B / GOOG / BRK-A.  Testers on TestFlight 1.0.68 (#2830 ScanView) still saw iOS Market Scan as empty or broken.  iOS is a different surface and did not keep last-good.

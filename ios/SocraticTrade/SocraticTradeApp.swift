@@ -177,7 +177,7 @@ struct ContentView: View {
 /// ticking, until the app is ready — then the whole thing slides up and away (see the
 /// transition on the caller).
 ///
-/// Replaces the previous icon-in-a-rounded-square + spinner + "Socratic.Trade" placeholder,
+/// Replaces the previous icon-in-a-rounded-square + spinner + "Socratic-Trade" placeholder,
 /// which shared nothing with the web console's load screen and repeated back the app name the
 /// user had just tapped.
 private struct LaunchStateView: View {

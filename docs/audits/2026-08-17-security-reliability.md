@@ -1,4 +1,4 @@
-# Socratic.Trade — Security, Reliability, and Disaster-Recovery Audit
+# Socratic-Trade — Security, Reliability, and Disaster-Recovery Audit
 
 **Date:** 2026-08-17  
 **Tree:** `4980322b` (`main` at audit start; live `/api/health` release sha matched)  

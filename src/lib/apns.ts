@@ -53,10 +53,39 @@ export type ApnsEnvSource = Record<string, string | undefined>;
 export interface ApnsConfig {
   keyId: string;
   teamId: string;
-  /** The APNs topic — the app's bundle id (trade.socratic.app). */
+  /** Primary APNs topic — usually APNS_BUNDLE_ID (com.socratictrade.ios after the rename). */
   bundleId: string;
   /** PEM text of the .p8 signing key, decoded from APNS_PRIVATE_KEY_B64. */
   privateKeyPem: string;
+}
+
+/** Current iOS app bundle / APNs topic after the 2026-09-22 rename. */
+export const CURRENT_APNS_BUNDLE_ID = "com.socratictrade.ios";
+
+/** Legacy iOS app bundle / APNs topic — keep accepting+sending until old TF is retired. */
+export const LEGACY_APNS_BUNDLE_ID = "trade.socratic.app";
+
+/**
+ * Bundle IDs the server will register and send against during the coexistence window.
+ * Always includes both native topics; also honors APNS_BUNDLE_ID + comma-separated
+ * APNS_BUNDLE_IDS so ops can extend without a code change.
+ */
+export function resolveAcceptedApnsBundleIds(env: ApnsEnvSource = process.env): string[] {
+  const ids: string[] = [CURRENT_APNS_BUNDLE_ID, LEGACY_APNS_BUNDLE_ID];
+  const primary = (env.APNS_BUNDLE_ID ?? "").trim();
+  if (primary && !ids.includes(primary)) ids.push(primary);
+  for (const part of (env.APNS_BUNDLE_IDS ?? "").split(",")) {
+    const id = part.trim();
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
+export function isAcceptedApnsBundleId(
+  bundleId: string,
+  env: ApnsEnvSource = process.env
+): boolean {
+  return resolveAcceptedApnsBundleIds(env).includes(bundleId.trim());
 }
 
 function looksLikePem(value: string): boolean {
@@ -254,6 +283,11 @@ export interface ApnsAlert {
 export interface ApnsSendInput extends ApnsAlert {
   deviceToken: string;
   environment: keyof typeof APNS_ENDPOINTS;
+  /**
+   * Per-device APNs topic (bundle id). During the bundle-rename coexistence window
+   * each registered device keeps its own topic; fall back to config.bundleId.
+   */
+  topic?: string;
 }
 
 export interface ApnsSendDeps {
@@ -318,7 +352,7 @@ export async function sendApnsPush(input: ApnsSendInput, deps: ApnsSendDeps): Pr
 
   const headers: Record<string, string> = {
     authorization: `bearer ${jwt}`,
-    "apns-topic": deps.config.bundleId,
+    "apns-topic": (input.topic?.trim() || deps.config.bundleId),
     "apns-push-type": "alert",
     "apns-priority": "10",
     "content-type": "application/json"

@@ -1,4 +1,4 @@
-# Socratic.Trade full-stack review — 2026-08-23 (Cursor)
+# Socratic-Trade full-stack review — 2026-08-23 (Cursor)
 
 Live probe of `https://socratictrade.com/api/health` at 2026-08-23T21:03Z: `ok: true`, live sha `2de5856fd00f9b828a0a02f8aa55468de2118a29`, scheduler lease healthy, `tradingLiveness.degraded: 1`, `oldestCompletedRunAgeSeconds: 262029` (~3 days), `marketOpen: false`. Pinecone configured. Embed provider OpenRouter. Massive/Polygon history-cap 403 on a 2.5y window (free-tier probe, not today's tape).
 

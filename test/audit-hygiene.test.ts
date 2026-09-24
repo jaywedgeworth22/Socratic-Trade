@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { auditDeduped, DEFAULT_DEDUPE_INTERVAL_MS } from "../src/lib/audit-dedupe";
 import { auditBoundedStrategyRunResult, summarizeMarketScanForAudit } from "../src/lib/audit-bounded-run";
-import { isAuditPruneDue, pruneAuditEvents, AUDIT_PRUNE_OBSERVABILITY_KINDS } from "../src/lib/audit-prune";
+import { isAuditPruneDue, pruneAuditEvents, AUDIT_PRUNE_OBSERVABILITY_KINDS, AUDIT_PRUNE_NEVER_PRUNED_KINDS } from "../src/lib/audit-prune";
 import { getDb } from "../src/lib/db";
 import { setInternalSetting } from "../src/lib/db-settings";
 import type { MarketScan } from "../src/lib/types";
@@ -129,6 +129,27 @@ describe("pruneAuditEvents", () => {
     expect(res.providerOutbox).toBe(1);
     expect((db.prepare("SELECT count(*) c FROM provider_dispatch_attempts").get() as { c: number }).c).toBe(1);
     expect((db.prepare("SELECT count(*) c FROM provider_usage_outbox").get() as { c: number }).c).toBe(1);
+  });
+
+  // 2026-09-18: proposal_rejected_by_red_team and the related override kinds were being
+  // silently hard-deleted by the "everything else" 90-day default bucket (they were never on
+  // the 14-day observability list) even though getRedTeamEfficacy (src/lib/performance.ts)
+  // rebuilds the ENTIRE lifetime Red Team veto scorecard from exactly these rows. Rows already
+  // pruned before this fix are gone for good — see docs/rollouts/2026-09-18-stats-veto-retention.md.
+  it("never prunes Red Team veto/override audit kinds or llm_call_latency, even far past the 90d default", () => {
+    expect(AUDIT_PRUNE_NEVER_PRUNED_KINDS).toContain("llm_call_latency");
+    for (const kind of AUDIT_PRUNE_NEVER_PRUNED_KINDS) {
+      insertAudit(kind, daysAgo(400)); // keep — exempt regardless of age
+    }
+    insertAudit("order_placed", daysAgo(400)); // sanity control: an ordinary kind still prunes past 90d
+
+    const res = pruneAuditEvents(new Date());
+    expect(res.auditDefault).toBe(1); // only the "order_placed" control row
+
+    const remainingKinds = (getDb().prepare("SELECT DISTINCT kind FROM audit_events ORDER BY kind").all() as Array<{ kind: string }>).map(
+      (r) => r.kind
+    );
+    expect(remainingKinds).toEqual([...AUDIT_PRUNE_NEVER_PRUNED_KINDS].sort());
   });
 
   it("isAuditPruneDue gates on 24h watermark", () => {

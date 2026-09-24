@@ -69,11 +69,12 @@ describe("resolveLlmEndpoint", () => {
 
   it("falls back to the native MiniMax endpoint with the MiniMax credential", () => {
     setApiKey("test-user-minimax", "minimax", "sk-minimax-test-key");
-    const endpoint = resolveLlmEndpoint({ llmModel: "minimax-m2.7" }, "test-user-minimax");
+    // 2026-09-18 catalog cleanup: minimax-m2.7 was removed in favor of minimax-m3.
+    const endpoint = resolveLlmEndpoint({ llmModel: "minimax-m3" }, "test-user-minimax");
     expect(endpoint.provider).toBe("minimax");
     expect(endpoint.url).toBe("https://api.minimax.io/v1/chat/completions");
     expect(endpoint.key).toBe("sk-minimax-test-key");
-    expect(endpoint.model).toBe("MiniMax-M2.7");
+    expect(endpoint.model).toBe("MiniMax-M3");
     expect(endpoint.transport).toBe("chat-completions");
   });
 
@@ -174,17 +175,18 @@ describe("resolveLlmEndpoint", () => {
       ["grok-latest", "~x-ai/grok-latest"],
       ["x-ai/grok-latest", "~x-ai/grok-latest"],
       ["~x-ai/grok-latest", "~x-ai/grok-latest"],
-      ["gpt-5.4-mini", "~openai/gpt-mini-latest"],
-      ["gpt-mini-latest", "~openai/gpt-mini-latest"],
-      ["openai/gpt-mini-latest", "~openai/gpt-mini-latest"],
-      ["~openai/gpt-mini-latest", "~openai/gpt-mini-latest"],
+      ["gpt-6-astra", "openai/gpt-6-astra"],
+      ["openai/gpt-6-astra", "openai/gpt-6-astra"],
+      ["~openai/gpt-6-astra", "openai/gpt-6-astra"],
       ["kimi-latest", "~moonshotai/kimi-latest"],
       ["moonshotai/kimi-latest", "~moonshotai/kimi-latest"],
       ["~moonshotai/kimi-latest", "~moonshotai/kimi-latest"],
-      ["minimax-m2.7", "minimax/minimax-m2.7"],
-      ["minimax/minimax-m2.7", "minimax/minimax-m2.7"],
-      ["deepseek-reasoner", "deepseek/deepseek-r1"],
-      ["deepseek/deepseek-reasoner", "deepseek/deepseek-r1"],
+      ["minimax-m3", "minimax/minimax-m3"],
+      ["minimax/minimax-m3", "minimax/minimax-m3"],
+      // 2026-09-18: deepseek-r1 / deepseek-reasoner removed from the curated catalog. Both
+      // go through the vendor-prefix fallback now and yield their literal vendor-prefixed
+      // slug — the old alias mapping to 'deepseek/deepseek-r1' no longer applies.
+      ["deepseek/deepseek-reasoner", "deepseek/deepseek-reasoner"],
       ["deepseek-r1", "deepseek/deepseek-r1"]
     ];
     for (const [input, expected] of cases) {

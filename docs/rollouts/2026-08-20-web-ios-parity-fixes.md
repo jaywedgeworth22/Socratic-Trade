@@ -81,7 +81,7 @@ Full local `npm test` in this Cloud VM hit unrelated network/host flakes (Yahoo 
 
 Dispatched `CI` `workflow_dispatch` on head `d52b354a` (cloud-proxy pushes do not fire `pull_request` events):
 
-- https://github.com/jaywedgeworth22/Socratic.Trade/actions/runs/32329145996
+- https://github.com/jaywedgeworth22/Socratic-Trade/actions/runs/32329145996
 - `verify-hosted` success (lint, tsc, npm test, npm run build) — 17m 34s
 - `verify` aggregator success
 

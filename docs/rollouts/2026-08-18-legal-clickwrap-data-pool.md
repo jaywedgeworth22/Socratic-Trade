@@ -4,7 +4,7 @@
 
 Owner cut 2026-08-17 items 9–11 (from the blind-spots audit): ship a versioned
 dismissible legal notice, make market-data pooling accept-or-cannot-use, and keep
-Socratic.Trade multi-user-capable for friends/family.  One PR because the three
+Socratic-Trade multi-user-capable for friends/family.  One PR because the three
 items share the consent/settings surfaces.  Do not sell ST.  Do not steal
 #2792 / #2798 / #2800 / #2794.
 
@@ -88,8 +88,8 @@ npm run build                # pass; /welcome is a static route
 
 CI on `1b9e84ca` (after inlining the iOS sheet + merging `origin/main`):
 
-- iOS unsigned `xcodebuild`: pass — https://github.com/jaywedgeworth22/Socratic.Trade/actions/runs/32089276473
-- `verify-hosted` (lint + tsc + full vitest + next build): pass — https://github.com/jaywedgeworth22/Socratic.Trade/actions/runs/32089276341
+- iOS unsigned `xcodebuild`: pass — https://github.com/jaywedgeworth22/Socratic-Trade/actions/runs/32089276473
+- `verify-hosted` (lint + tsc + full vitest + next build): pass — https://github.com/jaywedgeworth22/Socratic-Trade/actions/runs/32089276341
 
 First CI iOS job on `d9ee5cc9` failed because a new `LegalConsentSheet.swift` was
 not in the committed `.pbxproj`.  The sheet is now inlined in

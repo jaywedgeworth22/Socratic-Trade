@@ -228,7 +228,7 @@ export async function probeFmpTier(
   if (!key) return { tier: "unknown", reason: "FMP direct access retired (use Congress.Trade)", signal: "no_key" };
   return {
     tier: "unknown",
-    reason: "FMP direct access retired in Socratic.Trade — no probe issued",
+    reason: "FMP direct access retired in Socratic-Trade — no probe issued",
     signal: "no_key"
   };
 }

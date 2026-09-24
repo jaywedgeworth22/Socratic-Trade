@@ -8,9 +8,9 @@ Removed redundant purple paper account reality chips (`PAPER · broker practice 
 - **Strategy Page (`app/console/strategy/page.tsx`)**: Removed `<Chip tone={reality.tone}>{reality.word} · {reality.phrase}</Chip>` from page header.
 
 ## Touched Files
-- [page.tsx](file:///Users/jay/Code/Socratic.Trade/app/console/page.tsx)
-- [page.tsx](file:///Users/jay/Code/Socratic.Trade/app/console/strategy/page.tsx)
-- [STATUS.md](file:///Users/jay/Code/Socratic.Trade/STATUS.md)
+- [page.tsx](file:///Users/jay/Code/Socratic-Trade/app/console/page.tsx)
+- [page.tsx](file:///Users/jay/Code/Socratic-Trade/app/console/strategy/page.tsx)
+- [STATUS.md](file:///Users/jay/Code/Socratic-Trade/STATUS.md)
 
 ## Verification
 - `npx tsc --noEmit`

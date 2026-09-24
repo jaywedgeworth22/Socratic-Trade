@@ -9,7 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_POLICY } from "../src/lib/defaults";
 import { liveApprovalText } from "../src/lib/strategy";
 import { getDb, getProposal, insertProposal, setPolicy, upsertConnectedAccount } from "../src/lib/db";
@@ -112,6 +112,10 @@ beforeEach(() => {
   broker.placed = [];
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 /** Stored at generation time in a pre-market session, priced off a $220 quote (220 * (1 - 0.0015)). */
 const STORED_EXIT: TradeProposal = {
   symbol: "AAPL",
@@ -166,7 +170,7 @@ function seedStoredExit(
 
 describe("executeProposal — approval-held protective-exit reprice", () => {
   it("still in the extended session: places a FRESH bid-anchored limit, never the stale stored one", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-06-10T12:00:00Z")); // 08:00 ET = pre-market (EDT)
     try {
       const userId = `reprice-pre-${randomUUID()}`;
@@ -201,7 +205,7 @@ describe("executeProposal — approval-held protective-exit reprice", () => {
   }, 30000);
 
   it("extended session over by approval time: degrades to the market/queue-to-open default", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-06-10T14:30:00Z")); // 10:30 ET = regular session (EDT)
     try {
       const userId = `reprice-regular-${randomUUID()}`;
@@ -226,7 +230,7 @@ describe("executeProposal — approval-held protective-exit reprice", () => {
   }, 30000);
 
   it("LIVE + typed confirmation: a MATERIAL reprice routes BACK to approval instead of placing", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-06-10T12:00:00Z")); // 08:00 ET = pre-market (EDT)
     try {
       const userId = `reprice-live-material-${randomUUID()}`;
@@ -234,16 +238,21 @@ describe("executeProposal — approval-held protective-exit reprice", () => {
       // The phrase below confirms the STORED order (limit 219.67); the fresh quote has fallen ~9.5%
       // through it, so placing the 198.70 reprice under that confirmation would violate the live
       // typed-confirm invariant — defer to the human (precedent: autoRemediateStaleExitOrders).
-      const result = await executeProposal(proposalId, userId, {
+      // #3343: protective-exit material reprice routes back to approval — executeProposal now
+      // throws instead of returning {status:"proposed", reasons:[...]}. The proposal row is
+      // updated to 'proposed' before the throw, so we verify both the throw and the row state.
+      const result: Error = await executeProposal(proposalId, userId, {
         liveConfirmation: {
           proposalId,
           accountNumber: "REPRICE",
           executionMode: "broker/live",
           typedText: liveApprovalText("AAPL")
         }
-      });
-      expect(result.status).toBe("proposed");
-      expect(result.reasons?.[0]).toContain("approve the repriced order again");
+      }).then(
+        (v) => { throw new Error(`expected throw, got ${JSON.stringify(v)}`); },
+        (e) => e
+      );
+      expect(result.message).toContain("approve the repriced order again");
       expect(broker.placed).toHaveLength(0);
       // The card stays pending, updated to the repriced order the next Approve will confirm.
       const persistedRow = getProposal(proposalId, userId);
@@ -263,7 +272,7 @@ describe("executeProposal — approval-held protective-exit reprice", () => {
   }, 30000);
 
   it("LIVE + typed confirmation: IMMATERIAL drift places normally (with the reprice audited)", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-06-10T12:00:00Z")); // 08:00 ET = pre-market (EDT)
     try {
       const userId = `reprice-live-immaterial-${randomUUID()}`;

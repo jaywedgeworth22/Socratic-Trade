@@ -38,7 +38,7 @@ export default defineConfig({
     // (hit on main after #3162, attributed to economic-calendar-prompt-wiring).
     disableConsoleIntercept: true,
     globalSetup: "./test/global-setup.ts",
-    setupFiles: ["./test/setup-peer-lane-cleanup.ts"],
+    setupFiles: ["./test/setup-peer-lane-cleanup.ts", "./test/setup-fetch-mock.ts"],
     // Force isTradingDay()'s no-argument "today" check true so strategy/scheduler tests don't flake
     // on real market holidays/weekends (see isTradingDay in src/lib/market-calendar.ts). The override
     // there is additionally gated on process.env.VITEST, so a stray copy of this flag in a dev/prod
@@ -47,6 +47,7 @@ export default defineConfig({
     // read process.env.TMPDIR directly — all three point at the per-run root above so no temp DB can
     // land loose in the shared OS temp dir.
     env: {
+      TZ: "America/New_York",
       AGENTIC_TEST_FORCE_TRADING_DAY: "1",
       OPENROUTER_API_URL: "https://openrouter.ai/api/v1/chat/completions",
       TMPDIR: runTmpRoot,

@@ -1,7 +1,7 @@
 # Data Synchronization & Latency Propagation
 
 ## Context & Objective
-The user requested that we ensure Congress.Trade (CT) is properly coordinating and exchanging data with Socratic.Trade (ST). Specifically, CT must share real-time and EOD prices with ST, track competitor trade publication latency, and provide that latency data to ST's LLM trade proposers.
+The user requested that we ensure Congress.Trade (CT) is properly coordinating and exchanging data with Socratic-Trade (ST). Specifically, CT must share real-time and EOD prices with ST, track competitor trade publication latency, and provide that latency data to ST's LLM trade proposers.
 
 ## Changes Made
 - ST already shares EOD pricing, SPX closes, and reference data to CT daily via `runCongressDailyShare`.

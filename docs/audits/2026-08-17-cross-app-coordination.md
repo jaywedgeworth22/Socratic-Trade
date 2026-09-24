@@ -5,12 +5,12 @@
 slice of §7).
 
 **Auditor:** Cursor Cloud (portfolio architect / contracts / SRE / product).
-**Scope date:** 2026-08-17.  Evidence from `Socratic.Trade` HEAD plus GitHub `main`
+**Scope date:** 2026-08-17.  Evidence from `Socratic-Trade` HEAD plus GitHub `main`
 on the peer repos listed below.
 
 ## 1. Context and objective
 
-The fleet is no longer three loosely related apps.  Socratic.Trade (ST),
+The fleet is no longer three loosely related apps.  Socratic-Trade (ST),
 Congress.Trade (CT), Usage-Monitor (UM), and `congress-trading-shared` (CTS)
 share contracts, tokens, a Hetzner box, Cloudflare accounts, Infisical
 projects, Mac runners, and alert channels.  DealDex (DD) and
@@ -26,7 +26,7 @@ those fixes.
 
 | Repo | How read | HEAD used |
 |------|----------|-----------|
-| Socratic.Trade | local `/workspace` | this branch's base (`4980322b` + docs) |
+| Socratic-Trade | local `/workspace` | this branch's base (`4980322b` + docs) |
 | Congress.Trade | `gh api` / `gh search code` on `main` | 2026-08-17 ~21:48Z |
 | Usage-Monitor | `gh api` on `main` | 2026-08-17 ~14:18Z |
 | congress-trading-shared | `gh api` on `main` + tags | tag `v2.5.2` (2026-08-11) |
@@ -107,7 +107,7 @@ owner work.
 
 | Consumer | How CTS is consumed | Claimed version |
 |----------|---------------------|-----------------|
-| Socratic.Trade | `package.json` `github:jaywedgeworth22/congress-trading-shared#v2.5.2` (lock `b2847eb9…`) | 2.5.2 |
+| Socratic-Trade | `package.json` `github:jaywedgeworth22/congress-trading-shared#v2.5.2` (lock `b2847eb9…`) | 2.5.2 |
 | Usage-Monitor | same git tag pin | 2.5.2 |
 | Congress.Trade | **not** an npm dependency.  Deno import map → `app/vendor/congress-trading-shared/src/index.ts`.  `VENDOR-PROVENANCE.md`: immutable release `v2.5.2`, imported 2026-08-11 | 2.5.2 |
 | DealDex | no dependency | n/a |
@@ -260,7 +260,7 @@ outage, but a token-blast-radius issue if the ingest secret leaks.
 
 ### 4.6 Alert routing — P2
 
-ST `notify.ts` appends `(sent by Socratic.Trade)` on Resend bodies and skips
+ST `notify.ts` appends `(sent by Socratic-Trade)` on Resend bodies and skips
 email when Pushover can deliver.  That closed the 2026-08-13
 "Litestream mail looked like UM" confusion.
 
@@ -400,7 +400,7 @@ ios-fleet / Infisical.  Keep it that way.  Do not "helpfully" add
 |-----------------|------------------|-------------------------------|-------------------|-------|
 | Congress.Trade | **Yes** | — | Yes | Weaker congress signals; share/SSE idle; price cache-aside skipped |
 | Usage-Monitor | **Yes** | Yes (budget fail-open) | — | Telemetry loss; ST call-volume forgotten; no hard budget |
-| Socratic.Trade | — | Yes, with Massive/Yahoo fallback | Yes | CT peer prices 401/5xx → CT's own cascade |
+| Socratic-Trade | — | Yes, with Massive/Yahoo fallback | Yes | CT peer prices 401/5xx → CT's own cascade |
 | Hetzner Coolify box | **No** | **No** (Coolify CT) | **No** | Shared fate.  DD on Vercel survives |
 | Owner Mac | **Yes** | Senate scout/relay **degrade** | Yes (web) | iOS ships stall for ST/CT/UM |
 | CTS repo / npm | No new installs | Vendor tree still boots | No new installs | Running containers keep last `node_modules` / vendor |

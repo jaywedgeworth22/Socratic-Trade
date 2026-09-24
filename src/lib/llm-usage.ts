@@ -79,9 +79,15 @@ export type LlmCostSource = "billed" | "estimated";
 // USD per 1M tokens, [input, output]. Best-effort; unknown models fall back to a
 // conservative env-configurable default (LLM_UNPRICED_MODEL_COST_PER_M) so unpriced
 // models count against budgets rather than flying under as $0.
+//
+// VERIFIED 2026-09-18 against the live public OpenRouter model list (446 models) as part of
+// the model-catalog cleanup — see docs/rollouts/2026-09-18-model-catalog-cleanup.md for the
+// full before/after and the source figures. Every price below for a row still in
+// LLM_MODEL_CATALOG (src/lib/llm-model-catalog.ts) was checked against that list; entries
+// that were wrong are noted with what they were.
 const MODEL_PRICE_PER_M: Record<string, [number, number]> = {
-  "gpt-4o": [2.5, 10],
-  "gpt-4o-mini": [0.15, 0.6],
+  // Legacy/orphan ids — never part of the curated catalog; left as historical price
+  // snapshots, not touched by the 2026-09-18 catalog cleanup.
   "gpt-4.1": [2, 8],
   "gpt-4.1-mini": [0.4, 1.6],
   "o4-mini": [1.1, 4.4],
@@ -91,73 +97,82 @@ const MODEL_PRICE_PER_M: Record<string, [number, number]> = {
   "o1": [15, 60],
   "gpt-5.5": [5, 30],
   "gpt-5.4": [2.5, 15],
-  "gpt-5.4-mini": [0.75, 4.5],
-  "gpt-mini-latest": [0.75, 4.5],
-  "gpt-5.4-nano": [0.2, 1.25],
-  "gpt-6-astra-pro": [10, 50],
-  "gpt-6-astra": [10, 50],
-  "minimax-m3": [0.3, 1.2],
-  "minimax-m2.7": [0.3, 1.2],
   "gpt-5.6": [5, 30],
-  "gpt-5.6-sol": [5, 30],
-  "gpt-5.6-terra": [2.5, 15],
-  "gpt-5.6-luna": [1, 6],
-  "grok-build-0.1": [1, 2],
-  "grok-build-latest": [1, 2],
-  "grok-4.3": [1.25, 2.5],
-  "grok-4.5": [1.25, 2.5],
-  "grok-4.6": [2, 6],
-  "grok-latest": [2, 6],
-  "claude-fable-5": [10, 50],
-  "claude-fable-latest": [10, 50],
-  "claude-opus-4-8": [5, 25],
-  "claude-opus-5": [5, 25],
-  "claude-opus-latest": [5, 25],
-  "claude-sonnet-5": [3, 15],
-  "claude-sonnet-4-6": [3, 15],
-  "claude-sonnet-latest": [3, 15],
-  "claude-haiku-4-5": [1, 5],
-  "claude-haiku-4.5": [1, 5],
-  "claude-haiku-latest": [1, 5],
-  // Gemini (lite listed first so the prefix match prefers it over the base flash key).
   "gemini-3.1-flash-lite": [0.25, 1.5],
-  "gemini-flash-lite-latest": [0.25, 1.5],
   "gemini-3.1-pro-preview": [2, 12],
-  "gemini-pro-latest": [2, 12],
   "gemini-3.5-flash": [1.5, 9],
   "gemini-3.6-flash": [0.75, 3.75],
   "gemini-3.7-flash": [0.375, 1.875],
-  "gemini-3.8-flash": [0.75, 3.75],
-  "gemini-flash-latest": [0.75, 3.75],
   "gemini-2.5-flash-lite": [0.1, 0.4],
   "gemini-2.5-flash": [0.3, 2.5],
   "gemini-2.5-pro": [1.25, 10],
-  "mistral-large-2512": [0.5, 1.5],
-  "mistral-large-latest": [0.5, 1.5],
-  "mistral-medium-3-5": [1.5, 7.5],
-  "mistral-medium-latest": [1.5, 7.5],
-  "mistral-small-latest": [0.15, 0.6],
   "mistral-small-2506": [0.1, 0.3],
   "mistral-large": [2, 6],
   "mistral-medium": [0.4, 2],
   "mistral-small": [0.1, 0.3],
   "deepseek-v4-flash": [0.14, 0.28],
-  "deepseek-v4-flash-0731": [0.065, 0.18],
-  "deepseek-flash-latest": [0.065, 0.18],
   "deepseek-v4-pro": [0.435, 0.87],
-  "deepseek-v4-pro-0813": [0.57948, 1.73844],
-  "deepseek-pro-latest": [0.57948, 1.73844],
+  "deepseek-chat": [0.14, 0.28],
+  "grok-4.3": [1.25, 2.5],
+  "grok-4.5": [1.25, 2.5],
+  "claude-fable-5": [10, 50],
+  "claude-opus-4-8": [5, 25],
+
+  // --- Curated catalog rows (LLM_MODEL_CATALOG, 21 rows as of 2026-09-18) ---
+  "gpt-6-astra-pro": [10, 50],
+  "gpt-6-astra": [10, 50],
+  "gpt-5.6-sol": [2, 10], // was [5, 30] — real price is $2/$10 (verified 2026-09-18)
+  "gpt-5.6-luna": [0.2, 1.2], // was [1, 6] — real price is $0.20/$1.20 (verified 2026-09-18)
+  "grok-4.6": [2, 6],
+  "grok-latest": [2, 6],
+  "claude-fable-latest": [10, 50],
+  "claude-opus-5": [5, 25],
+  "claude-opus-latest": [5, 25],
+  "claude-sonnet-5": [2, 10], // was [3, 15] — real price is $2/$10 (verified 2026-09-18)
+  "claude-sonnet-4-6": [2, 10], // was [3, 15] — kept in sync with claude-sonnet-5 above
+  "claude-sonnet-latest": [2, 10], // was [3, 15] — real price is $2/$10 (verified 2026-09-18)
+  "claude-haiku-4-5": [1, 5],
+  "claude-haiku-4.5": [1, 5],
+  "claude-haiku-latest": [1, 5],
+  "gemini-flash-lite-latest": [0.3, 2.5], // was [0.25, 1.5] — now serves 3.5, not 3.1 (verified 2026-09-18)
+  "gemini-3.8-flash": [0.75, 3.75],
+  "gemini-flash-latest": [0.75, 3.75],
+  "gemini-pro-latest": [2, 12],
+  "mistral-large-2512": [0.5, 1.5],
+  "mistral-large-latest": [0.5, 1.5],
+  "mistral-medium-3-5": [1.5, 7.5],
+  "mistral-medium-latest": [1.5, 7.5],
+  "mistral-small-latest": [0.15, 0.6],
+  "deepseek-v4-flash-0731": [0.06, 0.12], // was [0.065, 0.18] — real price is $0.06/$0.12 (verified 2026-09-18)
+  "deepseek-flash-latest": [0.06, 0.12], // was [0.065, 0.18] — kept in sync with deepseek-v4-flash-0731 above
+  "deepseek-v4-pro-0813": [0.57816, 1.73448], // was [0.57948, 1.73844] — exact JSON figures (verified 2026-09-18)
+  "deepseek-pro-latest": [0.57816, 1.73448], // was [0.57948, 1.73844] — kept in sync with deepseek-v4-pro-0813 above
+  "minimax-m3": [0.3, 1.2],
+  "muse-spark-1.3": [1.25, 4.25],
+  "muse-glimmer-30b": [0.35, 1.5], // was [0.3, 1.1] — real (live OpenRouter) price is $0.35/$1.50 (verified 2026-09-18)
+  "kimi-latest": [1.95, 10.92], // was [0.3, 1.2] — the old figure was Kimi's cache-HIT input price, not the
+  "kimi-k3": [1.95, 10.92], //     real cache-miss rate; real price is $1.95/$10.92 (verified 2026-09-18)
+
+  // --- Retired from the curated catalog 2026-09-18 (model-catalog cleanup) ---
+  // Kept ONLY so any historical usage row still recorded under one of these ids still
+  // resolves to a cost estimate — do not remove until confirmed no historical usage rows
+  // reference them, and do not offer these for new selection (they are no longer in
+  // LLM_MODEL_CATALOG). See docs/rollouts/2026-09-18-model-catalog-cleanup.md.
+  "gpt-4o": [2.5, 10],
+  "gpt-4o-mini": [0.15, 0.6],
+  "gpt-5.4-mini": [0.75, 4.5],
+  "gpt-mini-latest": [0.75, 4.5],
+  "gpt-5.4-nano": [0.2, 1.25],
+  "gpt-5.6-terra": [2.5, 15],
+  "grok-build-0.1": [1, 2],
+  "grok-build-latest": [1, 2],
+  "minimax-m2.7": [0.3, 1.2],
   "deepseek-reasoner": [0.55, 2.19],
   "deepseek-r1": [0.55, 2.19],
-  "muse-spark-1.3": [1.25, 4.25],
-  "muse-glimmer-30b": [0.3, 1.1],
   "llama-4-maverick": [0.2, 0.696],
   "llama-4-scout": [0.1, 0.3],
   "llama-70b-latest": [0.72, 0.72],
-  "llama-3.3-70b-instruct": [0.72, 0.72],
-  "deepseek-chat": [0.14, 0.28],
-  "kimi-latest": [0.3, 1.2],
-  "kimi-k3": [0.3, 1.2]
+  "llama-3.3-70b-instruct": [0.72, 0.72]
 };
 
 /** Conservative default: $15/1M tokens total ($7.50 input, $7.50 output). Env-configurable. */
@@ -411,6 +426,8 @@ export interface LlmUsageRow {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  /** Calls whose total_tokens column was non-NULL (token telemetry present). */
+  callsWithTokens: number;
   /** Total spend for the group.  This is the SUM of `billedCostUsd` and `estimatedCostUsd`, so it
    *  is only fully authoritative when `estimatedCalls === 0` — surfaces that show it must say so
    *  rather than presenting a mixed figure as billed truth. */
@@ -475,6 +492,7 @@ export function getLlmUsageSummary(opts: {
               COALESCE(SUM(lu.prompt_tokens),0) AS prompt_tokens,
               COALESCE(SUM(lu.completion_tokens),0) AS completion_tokens,
               COALESCE(SUM(lu.total_tokens),0) AS total_tokens,
+              COALESCE(SUM(CASE WHEN lu.total_tokens IS NOT NULL THEN 1 ELSE 0 END),0) AS calls_with_tokens,
               COALESCE(SUM(lu.cost_usd),0) AS cost_usd,
               -- Cost provenance split.  Rows written before the cost_source column existed have
               -- NULL there and were estimates, so "not billed" is the honest bucket for them.
@@ -505,6 +523,7 @@ export function getLlmUsageSummary(opts: {
     promptTokens: Number(r.prompt_tokens),
     completionTokens: Number(r.completion_tokens),
     totalTokens: Number(r.total_tokens),
+    callsWithTokens: Number(r.calls_with_tokens ?? 0),
     costUsd: Number(r.cost_usd),
     billedCostUsd: Number(r.billed_cost_usd ?? 0),
     estimatedCostUsd: Number(r.estimated_cost_usd ?? 0),

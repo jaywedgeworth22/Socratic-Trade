@@ -249,7 +249,7 @@ export function llmAuthHeaders(endpoint: Pick<LlmEndpoint, "provider" | "key">):
       "content-type": "application/json",
       authorization: `Bearer ${endpoint.key ?? ""}`,
       "HTTP-Referer": "https://socratictrade.com",
-      "X-Title": "Socratic.Trade"
+      "X-Title": "Socratic-Trade"
     };
   }
   return {

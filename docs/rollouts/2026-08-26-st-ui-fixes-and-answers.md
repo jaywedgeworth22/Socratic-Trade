@@ -1,7 +1,7 @@
-# 2026-08-26 — Socratic.Trade UI Fixes & Investigation
+# 2026-08-26 — Socratic-Trade UI Fixes & Investigation
 
 ## Context & Objective
-The user requested multiple UI fixes across Socratic.Trade: fixing the reality banner spacing, fixing the mobile "More" tab links, reducing the iOS login disclaimer size, and asked several questions regarding system states (Backblaze usage, Alpaca kill switch, Learning Review, and disabled Earnings Transcripts).
+The user requested multiple UI fixes across Socratic-Trade: fixing the reality banner spacing, fixing the mobile "More" tab links, reducing the iOS login disclaimer size, and asked several questions regarding system states (Backblaze usage, Alpaca kill switch, Learning Review, and disabled Earnings Transcripts).
 
 ## Changes Made
 - `app/console/components/chrome.tsx`: Fixed the gap spacing in the reality banner for paper accounts by wrapping the bullet point in a span.

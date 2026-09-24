@@ -37,6 +37,7 @@ import {
 import { fetchRecentFilings } from "../web-sources/sec-filings";
 import { blockingUniverseValidationIssues, validateSecUniverseManifest, type FrozenSecUniverseManifest } from "./universe-manifest";
 import { assertOperationLeaseOwnership, type OperationLeaseClaim } from "../operation-lease";
+import { collectSecIngestPrioritySets, resolveSecIngestPriority } from "./sec-ingest-priority";
 
 /** Stable, versioned identity for the baseline "latest 10-K + latest 4 10-Qs" backfill scope. Bump
  *  this (not the numbers below) if the baseline scope itself ever changes, so old and new scopes
@@ -70,6 +71,8 @@ export interface SeedSecIngestJobsOptions {
   /** Inherited from an outer admin operation guard; checked between issuers so a lost/cancelled
    *  lease stops the run promptly instead of continuing to hammer EDGAR. */
   operationLeaseClaim?: OperationLeaseClaim;
+  /** History/deepen pass: symbols outside held/watchlist/scan get priority DEEPEN (10) instead of UNIVERSE_LATEST (40). */
+  deepen?: boolean;
 }
 
 export interface SeedSecIngestIssuerResult {
@@ -140,6 +143,11 @@ export async function seedSecIngestJobsFromManifest(
   let newlySeeded = 0;
   let totalTasksEnqueued = 0;
 
+  // Money-path priority overlay: claim is ORDER BY priority DESC; without this every task
+  // stays at default 0 and the desk's held/watchlist/scan names wait behind the universe tail.
+  const prioritySets = collectSecIngestPrioritySets();
+  const deepen = opts.deepen === true;
+
   for (const issuer of selected) {
     if (opts.operationLeaseClaim) assertOperationLeaseOwnership(opts.operationLeaseClaim);
 
@@ -188,6 +196,7 @@ export async function seedSecIngestJobsFromManifest(
         sequence: 1,
         documentName: ref.primaryDoc || "document.html",
         ordinal: index,
+        priority: resolveSecIngestPriority(issuer.ticker, prioritySets, { deepen }),
         payload: {
           url: ref.url,
           docType: ref.docType,

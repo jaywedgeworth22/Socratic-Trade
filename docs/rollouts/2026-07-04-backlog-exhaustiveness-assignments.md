@@ -2,7 +2,7 @@
 
 ## Summary
 
-Owner-directed pass to (a) make the Socratic.Trade improvement/action backlog exhaustive,
+Owner-directed pass to (a) make the Socratic-Trade improvement/action backlog exhaustive,
 (b) build equivalent GitHub-issue-linked backlogs for the other three apps
 (Congress.Trade, congress-trading-shared, API-usage-monitor), and (c) assign the work
 across the agent fleet: a large slate to CURSOR (Cursor background agents running
@@ -67,7 +67,7 @@ Four parallel read-only audit agents (Sonnet) — one per repo — cross-checked
 issues, boards, review docs, rollout follow-ups, and code sweeps. Notable corrections
 made during consolidation: the shared-package audit's "consumers never left the private
 registry" finding was based on stale local checkouts and was discarded (Congress.Trade
-PR #139 + Socratic.Trade #439/#444 verified against origin); the genuinely-new finds
+PR #139 + Socratic-Trade #439/#444 verified against origin); the genuinely-new finds
 include `usage-budget.ts` Phase-2 enforcement being fully built but never called,
 Congress.Trade's `shared-package-pin-check.yml` pointing at the pre-rename peer repo
 slug, and the shared repo's `publish.yml` still publishing to the retired registry on

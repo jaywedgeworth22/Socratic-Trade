@@ -85,6 +85,7 @@ export const NOTIFICATION_EVENT_TYPES = [
   "proposal_withdrawn",
   "limit_order_stale",
   "provider_degraded",
+  "liveness_warning",
   "budget_alert",
   "learning_review",
   "deterministic_bear_veto",
@@ -965,6 +966,56 @@ export interface BrokerQuote {
   syntheticBid?: boolean;
   /** True when only the ASK was derived from price (the bid may be real). */
   syntheticAsk?: boolean;
+  /**
+   * Secondary delayed-tape book (e.g. a connected Tradier paper account in cascade
+   * Level 1b): ~15m delayed market data that must NEVER be promoted to real-time by
+   * a fresh fetch stamp.  Unlike venuePriceAuthoritative (the ACTIVE execution venue),
+   * this does not stop the cascade — the quote ages by market time and later levels
+   * continue.  (Codex P1 review on the quote cascade.)
+   */
+  venueDelayedTape?: boolean;
+  /** Previous session closing price. Used for intraday price change and % change calculations. */
+  prevClose?: number;
+  /** Today's session opening price. */
+  open?: number;
+  /** Today's session high price. */
+  high?: number;
+  /** Today's session low price. */
+  low?: number;
+  /** Last trade close / regular market close price. */
+  close?: number;
+  /** Session volume-weighted average price (VWAP). */
+  vwap?: number;
+  /** Net price change from previous close. */
+  change?: number;
+  /** Net price change alias matching MarketQuoteSummary. */
+  netChange?: number;
+  /** Percentage price change from previous close. */
+  changePct?: number;
+  /** Quoted bid size (shares or lots, venue-specific). */
+  bidSize?: number;
+  /** Quoted ask size (shares or lots, venue-specific). */
+  askSize?: number;
+  /** Issuer / company name reported by exchange or venue. */
+  companyName?: string;
+  /**
+   * Per-field provenance for merged quotes. `mergeBrokerQuoteFields` records which
+   * provider (and which of its timestamps) supplied each coalesced field, so durable
+   * persistence (`syncQuotesToFieldStore`) can attribute every field to its true
+   * source instead of stamping all fields with the merged quote's single
+   * provider/asOf/fetchedAt.  (Codex P1 review on #3449.)
+   */
+  fieldProvenance?: Record<string, QuoteFieldProvenance>;
+}
+
+/**
+ * Provenance receipt for one coalesced quote field: the provider that supplied the
+ * winning value and that provider's own timestamps for it.
+ */
+export interface QuoteFieldProvenance {
+  provider?: string;
+  asOf?: string;
+  fetchedAt?: string;
 }
 
 /**
@@ -1950,7 +2001,7 @@ export interface SocraticDecisionTrace {
 // single-source tooltips in the market scan table.
 export type EnrichmentSources = Partial<
   Record<
-    "price" | "bid" | "ask" | "intradayChangePct" | "asOf" | "sentiment" | "peRatio" | "analystRating" | "sector" | "industry" | "volume" | "dividendYield" | "eps" | "companyName" | "pbRatio" | "shortPercentOfFloat" | "beta" | "fiftyTwoWeekHigh" | "fiftyTwoWeekLow" | "insiderSentiment" | "fcfYield" | "debtToEquity" | "epsGrowth" | "senateTrades" | "daysToEarnings" | "institutionOwnershipPct" | "nearTheMoneyIv" | "putCallRatio" | "vwap" | "targetMean" | "targetHigh" | "targetLow" | "targetMedian" | "returnOnEquity" | "returnOnAssets" | "revenueGrowth" | "freeCashFlowYield" | "grossProfitMargin" | "congressTradesQuiver" | "insiderTradesQuiver" | "govContractsQuiver" | "lobbyingQuiver" | "patentsQuiver" | "sharesOutstanding" | "headlines",
+    "price" | "bid" | "ask" | "prevClose" | "intradayChangePct" | "asOf" | "sentiment" | "peRatio" | "analystRating" | "sector" | "industry" | "volume" | "dividendYield" | "eps" | "companyName" | "pbRatio" | "shortPercentOfFloat" | "beta" | "fiftyTwoWeekHigh" | "fiftyTwoWeekLow" | "insiderSentiment" | "fcfYield" | "debtToEquity" | "epsGrowth" | "senateTrades" | "daysToEarnings" | "institutionOwnershipPct" | "nearTheMoneyIv" | "putCallRatio" | "vwap" | "bidSize" | "askSize" | "open" | "high" | "low" | "netChange" | "targetMean" | "targetHigh" | "targetLow" | "targetMedian" | "returnOnEquity" | "returnOnAssets" | "revenueGrowth" | "freeCashFlowYield" | "grossProfitMargin" | "congressTradesQuiver" | "insiderTradesQuiver" | "govContractsQuiver" | "lobbyingQuiver" | "patentsQuiver" | "sharesOutstanding" | "headlines",
     string
   >
 >;
@@ -1977,11 +2028,19 @@ export interface MarketQuote {
   vwap?: number;
   bid?: number;
   ask?: number;
+  /** Quoted bid size (shares or lots, venue-specific). Source-provided only. */
+  bidSize?: number;
+  /** Quoted ask size (shares or lots, venue-specific). Source-provided only. */
+  askSize?: number;
   volume: number;
   marketCap?: number;
   sharesOutstanding?: number;
   intradayChangePct: number;
   netChange?: number;
+  prevClose?: number;
+  open?: number;
+  high?: number;
+  low?: number;
   sector?: string;
   industry?: string;
   positionMarketValue: number;
@@ -2254,6 +2313,10 @@ export interface MarketQuoteSummary {
   vwap?: number;
   bid?: number;
   ask?: number;
+  /** Quoted bid size (shares or lots, venue-specific). Source-provided only. */
+  bidSize?: number;
+  /** Quoted ask size (shares or lots, venue-specific). Source-provided only. */
+  askSize?: number;
   sector?: string;
   industry?: string;
   score: number;
@@ -2310,6 +2373,11 @@ export interface MarketQuoteSummary {
   factorBreakdown?: MarketFactorBreakdown;
   headlines?: string[];
   intradayChangePct?: number;
+  netChange?: number;
+  prevClose?: number;
+  open?: number;
+  high?: number;
+  low?: number;
   volume?: number;
   sectorRelStrength?: number;
   sources?: EnrichmentSources;
@@ -2570,7 +2638,7 @@ export interface BrokerGateway {
   getEquityPositions(accountNumber: string): Promise<EquityPosition[]>;
   getOptionPositions?(accountNumber: string): Promise<OptionPosition[]>;
   getEquityOrders(accountNumber: string, options?: GetEquityOrdersOptions): Promise<EquityOrder[]>;
-  getEquityQuotes(accountNumber: string, symbols: string[]): Promise<Record<string, BrokerQuote>>;
+  getEquityQuotes(accountNumber: string, symbols: string[], options?: { signal?: AbortSignal }): Promise<Record<string, BrokerQuote>>;
   getEquityTradability(accountNumber: string, symbols: string[]): Promise<Record<string, { tradable: boolean; fractional: boolean; reason?: string }>>;
   reviewEquityOrder(input: EquityOrderInput): Promise<ReviewedOrder>;
   placeEquityOrder(input: EquityOrderInput & { refId: string }): Promise<ExecutedOrder>;
@@ -3109,6 +3177,8 @@ export interface ChatTurn {
   model?: string | null;
   /** Client-generated idempotency key (user turns only): reused on Retry so a retried send doesn't duplicate the turn. */
   clientTurnId?: string | null;
+  /** The account context active when this turn occurred (NULL for legacy unattributed turns). */
+  connectedAccountId?: string | null;
   createdAt: string;
 }
 

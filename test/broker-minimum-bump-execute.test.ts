@@ -250,9 +250,11 @@ describe("executeProposal — broker-minimum bump-to-floor wiring", () => {
     const { executeProposal } = await import("../src/lib/strategy");
     const { getProposal, listAudit } = await import("../src/lib/db");
 
-    const first = await executeProposal(proposalId, userId);
-    expect(first.status).toBe("proposed");
-    expect(first.reasons?.[0]).toContain("Red rejected the final broker-adjusted size");
+    const first: Error = await executeProposal(proposalId, userId).then(
+      (v) => { throw new Error(`expected throw, got ${JSON.stringify(v)}`); },
+      (e) => e
+    );
+    expect(first.message).toContain("Red rejected the final broker-adjusted size");
     expect(placeEquityOrder).not.toHaveBeenCalled();
     expect(debateProposal).toHaveBeenCalledTimes(1);
 
@@ -326,9 +328,11 @@ describe("executeProposal — broker-minimum bump-to-floor wiring", () => {
       userId
     );
 
-    const first = await executeProposal(proposalId, userId);
-    expect(first.status).toBe("proposed");
-    expect(first.reasons?.[0]).toContain("increased from $1.00 to $1.02");
+    const first: Error = await executeProposal(proposalId, userId).then(
+      (v) => { throw new Error(`expected throw, got ${JSON.stringify(v)}`); },
+      (e) => e
+    );
+    expect(first.message).toContain("increased from $1.00 to $1.02");
     expect(placeEquityOrder).not.toHaveBeenCalled();
     expect(debateProposal).not.toHaveBeenCalled();
     expect(getProposal(proposalId, userId)?.proposal.finalSizeReview).toMatchObject({
@@ -364,8 +368,11 @@ describe("executeProposal — broker-minimum bump-to-floor wiring", () => {
     const { executeProposal } = await import("../src/lib/strategy");
     const { getProposal } = await import("../src/lib/db");
 
-    const result = await executeProposal(proposalId, userId);
-    expect(result.status).toBe("proposed");
+    const result: Error = await executeProposal(proposalId, userId).then(
+      (v) => { throw new Error(`expected throw, got ${JSON.stringify(v)}`); },
+      (e) => e
+    );
+    expect(result.message).toContain("provider timed out");
     expect(placeEquityOrder).not.toHaveBeenCalled();
     const pending = getProposal(proposalId, userId);
     expect(pending?.decision).toMatchObject({
@@ -394,9 +401,11 @@ describe("executeProposal — broker-minimum bump-to-floor wiring", () => {
     const { executeProposal } = await import("../src/lib/strategy");
     const { getProposal } = await import("../src/lib/db");
 
-    const result = await executeProposal(proposalId, userId);
-    expect(result.status).toBe("proposed");
-    expect(result.reasons?.[0]).toContain("not executable");
+    const result: Error = await executeProposal(proposalId, userId).then(
+      (v) => { throw new Error(`expected throw, got ${JSON.stringify(v)}`); },
+      (e) => e
+    );
+    expect(result.message).toContain("not executable");
     expect(reviewEquityOrder).toHaveBeenCalledTimes(2);
     expect(placeEquityOrder).not.toHaveBeenCalled();
     expect(getProposal(proposalId, userId)?.proposal).toMatchObject({
@@ -415,9 +424,18 @@ describe("executeProposal — broker-minimum bump-to-floor wiring", () => {
     const { executeProposal } = await import("../src/lib/strategy");
     const { listAudit } = await import("../src/lib/db");
 
-    const result = await executeProposal(proposalId, userId);
+    // #3343: 'blocked' status outcomes now surface as a thrown Error. The persisted proposal
+    // status is updated before the throw, so we can verify both the throw and the row state.
+    const expectBlocked = async (proposalId: string, userId: string) => {
+      return executeProposal(proposalId, userId).then(
+        (v) => { throw new Error(`expected throw, got ${JSON.stringify(v)}`); },
+        (e) => e as Error
+      );
+    };
 
-    expect(result.status).toBe("blocked");
+    const result = await expectBlocked(proposalId, userId);
+
+    expect(result).toBeInstanceOf(Error);
     expect(reviewEquityOrder).toHaveBeenCalledTimes(1); // declined BEFORE any bump re-review
     expect(debateProposal).not.toHaveBeenCalled();
     expect(placeEquityOrder).not.toHaveBeenCalled();
@@ -432,9 +450,11 @@ describe("executeProposal — broker-minimum bump-to-floor wiring", () => {
     const proposalId = await seedApprovedProposal(userId);
     const { executeProposal } = await import("../src/lib/strategy");
 
-    const result = await executeProposal(proposalId, userId);
-
-    expect(result.status).toBe("blocked");
+    const result: Error = await executeProposal(proposalId, userId).then(
+      (v) => { throw new Error(`expected throw, got ${JSON.stringify(v)}`); },
+      (e) => e
+    );
+    expect(result).toBeInstanceOf(Error);
     expect(reviewEquityOrder).toHaveBeenCalledTimes(1);
     expect(placeEquityOrder).not.toHaveBeenCalled();
   });
@@ -448,9 +468,11 @@ describe("executeProposal — broker-minimum bump-to-floor wiring", () => {
     const proposalId = await seedApprovedProposal(userId, { maxDailyOrders: 0 });
     const { executeProposal } = await import("../src/lib/strategy");
 
-    const result = await executeProposal(proposalId, userId);
-
-    expect(result.status).toBe("blocked");
+    const result: Error = await executeProposal(proposalId, userId).then(
+      (v) => { throw new Error(`expected throw, got ${JSON.stringify(v)}`); },
+      (e) => e
+    );
+    expect(result).toBeInstanceOf(Error);
     expect(reviewEquityOrder).toHaveBeenCalledTimes(1);
     expect(placeEquityOrder).not.toHaveBeenCalled();
   });
@@ -466,9 +488,11 @@ describe("executeProposal — broker-minimum bump-to-floor wiring", () => {
     const { executeProposal } = await import("../src/lib/strategy");
     const { getProposal, listAudit } = await import("../src/lib/db");
 
-    const result = await executeProposal(proposalId, userId);
-
-    expect(result.status).toBe("blocked");
+    const result: Error = await executeProposal(proposalId, userId).then(
+      (v) => { throw new Error(`expected throw, got ${JSON.stringify(v)}`); },
+      (e) => e
+    );
+    expect(result).toBeInstanceOf(Error);
     // Original review + exactly ONE bump re-review — never a loop.
     expect(reviewEquityOrder).toHaveBeenCalledTimes(2);
     expect(placeEquityOrder).not.toHaveBeenCalled();
@@ -486,9 +510,11 @@ describe("executeProposal — broker-minimum bump-to-floor wiring", () => {
     const proposalId = await seedApprovedProposal(userId, { brokerMinimumHandling: "skip" });
     const { executeProposal } = await import("../src/lib/strategy");
 
-    const result = await executeProposal(proposalId, userId);
-
-    expect(result.status).toBe("blocked");
+    const result: Error = await executeProposal(proposalId, userId).then(
+      (v) => { throw new Error(`expected throw, got ${JSON.stringify(v)}`); },
+      (e) => e
+    );
+    expect(result).toBeInstanceOf(Error);
     expect(reviewEquityOrder).toHaveBeenCalledTimes(1); // no bump re-review
     expect(placeEquityOrder).not.toHaveBeenCalled();
   });

@@ -100,7 +100,7 @@ model.
 
 ## Landing — 2026-07-22 (GROK)
 
-- PR: https://github.com/jaywedgeworth22/Socratic.Trade/pull/1902
+- PR: https://github.com/jaywedgeworth22/Socratic-Trade/pull/1902
 - Local land gate: `npx tsc --noEmit` clean; `npm test` 443 files / 5199 tests; `npm run build` clean.
 - Pushed branch `codex/trade-approval-redteam-uptime-20260722` after merging latest `origin/main`.
 - UptimeRobot: no change required (already `/api/health`).

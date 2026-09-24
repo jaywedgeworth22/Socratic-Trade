@@ -146,7 +146,7 @@ Infisical prod via the proven universal-auth CLI path (allow-listed keys only). 
 default; the launchd job is not installed yet. See
 `docs/rollouts/2026-07-10-provider-knob-sync.md`.
 
-Socratic.Trade now also commits one durable provider-attempt reservation before each actual FMP,
+Socratic-Trade now also commits one durable provider-attempt reservation before each actual FMP,
 Voyage, or Pinecone boundary and replays deterministic outcomes (`succeeded`, `failed`, or crash-
 reconciled `unknown`) through API Usage Monitor. The FMP enrichment and transcript paths therefore
 share the same credential-wide quota inside this app. This does **not** yet prove cross-app quota

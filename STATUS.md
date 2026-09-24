@@ -8,6 +8,502 @@ HWM by remaining/prior equity.  Ops `POST /api/ops/hwm/recompute` rebuilds from 
 Alpaca transfer ledger + current equity.  Extra-ship no.  Do not merge.  No Coolify
 Deploy.  Worktree `~/apps/trading-grok-hwm`, branch `grok/cashflow-hwm`.
 Rollout: `docs/rollouts/2026-09-17-cashflow-hwm.md`.
+## 2026-09-24 FIXER — PR #3451 tip: retarget to com.socratictrade.ios
+
+**Current state.** Tip of `minimax/bundle-rename` (PR #3451) retargeted from the interim
+wrong ID `trade.socratic.ios` → correct **`com.socratictrade.ios`**, rebased onto
+`origin/main`, and patched for the coexistence window: native SIWA accepts BOTH
+`com.socratictrade.ios` and
+`trade.socratic.app` (hardcoded — do NOT rely on `APPLE_CLIENT_ID`, which is the web Service
+ID); APNs register/send accepts + uses per-device topic for both bundle IDs
+(`resolveAcceptedApnsBundleIds` / `APNS_BUNDLE_IDS`); AASA keeps BOTH
+`CC8UTF7ATG.com.socratictrade.ios` and `CC8UTF7ATG.trade.socratic.app` and adds top-level
+`webcredentials.apps`; `scripts/ios-fleet.sha256` pin refreshed after `apps.json` /
+`asc-api.mjs` drift. Extra-ship no.
+
+**Resolved (Jay / ASC):**
+1. **ASC new app record** — DONE: Jay created the new ASC app for `com.socratictrade.ios`;
+   Apple ID `6815511597` (owner-supplied via iMessage 2026-09-23 ~11:05 PM CT) is now written
+   into `scripts/ios-fleet/apps.json` + `scripts/ios-fleet/ios-app-versions.json`. `6799238379`
+   remains the OLD app's id (immutable bundle on that record). An intermediate revert that
+   called the new ID invented was wrong.
+2. **Apple Developer Portal** — register App ID `com.socratictrade.ios` (+ tests
+   `com.socratictrade.ios.tests`), App Group `group.com.socratictrade`, Associated Domains
+   `socratic.trade` (applinks + webcredentials).
+3. **DNS** — point `socratic.trade` at the same Next.js edge as `socratictrade.com` so AASA
+   + webcredentials resolve.
+4. **Infisical flip timing** — do NOT flip `APNS_BUNDLE_ID` to `com.socratictrade.ios` until a
+   new-bundle TestFlight build is live; dual-topic server support is in place so both can
+   coexist before/after the flip. Same for adding the new native audience on the Apple
+   Service ID list.
+
+Rollout: `docs/rollouts/2026-09-22-bundle-id-migration.md`. PR:
+https://github.com/jaywedgeworth22/Socratic.Trade/pull/3451
+
+## 2026-09-23 INSTINCT — PR #3458 CI fix: email sign-off test assertions
+
+The rename commit (`320f7bf9`) changed `NOTIFY_EMAIL_SENT_BY` to `(sent by Socratic-Trade)`
+but missed three test assertions written as escaped-dot regexes
+(`/\n\(sent by Socratic\.Trade\)$/`). `verify-hosted` failed at `npm test` (run
+35923420885, job 107392707307) on exactly those three; the `verify` gate then failed
+closed in 4s as designed. Assertions updated to the new name. Reproduced locally pre-fix
+(3 failures, same files/lines as the CI annotations); post-fix the three files pass 32/32.
+Rollout: `docs/rollouts/2026-09-23-rename-pr-3458-signoff-test-fix.md`.
+
+
+## 2026-09-23 INSTINCT — PR #3453 round: B2 LTX restore drill hardening + handoff records (Codex findings)
+
+Codex review of head `48831cf9` raised four findings on `scripts/ops/verify-b2-ltx-restore.mjs`;
+all four verified real against the code and the pinned Litestream v0.5.12 source, and fixed this
+round.  (a) A failed Litestream replay was WARN-swallowed and the drill could still report PASS on
+the base snapshot alone — the false-green the drill exists to prevent.  `assessRestore` now takes
+`ltxApplied`; a requested replay that failed fails the drill (exit 3).  `--no-apply-ltx` remains
+the explicit degraded opt-out.  (b) The `finally` unconditionally `rmSync`'d the scratch root,
+wiping an operator-supplied `RESTORE_DRILL_SCRATCH_DIR`; only mkdtemp dirs the script itself
+created are now removed, and inside an operator dir only this run's own files.  (c) REAL:
+production's Litestream 0.5.12 replica holds no `.db` snapshot — objects are
+`<path>/<level:0000-0009>/<minTXID>-<maxTXID>.ltx` with full snapshots at level 0009
+(SnapshotLevel = 9), traced against the pinned v0.5.12 source (compaction_level.go,
+s3/replica_client.go key format, cmd/litestream/restore.go).  The drill now detects the layout
+and, for LTX replicas, has `litestream restore` rebuild the database straight from the replica.
+Two invocation bugs fixed on the way: `-config -` never read stdin (OpenConfigFile os.Opens the
+path) and `restore` requires a positional DB path — the old invocation could never have succeeded.
+The generated replica config (it carries the B2 keys) is now a 0600 temp file with
+`force-path-style: true`, deleted after the run.  (d) This entry, `PLAN.md`, and
+`docs/rollouts/2026-09-23-b2-ltx-restore-drill-hardening.md` are the round's handoff records.
+
+Verification: `node --check` clean; an offline harness (stubbed S3 ListObjectsV2/GET + fake
+litestream binary) covers both layouts, replay-failure exit 3, operator-scratch preservation,
+mkdtemp cleanup, degraded `--no-apply-ltx`, empty replica, and usage errors — all pass.  NOT yet
+run against real B2 credentials — the first real drill should be watched.  Repo vitest excludes
+`scripts/**/*.test.mjs` and nothing under `src/**` imports this script; the required CI `verify`
+check re-runs on push.  Ops script + docs only.  Extra-ship no.
+Rollout: `docs/rollouts/2026-09-23-b2-ltx-restore-drill-hardening.md`.
+## 2026-09-21 MUSE — Fill-out data cascade review-findings sweep (PR #3449, fleet PR-merge sweep round 2)
+
+Implemented the four remaining #3449-specific Codex P1 review threads on `ag/fill-out-data-cascade` (five sibling threads were already fixed by the merged #3448 round: Yahoo `prevClose` fallback, route Yahoo-floor blocking, watchlist stale `session-close`, crossed-book NBBO, per-task SEC RTH rechecks).  (1) Field-completeness gate: new exported `isCascadeFieldComplete` (price + two-sided book + `prevClose` + OHLC) with `acceptIfComplete` replacing the six bare `isQuoteFresh` accept sites at cascade Levels 1b–7 — fresh-but-incomplete quotes stay in `pendingSymbols` so later providers backfill, and the end-of-cascade fallback still returns the best merged quote (no price lost); Level 1a venue-authoritative keeps its unconditional accept per owner rule; VWAP deliberately excluded (single-provider — requiring it would force all symbols through all seven levels, conflicting with quota protection).  (2) Per-field provenance: new `QuoteFieldProvenance` / `BrokerQuote.fieldProvenance`; `mergeBrokerQuoteFields` stamps every tracked field with the winning quote's provider/asOf/fetchedAt, and `syncQuotesToFieldStore` persists per-field receipts (a Finnhub price merged with an older broker bid no longer masquerades as Finnhub-sourced).  (3) Enrichment wiring: `bidSize`/`askSize`/`prevClose`/`open`/`high`/`low`/`netChange` added to `EnrichmentSourcedField`, `EMPTY_SOURCED`, the cascade `takeScalar` loop, `EnrichmentSources`/`MarketQuote`, and `applyEnrichment`.  (4) Rate guards: Finnhub via `withProviderLimit`, Tiingo via `admitProviderRequests` quota admission keyed by `apiKeyFingerprint` (shared with `history.ts`) plus `retries: 0`.  Merged current `origin/main` and the updated #3448 branch (one `src/lib/types.ts` conflict; kept both sides).  Verification: full four-gate sequence in order on the merged tree; results in the commit message.  Rollout: `docs/rollouts/2026-09-21-fill-out-data-cascade-review-fixes.md`.
+# Current Status
+
+## 2026-09-21 Antigravity — Complete and fill out data cascade with multi-provider feeds
+
+## 2026-09-21 MUSE — Quote cascade review-findings sweep (PR #3448, fleet PR-merge sweep round 2)
+
+Implemented all eleven open Sentry/Codex review threads on `ag/quote-cascade-freshness-performance`.  Freshness model: only verified real-time two-sided broker books may age by `fetchedAt` — crossed books (`bid > ask`) are never a live NBBO, and delayed tapes (Yahoo cascade providers, secondary Tradier-paper books tagged `venueDelayedTape`) age by market `asOf` so a fresh fetch stamp can never promote ~15m-delayed data to live; each provider response is stamped at fetch *completion*, not cascade start.  `GET /api/quote`: the live cascade no longer blocks the bounded Yahoo floor — once the chart resolves, the cascade gets a 1.5s `LIVE_CASCADE_OVERLAY_GRACE_MS` overlay window via `Promise.race`, and overlay candidates are validated with `isQuoteFresh` (not the Yahoo-only `delayedFallback` flag); if Yahoo fails, the route still waits for the cascade.  Cascade abort signal plumbed to broker gateway calls (new optional `{ signal }` on `getEquityQuotes`) and the ROIC fetch.  Dashboard cascade fallback passes `skipActiveBroker` (no duplicate call to a degraded broker); watchlist + dashboard treat stale-but-positive broker quotes as missing (freshness, not positivity).  SEC ingest worker rechecks RTH before each task and immediately before the heavy synchronous `parseFilingHtml` parse.  Yahoo `prevClose` no longer falls back to the current price (undefined when omitted).  Changed approach recorded in `PLAN.md` (Codex P2).  Four-gate verification in order: `npm run lint` 0 errors (4 pre-existing warnings), `npx tsc --noEmit` clean, full `npm test` **8181 passed / 51 skipped / 0 failed** (747 files, EXIT=0 — closes the Codex P2 that the rollout docs claimed a full run without evidence), `npm run build` EXIT=0.  Rollout: `docs/rollouts/2026-09-21-quote-cascade-review-fixes.md`.  Auto-merge (squash) per the standing owner rule once `verify` CI is green on the pushed head.
+
+## 2026-09-21 Antigravity — Quote cascade freshness & event-loop stall performance repair
+## 2026-09-24 Fixer — PR #3450 tip (review threads + rebase)
+
+Rebased `ag/llm-stats-lineage-and-tokens` onto `origin/main`. Addressed unresolved review threads in code: exclude canonical self-IDs from lineage roll-forward; apply `sinceDays` to latency audits; per-metric inheritance flags; ignore stale time-range fetches; combine (not replace) 1–2 direct calls when inheriting cost/tokens; avgTokensPerCall uses `callsWithTokens`; seed catalog models for zero-sample cold start. Local: targeted vitest green, `tsc --noEmit` clean. Extra-ship no; threads left unresolved for humans/Deployer.
+
+## 2026-09-21 Antigravity — LLM stats lineage, token usage, and lifetime retention
+
+Delivered model lineage predecessor roll-forward and token aggregation for LLM usage and picker statistics.  Exempted `llm_call_latency` from audit pruning (`AUDIT_PRUNE_NEVER_PRUNED_KINDS`) to permanently retain latency records in SQLite.  Lifted the default 90-day window to lifetime (`sinceDays=0`), while adding an interactive time-range selector (`All Time`, `90 Days`, `30 Days`) to the Model Stats drawer.  Surfaced average token usage per call with prompt/completion breakdown and explicit predecessor lineage badging when models shift versions.  Added `scripts/ops/backfill-pruned-latency-audits.ts` for safe idempotent restoration of historical latency records from backups.  Local gate passed (`npm run lint`, `npx tsc --noEmit`, vitest target tests, `npm run build`).
+Rollout: `docs/rollouts/2026-09-21-llm-stats-lineage-and-tokens.md`.
+
+## 2026-09-21 MUSE — claude-code-action 1.0.230 bump, round-3 sweep (restore pin, record verification)
+
+Round-3 of the PR #3447 lane.  Codex reviewed head `784ab103` and raised three P1s: (a) "record
+verification results for the reviewed head" - the rollout note cited CI run `35597203652` on
+pre-merge head `f1631241`, not the reviewed tree; (b) "make the commit message name the updated
+docs" - the merge commit subject did not name them; (c) "include the advertised action pin
+update" - the `784ab103` tree had `.github/workflows/codex-autofix.yml` byte-identical to
+`main`, still pinning `7b0b2558` (1.0.226); the Dependabot pin update to `4036a180` (1.0.230)
+was lost in the earlier main-merge.  All three accepted.  This round merges `origin/main`
+post-#3443 (`2f741677`, Sentry 10.75.0) and restores the Dependabot pin
+`4036a180cf690f49529f5d8c79c998855287f590` in `.github/workflows/codex-autofix.yml`.  Required
+CI `verify` check is **green on the current head** (`50c18910`): `verify` completed/success,
+`verify-ios` completed/success, `verify-hosted` completed/success, `gitleaks` success,
+`check-pin` success.  The commit subject/body name the updated handoff docs.  Action-pin bump
+only, no workflow logic or source change; not Coolify deploy material.  Extra-ship no.
+Rollout: `docs/rollouts/2026-09-21-claude-code-action-1-0-230-bump.md`.
+## 2026-09-21 Antigravity — Complete and fill out data cascade with multi-provider feeds
+
+Completed expansion of quote data contracts across `BrokerQuote`, `MarketQuote`, and `MarketQuoteSummary` in `src/lib/types.ts` with `prevClose`, `open`, `high`, `low`, `vwap`, `change`, `changePct`, and bid/ask sizes. Un-truncated upstream parsers for Tradier, Robinhood, Alpaca Snapshot, and Yahoo Batch. Wired real-time quote providers Finnhub (`/quote`) and Tiingo (`/iex`) into `src/lib/quotes-cascade.ts` ahead of delayed Yahoo fallback. Implemented multi-provider field-level coalescing (`mergeBrokerQuoteFields`) to backfill missing fields without overwriting authoritative execution venue prices. Dynamically recalculate `intradayChangePct` and `netChange` in `mergeQuoteData` and persist resolved fields asynchronously to `symbol_field_latest`. All 4 local gates passed cleanly (lint, tsc, vitest 8184 passed, full build). PR opening. Rollout: `docs/rollouts/2026-09-21-fill-out-data-cascade.md`.
+
+## 2026-09-21 Antigravity — Quote cascade freshness & event-loop stall performance repair
+
+Diagnosed and resolved ST quote staleness root cause where live broker two-sided NBBO quotes lacked `fetchedAt` timestamps across cascade levels and `quoteAgeSecForStalenessGate` penalized non-delayed quotes with older last-trade `asOf` prints.  Wired `fetchFreshQuotesCascade` into `/api/quote`, `src/lib/dashboard.ts`, and `app/api/watchlist/route.ts` as resilient fallback.  Isolated SEC RAG ingestion and managed vector reconciliation during RTH trading hours and added cooperative event loop yields around heavy Cheerio HTML parses to prevent main-thread stalls (26s–362s).  Tests passing across quote cascade and RTH worker suites.  Running verification gate.  Rollout: `docs/rollouts/2026-09-21-quote-cascade-freshness-and-performance.md`.
+
+## 2026-09-21 codex-autofix — PR #3444 round 3: correct the head attribution for the green CI run
+
+Codex reviewed head `e892f938` and raised one new P1 against the round-2 rollout note: it said the
+green CI run was "on this head" while the same note identifies run `35597169588` as belonging to
+the **pre-merge** head and says verification on the new head still needs to rerun.  **Accepted -
+the finding is factually correct**, confirmed against the Actions API (`35597169588` ->
+headSha `60425558`; the merged head `e892f938` run `35613276167` was still pending).  Fix is
+documentation-only - no code, dependency, or lockfile change in this round.  `## Verification
+State` in the rollout note now lists CI results in a per-head table with an explicit `verify`
+conclusion column and states that a green run on a superseded head does not verify the head that
+replaced it; `## Round 2` item 3 no longer calls the green run one "on this head".  Round-cap
+check, measured over this PR's own commits (`git rev-list origin/main..HEAD`): **0** messages
+contain the literal `[codex-autofix]` marker; **1** (`4e2b806f`, the round-2 MUSE commit) mentions
+`codex-autofix` in its body without the bracketed marker.  Either way this is far under the cap of
+10.  (Full branch history contains ~62 such commits, but those live on `origin/main` and are not
+this PR's rounds.)  Branch was already level with
+`origin/main` (`git rev-list --count HEAD..origin/main` = 0), so no merge was needed.
+Local gate re-run in the mandated order on the round-3 tree: `npm run lint` exit 0 (821 problems /
+0 errors), `npx tsc --noEmit` exit 0, `npm test` 13 failed / 8156 passed / 51 skipped (748 files)
+- all 13 failures are the four known LLM-credential files and are environmental (this session
+exports `ANTHROPIC_API_KEY`; re-running just those four with the key unset gives 60/60 passed),
+`npm run build` exit 0.  Extra-ship no.  Rollout: `docs/rollouts/2026-09-21-vitest-5-0-1-bump.md`.
+
+## 2026-09-21 MUSE — testing group vitest 5.0.1 bump, round-2 sweep (answer codex-autofix review)
+
+Round-2 of the PR #3444 lane.  The codex-autofix loop reviewed the round-1 push and raised three
+P1s: (a) "mark the bump as a production deploy" - accepted, the round-1 "not deploy material"
+claim was wrong (Coolify `watch_paths` matching is file-based; `package.json`/`package-lock.json`
+are watched regardless of devDependencies), corrected in the note, here, and the effort row;
+(b) "list the handoff docs in the commit message" - this round's commit *subject* names them
+(the repo composes squash messages from subjects only) and auto-merge is armed with an explicit
+commitHeadline/commitBody; (c) "record the exact verification command and current status" -
+accepted, the exact `node` lockfile check (`vitest` -> `5.0.1`, exit 0) is recorded and the
+`verify` CI check re-runs on the new head and gates the merge (it was `success` on the pre-merge
+head, `35597169588`).  Dev-only patch bump, no source
+change.  Extra-ship no.
+Rollout: `docs/rollouts/2026-09-21-vitest-5-0-1-bump.md`.
+
+## 2026-09-21 MUSE — testing group: vitest 5.0.0 -> 5.0.1 (PR #3444, sweep round 1)
+
+Dependabot testing-group bump (`vitest` `^5.0.0` -> `^5.0.1`, commit `4e48f6f6`).  Codex P1 (thread
+on `package.json:89`) flagged the missing mandatory handoff records; this MUSE fleet sweep round
+adds `STATUS.md`, the `docs/EFFORT-LOG.md` mirror row, and
+`docs/rollouts/2026-09-21-vitest-5-0-1-bump.md`, merges current `origin/main` (picks up #3445 jose
+6.2.12, #3426, #3427 - clean auto-merge), and resolves the thread.  Dev-only patch bump, no source change; **deploy material** (correction: `package.json`/
+`package-lock.json` are Coolify `watch_paths` regardless of devDependencies - Codex P1).  No
+local gate re-run this round - dependency content unchanged from the CI-verified commit; the
+required `verify` CI check re-runs on push and is the authoritative gate.  Extra-ship no.
+Rollout: `docs/rollouts/2026-09-21-vitest-5-0-1-bump.md`.
+
+## 2026-09-21 MUSE — observability group: @sentry/nextjs + @sentry/profiling-node 10.74.0 -> 10.75.0 (PR #3443)
+
+**Current state.  Consolidated 2026-09-21 — the three per-round entries this effort used to
+carry here are collapsed into this one snapshot; the chronological review history now lives
+only in the rollout note.**
+
+Dependabot observability-group bump (`@sentry/nextjs` `^10.74.0` -> `^10.75.0`,
+`@sentry/profiling-node` `10.74.0` -> `10.75.0` — a SemVer **minor** release, not a patch —
+commit `21860abc`).  No source change required: nothing under `src/**` touches Sentry
+internals that moved between these minors.  Classified **runtime dependency-only** —
+`package.json` / `package-lock.json` are Coolify `watch_paths`, so the merge is a real
+(non-noop) image deploy subject to the weekday RTH image-build latch, not a docs-only push.
+
+Handoff records: `STATUS.md` (this entry), `PLAN.md`, the `docs/EFFORT-LOG.md` mirror row
+(`IN PR #3443`), and `docs/rollouts/2026-09-21-observability-sentry-10-75-bump.md`.
+
+Codex review history: eleven threads on this effort.  Every finding was accepted and fixed
+(none rejected), and every thread addressed in code is resolved.  Two recurring classes:
+(1) mandatory handoff records — STATUS/PLAN/EFFORT-LOG/rollout note must exist and be current
+at every commit boundary; (2) the landed squash message must name those docs.
+
+Squash message: auto-merge is armed (`SQUASH`) with an explicit `commitBody` naming all four
+handoff docs, verified live against `autoMergeRequest` on 2026-09-21 — the same mechanism
+that landed #3442 as `7aef5da5`.
+
+Verification: the full local gate was run in the mandated order on this tree; exact commands
+and results are in the rollout note's Verification State.  The required `verify` CI check
+re-runs on the pushed head and gates the merge (ruleset — `--admin` does not bypass it).
+
+**Blockers: none.**  This round's local `npm test` reported 13 failures, all confined to four
+LLM-credential files and all proven environmental, not a regression from this diff: those four
+files pass 60/60 with this session's `ANTHROPIC_API_KEY` unset (the same class recorded for the
+#3444 lane).  The `test/market-hours.test.ts` timezone failures seen in earlier rounds did not
+reproduce on this runner, which is UTC like the `verify` CI runners — independently confirming
+that earlier root cause.  Exact commands and results are in the rollout note.
+Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-21-observability-sentry-10-75-bump.md`.
+
+## 2026-09-21 MUSE — next 16.3.5 bump, round-7 sweep (answer codex-autofix round-6 review)
+
+Round-7 of the PR #3442 lane.  Codex raised two final P1s on the round-6 push: (a) "remove the
+already-landed jose bump from this inventory" - accepted; the whole-PR inventory now shows the
+`jose` 6.2.12 bump as branch history (landed on `main` via #3445), with the PR diff carrying
+only the `next` 16.3.4 -> 16.3.5 change; (b) "preserve the documentation-aware commit message" -
+the cited `803e440` does not exist (the real #3446 squash `df6308b3` does enumerate its docs),
+but the underlying `COMMIT_MESSAGES` concern is valid, so auto-merge was armed with an explicit
+`commitHeadline`/`commitBody` naming the handoff docs (both were `null` before this round).  Also
+merged post-#3446 `origin/main` (clean).  Auto-merge armed with the explicit message; `verify` CI
+re-runs on push.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-21-next-16.3.5-bump.md`.
+
+## 2026-09-21 CLAUDE — next 16.3.5 bump, round-6 codex-autofix (two false claims corrected: squash message + round-5 re-run)
+
+Codex's two remaining P1s on PR #3442 were both against
+`docs/rollouts/2026-09-21-next-16.3.5-bump.md`, and both were correct:
+
+**(a) The squash-merge prediction was false.**  Round 5 wrote that "the squash-merge message will
+keep that enumeration so the permanent history names them".  It would not have.  This repo sets
+`squash_merge_commit_title: COMMIT_OR_PR_TITLE` and `squash_merge_commit_message: COMMIT_MESSAGES`,
+so GitHub composes the squash commit at merge time from the PR title plus the commit **subjects** —
+not their bodies.  None of the six PR subjects names a doc file.  The round-5 commit *body* does
+enumerate them, but under `COMMIT_MESSAGES` a body never reaches the squash message.  Fixed by
+setting the message explicitly instead of predicting it: auto-merge was re-armed as
+`gh pr merge 3442 --squash --auto --subject ... --body ...`, which populates the auto-merge
+request's `commitHeadline`/`commitBody` — both `null` beforehand, because the owner's original
+arming passed neither.
+
+**(b) The round-5 "no re-run needed" justification was false.**  Round 5 recorded that "the
+dependency content is byte-identical to round 4's verified state and the merge introduced no new
+dependency lines".  The merge pulled in #3445, which moved `jose` `^6.2.9` -> `^6.2.12` in
+`package.json` + `package-lock.json` (`git diff --stat bfe69f84 45dc451e -- package.json
+package-lock.json` => 2 files changed, 5 insertions(+), 5 deletions(-)), so the round-5 tree
+carries a dependency line round 4 never exercised — and the note's own Round 5 section already
+said the merge "picks up #3445 jose 6.2.12", contradicting that sentence in the same file.  The
+four gates were therefore re-run on the round-5 tree in the mandated order: `npm install`;
+`npm run lint` exit 0 — 821 problems, 0 errors; `npx tsc --noEmit` exit 0, clean; `npm test`
+exit 1 — 13 failed / 8156 passed / 51 skipped (748 files: 4 failed, 743 passed, 1 skipped);
+`npm run build` exit 0, full route table.  The 13 are the same four known LLM-credential
+fail-closed files (`llm-provider`, `chat-llm`, `framework-review`, `openrouter-credits`); the
+isolation re-run with `ANTHROPIC_API_KEY` unset gave **4 files / 60 tests passed, 0 failed** —
+this sandbox exports that key, so the fail-closed assertions see one and GitHub-hosted `verify`
+(which sets none) is unaffected.  Counts moved from round 4 (819 -> 821 lint problems,
+8144 -> 8156 passing tests, 746 -> 748 test files) because the merge brought in new tests; the
+failure set itself is unchanged.  Both out-of-scope side effects were reverted before commit:
+`package-lock.json` (`npm install` churn, 90 `libc` metadata lines) and
+`ios/SocraticTradeTests/Fixtures/policy-contract.json` (regenerated by the suite — pre-existing
+`origin/main` drift).  `next-env.d.ts` + `tsconfig.json` were restored from `origin/main` after
+the build.
+
+Round-cap measurement at this tip: **4 PR-local autofix commits before this round, 5 after**
+(7 on `origin/main`, unchanged by this PR; 11 -> 12 in whole branch history).  Round 5's MUSE
+sweep commit (`45dc451e`) carries no `[codex-autofix]` marker, so it did not advance the cap —
+the narrative round label and the cap count are off by one here, and the rollout note now states
+that explicitly.  **5 of 10** against the cap.
+
+Also recorded: Codex cited commit `22efe659` as its fresh evidence for (a).  That SHA resolves
+nowhere (`gh api repos/jaywedgeworth22/Socratic-Trade/commits/22efe659` => HTTP 422 "No commit
+found for SHA") and is not one of the PR's six commits.  The finding was still correct on its
+merits, verified independently against the repo's squash settings and the PR's commit subjects,
+so it was fixed rather than disputed.  Documentation only — no source, dependency, or lockfile
+change; the `next` and `jose` bumps riding in the diff are dependabot's and #3445's.  Extra-ship
+no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-21-next-16.3.5-bump.md`.
+
+## 2026-09-21 MUSE — next 16.3.5 bump, round-5 sweep (merge main + close Codex's last two P1s)
+
+Round-5 of the PR #3442 lane, MUSE fleet PR-merge sweep.  Codex's two remaining P1s were both
+documentation-accuracy against `docs/rollouts/2026-09-21-next-16.3.5-bump.md`: (a) the round-4
+commit message never referenced the handoff docs it touched, and (b) the environmental-test
+paragraph claimed "the PR touches only `package.json` + `package-lock.json`" while the PR also
+carries the handoff docs.  Fixed: the "touches only" sentence is now explicitly scoped to the
+PR's dependency-diff portion (full inventory remains in the note's `## Changes Made`), and this
+commit's message enumerates the updated docs (`STATUS.md`, `docs/EFFORT-LOG.md`,
+`docs/rollouts/2026-09-21-next-16.3.5-bump.md`); the squash-merge message will keep that
+enumeration.  Also merged current `origin/main` (picks up #3445 jose 6.2.12, #3426, #3427) - the
+merge auto-resolved cleanly and both bumps are verified present in the merged manifest and
+lockfile (`next` 16.3.5, `jose` 6.2.12).  Round 5 is docs + main-merge only; no local re-run of
+the lint/tsc/test/build gates was needed since the dependency content is byte-identical to the
+round-4 verified state - the required `verify` CI check re-runs on push and is the authoritative
+gate.  Documentation only.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-21-next-16.3.5-bump.md`.
+
+## 2026-09-21 CLAUDE — next 16.3.5 bump, round-4 autofix (correct the autofix round/count state)
+
+Codex's round-4 P1 on PR #3442 was against the rollout note's round-cap bullet: it claimed
+`git log origin/main..HEAD --grep='[codex-autofix]'` "returns exactly 1" and that the loop was at
+round 2, while the note's own Round 3 section and the branch tip both showed three PR-local
+autofix commits.  Two defects: the count was **stale** (written at round-2 time, never refreshed
+when round 3 landed), and the quoted command **cannot run at all** — `--grep='[codex-autofix]'` is
+an invalid git regex (`x-a` parses as a character range) and aborts with `fatal: command line,
+'[codex-autofix]': Invalid range end`.  Verified figures, quoted in the note with a runnable
+command and the measurement point stated: **3 PR-local autofix commits at `876f3f2c` / 4 at this
+tip**, **7** on `origin/main` (unchanged by this PR), **10** in whole branch history at `876f3f2c`
+/ **11** at this tip.  The "61" history figure the note and this file previously quoted matched no
+measurement.  Corrected in place in the rollout note, in the round-2/round-3 entries of this
+file, and in the `docs/EFFORT-LOG.md` row, each with the correction noted.  Documentation only —
+no source, dependency, or lockfile change.  Round 4 of the codex-autofix loop (4 commits authored
+on this branch vs the cap of 10).  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-21-next-16.3.5-bump.md`.
+
+## 2026-09-21 CLAUDE — next 16.3.5 bump, round-3 autofix (rollout-note accuracy: file inventory + CI gate)
+
+Codex's round-3 pair of P1s on PR #3442 was again against
+`docs/rollouts/2026-09-21-next-16.3.5-bump.md`, not against code: (a) the touched-file inventory
+listed only the three documentation files while the PR diff also carries `package.json` and
+`package-lock.json`, and (b) the authoritative-gate sentence described the required `verify`
+check as `tsc` -> `test` -> `build`, omitting `npm run lint` — which `.github/workflows/ci.yml:311-314`
+runs first.  Both findings were correct.  Fixed in place: the inventory now lists all five PR
+paths with the commit that introduced each (and explains that the "documentation only" line
+describes the autofix rounds, not the dependency files that are the PR's subject), and the gate
+sentence now names all four commands in the mandated order.  Documentation only — no source,
+dependency, or lockfile change.  Round 3 of the codex-autofix loop (2 commits authored on this
+branch at the moment this entry was written — the round-3 commit itself is the third; corrected to
+4 at round 4.  Cap is 10).  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-21-next-16.3.5-bump.md`.
+
+## 2026-09-21 CLAUDE — next 16.3.5 bump, round-2 autofix (verification-order fix in the rollout note)
+
+Codex's round-2 P1 on PR #3442 was against `docs/rollouts/2026-09-21-next-16.3.5-bump.md`, not
+against code: the `## Verification State` block listed `npx tsc --noEmit` before `npm run lint`,
+while `AGENTS.md` mandates `lint` -> `tsc` -> `test` -> `build`.  Documentation-accuracy defect
+only.  Re-ran all four in the prescribed order — `npm run lint` exit 0 (819 problems, 0 errors),
+`npx tsc --noEmit` exit 0 clean, `npm test` exit 1 (13 failed / 8144 passed / 51 skipped, the
+known sandbox LLM-key leak in the same 4 files; those 4 re-run with the ambient key unset give
+4 files / 60 passed / 0 failed), `npm run build` exit 0 — and rewrote the note to record that
+order.  Also corrected an inaccurate round-cap claim in the same note — which it replaced with a
+second wrong figure (61 autofix commits in branch history, exactly 1 authored on this PR);
+**both numbers were wrong**, the verified figures at the tip are 10 in branch history and 4
+authored on this PR, and they were corrected in place at round 4.  No source, dependency, or
+lockfile change.
+Round 2 of the codex-autofix loop.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-21-next-16.3.5-bump.md`.
+
+## 2026-09-21 CLAUDE — next 16.3.4 -> 16.3.5 bump handoff docs (PR #3442, codex-autofix)
+
+Dependabot bump of `next` `^16.3.4` -> `^16.3.5` (next-react group) in PR #3442 touched only
+`package.json` + `package-lock.json`, so Codex flagged it P1 for omitting the mandatory per-commit
+handoff updates.  This commit adds the missing `STATUS.md` entry, the `docs/EFFORT-LOG.md` mirror
+row, and a `docs/rollouts/` note; the lockfile itself is unchanged.  16.3.5 is a backport-only
+patch (disk-LRU 0-byte image skip/reject, standalone server NFTs, CSP nonce on loading/template
+scripts, `use cache` prerender signal retention) — no API or config migration, so no source
+changes were required.  Round 1 of the codex-autofix loop.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-21-next-16.3.5-bump.md`.
+## 2026-09-21 MUSE — @datadog/browser-rum 7.13.0 bump, round-2 sweep (main merge + commit-message P1)
+
+Round-2 of the PR #3446 lane, MUSE fleet PR-merge sweep.  Codex's remaining P1 was that the
+round-1 commit message never referenced the handoff files it added.  This commit's message
+enumerates the updated docs (`STATUS.md`, `docs/EFFORT-LOG.md`, `PLAN.md`,
+`docs/rollouts/2026-09-21-datadog-browser-rum-7.13-bump.md`), and the squash-merge message will
+keep that enumeration so the permanent history names them.  Also merged current `origin/main`
+(picks up #3445 jose 6.2.12, #3426, #3427) - clean auto-merge, `@datadog/browser-rum` verified at
+`^7.13.0` (lock 7.13.0) in the merged manifest/lockfile.  Docs + merge only; the required
+`verify` CI check re-runs on push and is the authoritative gate.  Extra-ship no.  No Coolify
+Deploy.
+Rollout: `docs/rollouts/2026-09-21-datadog-browser-rum-7.13-bump.md`.
+
+## 2026-09-21 FIXER — @datadog/browser-rum 7.9.0 → 7.13.0 bump: handoff records added (PR #3446)
+
+Dependabot's `^7.9.0` → `^7.13.0` bump changed only `package.json` + `package-lock.json`, so it carried
+none of the mandatory handoff records; Codex flagged that as P1 on `package.json:39`.  This
+`[codex-autofix]` round adds `STATUS.md`, `docs/EFFORT-LOG.md`, the `PLAN.md` scope note, and
+`docs/rollouts/2026-09-21-datadog-browser-rum-7.13-bump.md`.  Same-major bump (browser-rum /
+browser-core / browser-rum-core 7.13.0, transitive `@datadog/js-core` 0.0.10 → 0.0.14), so no source
+change was needed: the only call site `src/lib/datadog-rum.ts:24` is a dynamic import cast to a local
+3-method `RumSdk` type using only long-stable `init` options, and it is already fail-soft
+(`try`/`catch` → `console.warn`; `addError` never throws).  Classified **runtime** dependency-only
+(`package.json`/lockfile are Coolify `watch_paths`), **not** docs-only.  No live effect: RUM send
+stays dark (`DD_RUM_ENABLED=false`, RUM app `is_active=false` — do not enable it here).  No Coolify
+Deploy from this lane.
+Rollout: `docs/rollouts/2026-09-21-datadog-browser-rum-7.13-bump.md`.
+## 2026-09-21 Autofix (codex-autofix) — `jose` 6.2.9 -> 6.2.12 handoff records (PR #3445)
+
+Dependabot bumped `jose` 6.2.9 -> 6.2.12 on branch `dependabot/npm_and_yarn/jose-6.2.12` (commit `d0c43f5a`), a three-release patch bump crossing `6.2.10`'s hardening batch, `6.2.11`'s JWE refactor, and `6.2.12`'s JWS/JWE core simplification.  This is a runtime dependency-only change:  `jose` is a production dependency and the lockfile moved with it, so both sit on the `watch_paths` runtime set and merge triggers a production image build (weekday RTH latch applies).  This lane authored no product source; it adds the required handoff records (this entry / `docs/EFFORT-LOG.md` / rollout note / `PLAN.md`) that Codex's review flagged as missing.
+
+**Round 2.**  Codex re-reviewed at `2d16771` and raised three follow-ups against the rollout note, all accepted.  (a) The recorded verification skipped `npm run lint` — the FIRST of the repo's four gates — so the full quartet has now been run in order.  (b) The note claimed "the two real `jose` call sites", which **undercounted them: the production Cloudflare Access path in `middleware.ts:28-29, 260-276` (`createRemoteJWKSet` from `jose/jwks/remote` + `jwtVerify` from `jose/jwt/verify`, again with no `algorithms` option) was omitted.**  Corrected to three production consumers — middleware (per-request auth gate, matcher covers nearly every route), the Apple sign-in route (`app/api/mobile/auth/apple/route.ts:27`), and the app session JWT (`src/lib/auth/session-token.ts:41`, HS256, already explicit).  `middleware.ts` is the only one Codex's concern actually bites:  it is unmocked — `test/middleware-auth.test.ts` drives it with real JOSE operations — and it passed **43/43** in isolation on installed 6.2.12.  A direct probe confirmed a no-`algorithms` RS256 JWKS verify with `issuer` + `audience` still succeeds, `jose/jwt/sign`, `jose/jwt/verify`, and `jose/jwks/remote` all still resolve in 6.2.12's `exports` map, and a negative control (wrong `audience`) is still rejected with `ERR_JWT_CLAIM_VALIDATION_FAILED`, so the policy was not silently loosened.  (c) The commit-message finding did not apply to `2d16771` as written (that message already carried a "Docs updated: STATUS.md, docs/EFFORT-LOG.md, PLAN.md, docs/rollouts/..." trailer); the round-2 commit message nonetheless enumerates them explicitly, and the squash message must keep that enumeration.
+
+Verification (repo order, lint first):  `npm run lint` PASS (0 errors / 819 grandfathered warnings, exit 0); `npx tsc --noEmit` PASS; `npm test` **fully green — 745 passed | 1 skipped (746 files), 8157 passed | 51 skipped (8208 tests)**, run with this seat's `ANTHROPIC_*` env scrubbed (round 1's 13 failures were entirely that seat env — the LLM key-routing family `chat-llm` / `framework-review` / `llm-provider` / `openrouter-credits`, none of which references `jose`; scrubbing the whole suite in round 2 cleared all 13, so no failure of any kind is attributable to this bump); `npm run build` PASS, and the build output lists `ƒ Proxy (Middleware)`, confirming `middleware.ts` is compiled into the production bundle.  No behavioral break.  Still open and deliberately out of scope:  the stale `ios/SocraticTradeTests/Fixtures/policy-contract.json` fixture plus the `src/lib/types.ts:1050` comment.  Rollout:  `docs/rollouts/2026-09-21-codex-autofix-jose-6-2-12.md`.
+
+## 2026-09-18 GROK — #3385 sqliteYieldRetry remainder (scheduler writes + synthetic-stop delete/audit)
+
+#3383 is live (`2fc699c328`) and dropped serving `busy_timeout` to 100ms.  Three scheduler writes still ran synchronously: `scheduler:lastTick`, managed-vector lastAttempt/lastSuccess, and boot `setPolicy`.  A SQLITE_BUSY on lastTick after the short pin was counted as a health failure and could abdicate a live leader.  Boot halt shared one envelope between idempotent `setPolicy` and non-idempotent `audit`.  Three synthetic-stop plan-purge paths still mixed `deleteSyntheticStop` and `audit` in one `sqliteYieldRetry` callback, so a BUSY on audit could duplicate `synthetic_stop_purged_by_plan`.  Each write now has its own yield-retry envelope.  PR #3408, squash auto-merge armed.  Extra-ship no.  Stay out of `broker-protective-stops.ts`.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-3385-sqlite-yield-remainder.md`.
+## 2026-09-18 CLAUDE — Collapsible-card keyboard focus ring made explicit (board bf05f16a)
+
+The collapsible `Card` `<summary>` carried `focus:outline-none`.  On the current build the global
+ring still won (unlayered console.css beats `@layer utilities`), so the defect was latent rather than
+live, but nothing pinned it.  Removed the opt-out, added an explicit inset `:focus-visible` rule and
+two source guards in `test/console-a11y.test.ts`.  The 320px scope-selector collapse is not verified
+and stays open on the row.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-console-card-focus-ring.md`.
+
+## 2026-09-18 CLAUDE — Post-cancel protective-stop bookkeeping after the #3383 pin (money path)
+
+`#3383` dropped the serving `busy_timeout` 60000ms -> 100ms, so a sync SQLite write that used to
+WAIT now THROWS.  `#3386` repaired that class in `synthetic-stops.ts`; `broker-protective-stops.ts`
+was never converted.  In `cancelBrokerProtectiveStop` the post-cancel delete sat inside the broker
+`try`, so a `SQLITE_BUSY` audited a SUCCESSFUL cancel as `broker_protective_stop_cancel_error` and
+re-persisted `pending_cancel` for an order already gone at the broker.  Broker call and bookkeeping
+are now split; bookkeeping goes through `sqliteYieldRetry`.  Failing-first proven.  **Money path —
+do NOT auto-merge, needs a human read.**  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-protective-stop-post-cancel-sqlite-busy.md`.
+## 2026-09-18 CLAUDE — Public trading-liveness reports the cause (board 64413d84)
+
+`/api/health` said `degraded: 1` without saying why, so a JSON-path monitor could not separate a
+failing autopilot account from out-of-session silence.  Added identity-free
+`maxConsecutiveFailedRuns` and `degradedReasons` to `PublicTradingLiveness`.  The session-calendar
+half of the row was already on `main` and was verified, not re-implemented.  Degradation thresholds
+are unchanged, so no alert starts or stops firing.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-liveness-degradation-cause-fields.md`.
+
+## 2026-09-18 CURSOR — iOS TestFlight Automatic vs Distribution signing (PR pending)
+
+`ios-ship` rc=65 after #3399: Automatic signing conflicted with manual `Apple Distribution` in
+Release + `ship-testflight.sh`.  Reverted to Congress.Trade pattern (Automatic only; no archive
+identity override).  Branch `fix/ios-tf-automatic-vs-distribution-signing`.  Extra-ship no.
+Rollout: `docs/rollouts/2026-09-18-ios-tf-automatic-vs-distribution-signing.md`.
+
+## 2026-09-18 GROK — Datadog remaining: ST RUM stay dark + DD_HOSTNAME (board f03c5542)
+
+Infrastructure Free us5.  Trial expired 2026-09-07.  RUM hourly usage is empty.  The existing `Socratic Trade` RUM app stays `is_active=false` on purpose — do not mint a second app and do not start send.  Infisical now has `DD_RUM_ENABLED=false` and `DD_HOSTNAME=fleet-hetzner-nbg1`.  Preload sets the host tag on Coolify only; dd-trace `init({ hostname })` is the Agent address.  Extra-ship no.  Sentry stays the app error path.
+Rollout: `docs/rollouts/2026-09-18-datadog-free-remaining.md`.
+## 2026-09-18 GROK — MM AG takeover #3379 theme CI (board 6aa1e66e)
+
+Hosted tsc failed on `@/app/ui/theme` (alias is `src/*`).  Relative import from console chrome/ticker-logo.  Default stays light.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-ag-takeover-theme-ci.md`.
+## 2026-09-18 GROK — MM AG takeover #3380 venue CI (board 6aa1e66e)
+
+Hosted eslint failed prefer-const on unused-mutated quantity/dollarAmount.  Destructure them as const.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-ag-takeover-venue-ci.md`.
+## 2026-09-18 GROK — MM AG takeover #3381 test CI (board 6aa1e66e)
+
+Hosted tsc failed on fantasy policy fields and setDbForTesting.  Align route tests with DEFAULT_POLICY; restore maxWorkers 1.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-ag-takeover-tests-ci.md`.
+## 2026-09-18 GROK — MM AG takeover #3382 ops CI (board 6aa1e66e)
+
+Hosted tsc failed because liveness_warning was not in deliverSystemAlertToAdmins.  Add it to the union.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-ag-takeover-ops-ci.md`.
+
+## 2026-09-18 CLAUDE — Restart loops now leave a durable trail and raise an alert (board a9676caf)
+
+Coolify replaces the container on every restart, so a previous container's logs and exit-guard
+receipts vanished and nothing alerted on the loop itself.  New `src/lib/boot-ledger.ts` appends one
+JSON line per boot/exit to `boot-ledger.jsonl` beside the DB on the persistent volume (exit code,
+signal, `process.exit` call site via a new `exit-guard` receipt hook; a boot with no predecessor
+exit line reads as "killed").  3 boots in 45 minutes raises a Sentry `fatal` message plus one admin
+alert per 12h.  Repo code only: the Coolify-side restart-count monitor is still a host task.
+Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-restart-loop-boot-ledger.md`.
+
+## 2026-09-18 CURSOR — Effort Issues Sync Crons margin (FLEET-INFRA-C0)
+
+Sentry `ci-effort-issues-sync` false-pages every day at 06:27Z.  The board-mirror job itself succeeds on `ubuntu-latest` in ~12-30s; GitHub just starts the `12 6 * * *` schedule 5-6.5h late (typical 11:12-11:44Z, worst retained 2026-09-14 12:37Z).  Same class as #3194 / FLEET-INFRA-C1, #3387 / FLEET-INFRA-C3, and #3389 / FLEET-INFRA-BY.  Raise `CHECKIN_MARGIN_OVERRIDES["Effort Issues Sync"]` to 600.  Cron and sync script unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` the sync.  #3302 already moved the live slug to `ci-socratic-trade-effort-issues-sync`; do not close C0 on merge.
+Rollout: `docs/rollouts/2026-09-18-effort-issues-sync-monitor-margin.md`.
+## 2026-09-18 GROK — MM AG takeover #3378 admin CI (board 6aa1e66e)
+
+Hosted verify failed on operator wiring + copy-rules, not lucide-react.  Point the backtest-ic marker at `admin-shell.tsx`, gap the CPU caveat title, show the active admin nav label.  Continue `mm/ag-takeover-eb883289`.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-ag-takeover-admin-ci.md`.
+
+## 2026-09-18 CURSOR — Cleanup Actions Caches Crons margin (FLEET-INFRA-BY)
+
+Sentry `ci-cleanup-actions-caches` false-pages every day at 03:20Z.  The prune job itself succeeds on `ubuntu-latest` in ~12s; GitHub just starts the `5 3 * * *` schedule 4.5-7h late (typical 07:35-08:48Z, worst retained 2026-08-29 09:57Z).  Same class as #3194 / FLEET-INFRA-C1 and #3387 / FLEET-INFRA-C3.  Raise `CHECKIN_MARGIN_OVERRIDES["Cleanup Actions Caches"]` to 600.  Cron and prune script unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` the cleanup.  #3302 already moved the live slug to `ci-socratic-trade-cleanup-actions-caches`; do not close BY on merge.
+Rollout: `docs/rollouts/2026-09-18-cleanup-actions-caches-monitor-margin.md`.
+
+## 2026-09-17 CURSOR — RTH Deploy Latch Crons margin (FLEET-INFRA-C3)
+
+Sentry `ci-rth-deploy-latch` false-pages every weekday at 21:35Z.  The drain job itself succeeds; GitHub just starts the `20 21 * * 1-5` schedule 2-8h late (typical 23:14-23:54Z).  Same class as #3194 / FLEET-INFRA-C1.  Raise `CHECKIN_MARGIN_OVERRIDES["RTH Deploy Latch"]` to 600.  Cron and drain script unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` the latch (that nudges Coolify).  #3302 already moved the live slug to `ci-socratic-trade-rth-deploy-latch`; do not close C3 on merge.
+Rollout: `docs/rollouts/2026-09-17-rth-deploy-latch-monitor-margin.md`.
+
+## 2026-09-17 CURSOR-BUGBOT — post-claim fire writes after #3383 pin
+
+#3383 is live (`2fc699c328`).  Serving `busy_timeout` is 100ms.  After `claimSyntheticStop()`, `recordSyntheticStopAttempt` / `insertFillEvent` / `revertSyntheticStopClaim` stayed unwrapped and `recordSyntheticStopAttempt` was outside the place try/catch.  SQLITE_BUSY on that write leaves `triggered` with no `last_attempt_ref_id` until the 15-min re-arm grace — naked position after a real trigger.  Wrap each post-claim statement in `sqliteYieldRetry` and move the attempt record inside the try so a throw reverts.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-17-post-claim-sqlite-busy-fire.md`.
+
+## 2026-09-17 GROK — PR #3383 tip-fix: fake timers vs yieldEventLoop (board e7b49943)
+
+Hosted `verify` on #3383 timed out (`test/synthetic-stops.test.ts` and sibling reprice files at 60s/30s).  Cause: `runSyntheticStopMonitor` now `await yieldEventLoop()` (`setImmediate`), and those tests used full `vi.useFakeTimers()` which never flushes it.  Tests now fake `Date` only; `isSqliteBusy` does not retry a stamped non-BUSY sqlite code.  Pin+yield production behavior unchanged.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-17-sqlite-busy-event-loop-pin.md`.
+
+## 2026-09-18 FIXER — RAG retrieval no longer pages as Pinecone (PD #116 leftover)
+
+`retrieveContextDetailed` catch hardcoded `provider: "pinecone"` after Qdrant cutover, so
+Qdrant `fetch failed` kept fingerprinting as SOCRATIC-TRADE-1T.  Catch uses `readBackend`;
+Qdrant search retries transients; `/api/health` reports the active vector backend and does
+not 503 on leftover Pinecone while Qdrant is serving.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-rag-retrieval-qdrant-mislabel.md`.
+
+## 2026-09-17 GROK — SQLITE_BUSY event-loop pin+yield (board e7b49943)
+
+ST production stalls ~every 30 minutes: Traefik 503 on `/api/health` while Docker still says healthy.  Docker restart recovers briefly; Coolify Deploy is not the recovery.  WIP lands as-is on `grok/rth-event-loop-stall` (worktree `~/apps/trading-grok-rth-stall`): serving `busy_timeout` is a 100ms pin; async callers keep the 60s lock budget via `sqliteYieldRetry`; safety lanes yield; RTH RAG ingest defers.  Extra-ship no.  No Coolify Deploy.  Do not restart production from this lane.
+Rollout: `docs/rollouts/2026-09-17-sqlite-busy-event-loop-pin.md`.
 
 ## 2026-09-15 GROK — PR #3283 observability review threads
 
@@ -41,6 +537,27 @@ Merged PR #3230 to address Issue #3220:
 4. Audited Alpaca MCP bracket sibling cancellations when REST credentials are not provided.
 5. Triggered teardown of sibling bracket legs upon manual cancellation.
 Rollout: \`docs/rollouts/2026-09-12-issue-3220-tradier-broker-fixes.md\`.
+## 2026-09-18 CURSOR — Strict Infisical, no `.env.local` files (IN PR — verification deferred to CI `verify` ruleset)
+
+Owner directive 2026-09-18: Infisical is the sole source of truth for every secret.  This PR
+deletes the dev-only `.env.local` loader path in `src/lib/db-api-keys.ts:32-60` (keeping the
+`~/.secrets/global-api-keys` handoff paths, since that's the documented owner-side identity
+store, not an `.env` file); stops seeding `.env.local` from `.env.example` in
+`scripts/cloud-setup.sh:47-50`; shrinks `.env.example` to bootstrap-only (Infisical client
+identity + `ENCRYPTION_KEY` + `REQUIRE_SECRETS_MANAGER` arming comment); exports
+`REQUIRE_SECRETS_MANAGER=1` in `scripts/coolify-prod-start.sh` phase-2 re-exec so prod
+visibly arms the fail-closed boot guard (`src/lib/secrets-source.ts` + `instrumentation.ts:51`);
+makes `npm run dev:secrets` the canonical local start path with a one-time `predev` notice
+on plain `npm run dev`; updates AGENTS.md + docs/secrets.md + adds
+`test/no-env-loader-or-dotenv-yaml.test.ts` as a regression guard.  Branch
+`cursor/strict-infisical-no-env-files` from `origin/main`.  11 file changes (+new).  Local
+`npm install` wedged against peer-agent concurrent installs (multiple lanes competing for
+the npm registry on this machine; documented in rollout note); `node --check` passes on the
+new `predev-check.mjs`.  **Verification gate is the ruleset `verify` workflow on GitHub
+hosted runners** — that path runs `tsc --noEmit` + `vitest` + `next build` without peer
+contention.  Local first-party install deferred.  No merge from this lane.
+Rollout: `docs/rollouts/2026-09-18-strict-infisical-no-env-files.md`.
+
 ## 2026-09-15 GROK — PR #3296 401 JSON still redirects
 
 Sentry thread on `use-live-scan.ts`: `readErrorMessage` parsed JSON before the 401 check, so a JSON 401 body would skip `redirectToLogin()`.  Status is checked first now.  Merge is live — no Coolify Deploy.
@@ -66,6 +583,11 @@ Rollout: `docs/rollouts/2026-09-13-issue-3223-qdrant-fuses-fts-optimization.md`.
 
 Executed an exhaustive, multi-subagent audit across the entire codebase covering Trading Execution & Persistence, Security & API Routes, AI Strategy & Vector Retrieval, and Web Console & iOS Client.  Identified 3 Critical trading bugs (Tradier bracket entry dropping in `equityRowsFromTradierOrder`, missing `ordersListIncludesTerminal` on Tradier, and HTTP 200 rejection envelope misclassification), 2 Critical console bugs (duplicate strategy runs from mounted desktop/mobile `RunOnceButton` listeners and an un-backed-off deadline retry spin loop), 2 Critical AI engine bugs (`withDatadogLlmObs` duplicate execution on failure, and Red Team unhandled JSON parse failure aborting fallback models), plus over 15 High/Medium vulnerabilities, storage bloat drivers, and event-loop stall sources.  Logged and triaged all findings into 8 dedicated GitHub issues (#3220–#3227) with detailed reproduction mechanics and remediation steps.  Effort logs updated on both branch-neutral live board (`/Users/jay/apps/TRADING-EFFORT-LOG.md`) and repo mirror (`docs/EFFORT-LOG.md`).
 Rollout: `docs/rollouts/2026-09-12-codebase-full-audit.md`.
+
+## 2026-09-18 CURSOR — CI Crons margin (FLEET-INFRA-DB)
+
+Sentry `ci-socratic-trade-ci` false-paged at 08:02Z (first miss on the #3302 slug).  Scheduled `ci.yml` itself succeeds; GitHub starts the nightly `47 7 * * *` canary 5-6.5h late (typical ~12:46-14:24Z, worst retained 2026-09-14 14:24Z) and today's 07:47Z tick had no `schedule` run because main-push CI held `ci-CI-refs/heads/main`.  Same class as #3194 / FLEET-INFRA-C1, #3387 / C3, #3389 / BY, and #3390 / C0.  Raise `CHECKIN_MARGIN_OVERRIDES["CI"]` to 600.  Cron and verify suite unchanged.  Extra-ship no.  No Coolify Deploy.  Do not `workflow_dispatch` CI.  Do not close DB on merge.
+Rollout: `docs/rollouts/2026-09-18-ci-monitor-margin.md`.
 
 ## 2026-09-10 GROK — PR #3208 fixer tip (tini PID1 / HEALTHCHECK curl self-timeout)
 
@@ -167,6 +689,11 @@ events during the measured stall burst; 09-07 had *more* lock events than 09-08 
 less pinning; and a busy-wait sleeps rather than burning the 107% CPU observed).  No timeout
 widened — that shipped separately in PR #3201.  Rollout:
 `docs/rollouts/2026-09-09-fts-mirror-nonconvergence.md`.
+## 2026-09-18 GROK — AG entry-path remainder (board 6aa1e66e)
+
+MM takeover of `ag/620ef423` was empty.  Land iOS first-run copy + Auth.js error=/login, with the login page now explaining `?error=` codes.  The header-based already-signed-in redirect was dropped (dead code on a public path; Sentry finding on #3396).  Do not rename callbackUrl to next.  Extra-ship no.  No Coolify Deploy.
+Rollout: `docs/rollouts/2026-09-18-ag-entry-paths.md`.
+
 ## 2026-09-09 GROK — PR #3204 fixer tip (multipart retry, drill cleanup, fail-closed counts)
 
 Codex P1+P2 on `claude/backup-methodology`.  CompleteMultipartUpload 200+`<Error>` bodies now
@@ -323,6 +850,30 @@ noisy — its remaining events are HTTP 5xx, which stay hard by design.
 
 Rollout: `docs/rollouts/2026-09-08-transient-network-health-classification.md`.
 
+## 2026-09-08 CLAUDE — RAG ingest budget Sentry warning: cooldown raised to 6h, rollup tested
+
+Board `c630ceed` (F04). `SOCRATIC-TRADE-27` (9,502 events) and `SOCRATIC-TRADE-2E` (34
+events, assigned to Jay) both trace to the RAG ingest text budget (`RAG_INGEST_MAX_TEXTS_PER_DAY`,
+default 20,000/24h) being exhausted during ingestion. The "fires on every throttled batch"
+part of this was already fixed by PR #3187 (merged 2026-09-07,
+`shouldEmitRagIngestBudgetSentry`) — `-27` went quiet the moment that landed; `-2E` is the
+same condition continuing under the new (already cooldown-gated) code, at a much lower but
+still non-trivial rate (30-minute cooldown, up to ~48 events/day while a backfill keeps the
+budget pinned at zero).
+
+Two real gaps closed here: (1) raised the cooldown from 30 minutes to 6 hours, matching the
+sibling `PINECONE_WU_BUDGET_SENTRY_COOLDOWN_MS` in the same file, so the warning actually
+approximates "once per budget window" instead of up to 48x/day; (2) added
+`test/rag-ingest-budget-sentry-rollup.test.ts` — the only prior test
+(`rag-ingest-budget-sentry-cooldown.test.ts`) covered just the fail-soft persistence-error
+edge case, not the rollup itself (repeat suppression, count/remaining-budget fields on the
+event, the unthrottled per-batch audit line, resumption after the window). Did NOT touch
+`RAG_INGEST_MAX_TEXTS_PER_DAY` — `.env.example` already documents it as a deliberate,
+operator-adjustable cost/pacing guard (raised to 200k during active backfills, shifted back
+to 20k after), not an arbitrary number.
+
+Branch `claude/sentry-rag-budget-rollup`. Rollout:
+`docs/rollouts/2026-09-08-rag-ingest-budget-sentry-rollup.md`.
 
 ## 2026-09-08 CLAUDE — R2 weekly cold snapshot stalled 9 days, silently
 
@@ -613,7 +1164,7 @@ after 7761 passing tests.  `#3046`'s `onConsoleLog: () => false` still
 forwards logs over RPC.  Fix: `disableConsoleIntercept: true` plus quiet
 log/info/debug in the existing setup file.  Targeted vitest 3/3 in 6.67s,
 eslint on touched files exit 0.  Branch `grok/vitest-teardown-console`,
-worktree `~/apps/trading-grok-verify-flake`.  PR: https://github.com/jaywedgeworth22/Socratic.Trade/pull/3163
+worktree `~/apps/trading-grok-verify-flake`.  PR: https://github.com/jaywedgeworth22/Socratic-Trade/pull/3163
 SHA `4fba321ff`.  No Coolify.  No extra-ship.  No merge from this lane.
 Remaining gate: GitHub `verify`.  Rollout:
 `docs/rollouts/2026-09-04-vitest-teardown-console.md`.
@@ -998,7 +1549,7 @@ Independent re-check of `docs/rollouts/2026-08-21-ios-adaptive-tabs-followups.md
 ## 2026-08-22 CURSOR — PR #3028 merged to `main` (iOS wide layout / Admin tab / gear-bell)
 
 Squash `a851a68d` (`a851a68da16b9c7ec722897a3ab4f378e0117111`) at 2026-08-22 01:14:36Z.
-https://github.com/jaywedgeworth22/Socratic.Trade/pull/3028
+https://github.com/jaywedgeworth22/Socratic-Trade/pull/3028
 
 Shipped on `main`: regular-width `.sidebarAdaptable` TabView plus the existing card-column
 scaffold; compact keeps the phone bar; `gearshape` trailing on every tab; bell leading
@@ -2771,7 +3322,7 @@ from #2681).
 
 Branch `monet/real-toggles`, worktree `~/apps/trading-monet-toggles`. Gates (foreground, waited
 on): tsc clean; `npm test` 6573 passed / 51 skipped (568 files); lint 0 errors; build clean. PR
-https://github.com/jaywedgeworth22/Socratic.Trade/pull/2682, opened ready, auto-merge armed
+https://github.com/jaywedgeworth22/Socratic-Trade/pull/2682, opened ready, auto-merge armed
 (squash) — merges on green `verify`. Rollout:
 `docs/rollouts/2026-08-13-remove-force-include-notifications.md`.
 ## Current (2026-08-13 ~2:20pm CT CLAUDE — HOTFIX: adaptive FTS-mirror batching)
@@ -2875,7 +3426,7 @@ accounts -> portfolio/positions/orders -> quotes chain.
 Also: the intro canvas now measures the fixed overlay instead of `window.innerHeight` (they
 disagree by 60-90px on iOS Safari, which pushed the chart down and clipped its low wicks on every
 iPhone), DPR 3 on phones, iOS URL-bar resize absorption, safe-area-aware landing box.  iOS
-`LaunchStateView` (icon + spinner + "Socratic.Trade") is now the candlestick SOCRATIC TRADE wordmark
+`LaunchStateView` (icon + spinner + "Socratic-Trade") is now the candlestick SOCRATIC TRADE wordmark
 at the top that slides away, sized by the web `MobileBrandRow` formula, plus a `LaunchBackground`
 colorset that kills the white cold-launch flash.  Found and fixed a shipped bug along the way:
 `CandleWordmarkView` rendered the wordmark VERTICALLY MIRRORED (S as 2, R as K, A as Y) from a
@@ -3690,7 +4241,7 @@ behavior unchanged; injectable RNG for deterministic tests. Branch `monet/rotati
 ## Current (2026-08-06 MONET full-product review + deploy-freeze repair)
 ## Current (2026-08-07 GROK — iOS login brand parity)
 
-**iOS login restyled to match website** (`app/login/page.tsx`): candlestick "SOCRATIC TRADE" wordmark (`CandleWordmarkView`, port of `candle-ticker.ts`), accent-dot value bullets, plain `--bg` surface, Google/GitHub/Apple button order and styles. PR [#2574](https://github.com/jaywedgeworth22/Socratic.Trade/pull/2574) (branch `grok/ios-login-brand`, auto-merge armed). `xcodebuild` BUILD SUCCEEDED. Rollout: `docs/rollouts/2026-08-07-ios-login-brand.md`.
+**iOS login restyled to match website** (`app/login/page.tsx`): candlestick "SOCRATIC TRADE" wordmark (`CandleWordmarkView`, port of `candle-ticker.ts`), accent-dot value bullets, plain `--bg` surface, Google/GitHub/Apple button order and styles. PR [#2574](https://github.com/jaywedgeworth22/Socratic-Trade/pull/2574) (branch `grok/ios-login-brand`, auto-merge armed). `xcodebuild` BUILD SUCCEEDED. Rollout: `docs/rollouts/2026-08-07-ios-login-brand.md`.
 
 ## Prior (2026-08-06 MONET full-product review + deploy-freeze repair)
 
@@ -3862,7 +4413,7 @@ Thesis→Home, Evidence→Scan, Journal→Activity, Outcomes→Results, Regime�
 tooltips keep metaphor; home CTAs use `destinationLabel`; mobile pins already by href.
 Rollout: `docs/rollouts/2026-08-04-ux-b1-plain-nav-labels.md`.
 **2026-08-04 — GROK: retire direct FMP / QuiverQuant / Unusual Whales.** Owner:
-Socratic.Trade must not call those vendors. Congressional disclosures/analytics from
+Socratic-Trade must not call those vendors. Congressional disclosures/analytics from
 Congress.Trade (default ON); **fundamentals from multi-source cascade** (Yahoo/Finnhub/
 ROIC/SEC/… — App A fundamentals default OFF). Hard ban at registration + request choke
 points. Branch `grok/no-direct-fmp-quiver-uw` (PR #2398).
@@ -3989,7 +4540,7 @@ Root cause: `deriveEvidenceRows` assumed every truthy `latestScan` had array
 `topCandidates`. Fix: `safeTopCandidates` + snapshot normalization in `dashboard.ts`.
 Rollout: `docs/rollouts/2026-08-03-console-topcandidates-slice-crash.md`.
 
-**2026-08-03 — Xcode App Settings & Apple Sign-In Layout Constraint Fix (ANTIGRAVITY).** Configured Xcode App Category (`public.app-category.finance`), Display Name (`Socratic.Trade`), Marketing Version (`1.0.0`), and Build Version (`1`) across `Info.plist` and `project.pbxproj`. Fixed `ASAuthorizationAppleIDButton` layout constraint collision warning (`width == 392` vs `width <= 375`) in `LoginView.swift` by capping `SignInWithAppleButton` width to 375pt. `xcodebuild` succeeded clean. Rollout: `docs/rollouts/2026-08-03-xcode-app-settings-and-apple-signin-constraint-fix.md`.
+**2026-08-03 — Xcode App Settings & Apple Sign-In Layout Constraint Fix (ANTIGRAVITY).** Configured Xcode App Category (`public.app-category.finance`), Display Name (`Socratic-Trade`), Marketing Version (`1.0.0`), and Build Version (`1`) across `Info.plist` and `project.pbxproj`. Fixed `ASAuthorizationAppleIDButton` layout constraint collision warning (`width == 392` vs `width <= 375`) in `LoginView.swift` by capping `SignInWithAppleButton` width to 375pt. `xcodebuild` succeeded clean. Rollout: `docs/rollouts/2026-08-03-xcode-app-settings-and-apple-signin-constraint-fix.md`.
 
 **2026-08-02 — Exit-0 outage root-caused + exit-code hardening (MONET, branch
 `monet/exit0-outage-audit`).** The 15:29Z "clean exit 0, stayed down" outage was an

@@ -8,6 +8,12 @@ vi.mock("@/lib/rate-limit", async (importActual) => {
   const actual = await importActual<typeof import("../src/lib/rate-limit")>();
   return { ...actual, enforceRateLimit: vi.fn(() => null) };
 });
+// The route now imports isQuoteFresh from "@/lib/quotes-cascade" to validate the live
+// overlay — keep the real implementation and mock only the network-touching cascade.
+vi.mock("@/lib/quotes-cascade", async (importActual) => {
+  const actual = await importActual<typeof import("../src/lib/quotes-cascade")>();
+  return { ...actual, fetchFreshQuotesCascade: vi.fn(async () => ({})) };
+});
 vi.mock("@/lib/yahoo-finance", () => ({ fetchYahooFinanceQuote: vi.fn() }));
 vi.mock("@/lib/on-demand-quote", async (importActual) => {
   const actual = await importActual<typeof import("../src/lib/on-demand-quote")>();
@@ -21,6 +27,7 @@ vi.mock("@/lib/on-demand-quote", async (importActual) => {
 import { enrichYahooFinanceSymbol, getEnrichmentProvider } from "@/lib/data-providers";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { fetchYahooFinanceQuote } from "@/lib/yahoo-finance";
+import { fetchFreshQuotesCascade } from "@/lib/quotes-cascade";
 import { loadDurableQuoteSeed, persistOnDemandQuote } from "@/lib/on-demand-quote";
 import { resetQuoteSingleFlightForTests } from "../src/lib/quote-singleflight";
 
@@ -389,5 +396,30 @@ describe("/api/quote", () => {
       eps: 8.12
     });
     expect(persistOnDemandQuote).toHaveBeenCalled();
+  });
+
+  it("overlays real-time quote from quotes-cascade when available", async () => {
+    // A real cascade quote always carries fetchedAt (stamped at ingest completion);
+    // the route validates the overlay with isQuoteFresh, so the fixture must too.
+    vi.mocked(fetchFreshQuotesCascade).mockResolvedValue({
+      LRCX: {
+        symbol: "LRCX",
+        price: 82.5,
+        bid: 82.4,
+        ask: 82.6,
+        asOf: new Date(Date.now() - 30_000).toISOString(),
+        fetchedAt: new Date().toISOString(),
+        provider: "alpaca"
+      }
+    });
+    const { GET } = await import("../app/api/quote/route");
+
+    const response = await GET(new Request("http://localhost/api/quote?symbol=lrcx"));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.symbol).toBe("LRCX");
+    expect(body.price).toBe(82.5);
+    expect(body.sources.price).toBe("alpaca");
   });
 });

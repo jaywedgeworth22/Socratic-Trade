@@ -9,11 +9,11 @@ Implemented connection health monitoring and backend-failure routing logic to di
 3. Disk/DB/WAL growth and Litestream sync ages were unmonitored on the host Mac, raising risk of silent replication failures (RPO growth) or disk capacity exhaustion.
 
 ## Files Touched
-- [src/lib/db.ts](file:///Users/jay/Code/Socratic.Trade/src/lib/db.ts) (exported `databasePath`)
-- [src/lib/db-health.ts](file:///Users/jay/Code/Socratic.Trade/src/lib/db-health.ts) (implemented `alertConnectionFailure` and `alertStorageWarning`, hooked into `logApiHealth`)
-- [app/api/health/route.ts](file:///Users/jay/Code/Socratic.Trade/app/api/health/route.ts) (surfaced global dependency health, added storage/WAL/Litestream monitors, and failed with `503` on critical global outages)
-- [src/lib/ops-snapshot.ts](file:///Users/jay/Code/Socratic.Trade/src/lib/ops-snapshot.ts) (integrated connection health summaries and storage metrics into the operational snapshot)
-- [test/connection-health-routing.test.ts](file:///Users/jay/Code/Socratic.Trade/test/connection-health-routing.test.ts) (NEW unit tests)
+- [src/lib/db.ts](file:///Users/jay/Code/Socratic-Trade/src/lib/db.ts) (exported `databasePath`)
+- [src/lib/db-health.ts](file:///Users/jay/Code/Socratic-Trade/src/lib/db-health.ts) (implemented `alertConnectionFailure` and `alertStorageWarning`, hooked into `logApiHealth`)
+- [app/api/health/route.ts](file:///Users/jay/Code/Socratic-Trade/app/api/health/route.ts) (surfaced global dependency health, added storage/WAL/Litestream monitors, and failed with `503` on critical global outages)
+- [src/lib/ops-snapshot.ts](file:///Users/jay/Code/Socratic-Trade/src/lib/ops-snapshot.ts) (integrated connection health summaries and storage metrics into the operational snapshot)
+- [test/connection-health-routing.test.ts](file:///Users/jay/Code/Socratic-Trade/test/connection-health-routing.test.ts) (NEW unit tests)
 
 ## Verification
 Ran all verification commands locally:

@@ -1,4 +1,6 @@
-# Socratic.Trade purchases audit — Stripe + StoreKit (2026-08-17)
+# Socratic-Trade purchases audit — Stripe + StoreKit (2026-08-17)
+
+> **2026-09-22 [MM] archaeology note:** historical references to the Socratic.Trade bundle ID `trade.socratic.app` are kept verbatim as the ID that was live at audit time.  Renamed on 2026-09-22 to `com.socratictrade.ios` (PR forthcoming); the App Store Connect app `6799238379` and the AASA appIDs claim are now keyed on `CC8UTF7ATG.com.socratictrade.ios`.  See `docs/rollouts/2026-09-22-bundle-id-migration.md`.
 
 **Status:** report only.  No code, Stripe sessions, StoreKit purchases, or card charges.
 
@@ -12,7 +14,7 @@ Every requested purchase control is **absent**, not broken.  There is no half-bu
 
 **FAIL only if the expected state was a live paid funnel.**  That funnel is not implemented on web or iOS.  Do not treat this as a missing-bugfix of an existing system.
 
-Congress.Trade already owns the fleet's live Stripe + IAP stack ($5/mo, $50/yr, 14-day trial, ASC products `trade.congress.premium.*`).  Do not copy that work into Socratic.Trade from this audit.
+Congress.Trade already owns the fleet's live Stripe + IAP stack ($5/mo, $50/yr, 14-day trial, ASC products `trade.congress.premium.*`).  Do not copy that work into Socratic-Trade from this audit.
 
 ## Scope and non-duplication
 
@@ -92,7 +94,7 @@ Admin portal is a fenced WKWebView to `https://socratictrade.com/admin` only (ho
 | Check | Result | Evidence |
 |-------|--------|----------|
 | No Stripe / web checkout for digital goods **inside** native iOS | **PASS** | No checkout URL, no Safari/WKWebView to a pay page, no "Subscribe on the website" CTA.  Login privacy note is session-only. |
-| External account-management links / copy | **PASS** | No "Manage subscription" link (none to manage).  "Connect one in Socratic.Trade" is **broker** connect, not a digital-goods circumvention.  Sign-out / deletion stay in-app.  `openURL` uses iOS Settings (push) and `/logout` after deletion. |
+| External account-management links / copy | **PASS** | No "Manage subscription" link (none to manage).  "Connect one in Socratic-Trade" is **broker** connect, not a digital-goods circumvention.  Sign-out / deletion stay in-app.  `openURL` uses iOS Settings (push) and `/logout` after deletion. |
 | Reader-app / 3.1.3(a) | **N/A** | ST is not selling a digital subscription, so it is not a reader app with an external subscribe button. |
 | Account deletion (5.1.1(v)) | **PASS** (adjacent) | Web: `/api/account/deletion`.  iOS: `/api/mobile/account-deletion/{request,confirm}`.  Tests: `test/account-deletion*.ts`, `test/mobile-account-deletion-route.test.ts`, `MobileModelsTests.swift`. |
 | Listing vs code | **PASS (last ASC read)** | 2026-08-14 Monet read: ST `1.0.0` `PREPARE_FOR_SUBMISSION`, custom EULA, OAuth-only review notes, **no ST subscription group**.  CT IAP `MISSING_METADATA` is CT's problem. |
@@ -140,8 +142,8 @@ rg -l -i 'stripe|storekit|checkout\.sessions|billingPortal|constructEvent|Produc
   --glob '!docs/**' app src ios test
 rg -n 'STRIPE_|STOREKIT_|IAP_' .env.example
 gh pr list --search "purchase OR stripe OR storekit OR billing OR IAP OR checkout" --state open
-gh search code "stripe" --repo jaywedgeworth22/Socratic.Trade --limit 20
-gh search code "StoreKit" --repo jaywedgeworth22/Socratic.Trade --limit 10
+gh search code "stripe" --repo jaywedgeworth22/Socratic-Trade --limit 20
+gh search code "StoreKit" --repo jaywedgeworth22/Socratic-Trade --limit 10
 ```
 
 All source greps: no matches.  Open-PR search: FilingAPI / ASC / PWA / other audits only.  StoreKit code search: empty.

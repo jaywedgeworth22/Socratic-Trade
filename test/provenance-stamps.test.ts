@@ -1,5 +1,6 @@
 /**
- * Provenance stamps: every accepted scan/cache value carries source + asOf/fetchedAt.
+ * Provenance stamps: every accepted scan/cache value carries source + fetchedAt, and asOf when the
+ * provider supplied one (the cascade never fabricates asOf from its own clock).
  * Covers cascade merge (takeScalar), symbol_field_latest writes, quote/bar merges, OHLC stamps.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -65,7 +66,7 @@ describe("stampFieldObservation helper", () => {
 });
 
 describe("cascade merge provenance stamps", () => {
-  it("stamps sharesOutstanding + headlines with source and asOf/fetchedAt into fieldObservations and the field store", async () => {
+  it("stamps sharesOutstanding + headlines with source and fetchedAt (no fabricated asOf) into fieldObservations and the field store", async () => {
     const dir = mkdtempSync(join(tmpdir(), `prov-cascade-${randomUUID()}-`));
     const prevDb = process.env.DATABASE_URL;
     process.env.DATABASE_URL = `file:${join(dir, "test.db")}`;
@@ -96,15 +97,19 @@ describe("cascade merge provenance stamps", () => {
       expect(merged.AAPL.sources?.sharesOutstanding).toBe("test-prov-provider");
       expect(merged.AAPL.fieldObservations?.sharesOutstanding?.source).toBe("test-prov-provider");
       expect(merged.AAPL.fieldObservations?.sharesOutstanding?.fetchedAt).toBeTruthy();
-      expect(merged.AAPL.fieldObservations?.sharesOutstanding?.asOf).toBeTruthy();
+      // The provider supplied no timestamp for this value, so asOf must stay undefined rather than
+      // being back-filled with the cascade's own clock (PR #3309: do not fabricate asOf).
+      expect(merged.AAPL.fieldObservations?.sharesOutstanding?.asOf).toBeUndefined();
 
       expect(merged.AAPL.headlines).toEqual(["Apple ships new product"]);
       expect(merged.AAPL.sources?.headlines).toBe("test-prov-provider");
       expect(merged.AAPL.fieldObservations?.headlines?.source).toBe("test-prov-provider");
-      expect(merged.AAPL.fieldObservations?.headlines?.asOf).toBeTruthy();
+      expect(merged.AAPL.fieldObservations?.headlines?.fetchedAt).toBeTruthy();
+      expect(merged.AAPL.fieldObservations?.headlines?.asOf).toBeUndefined();
 
       expect(merged.AAPL.fieldObservations?.peRatio?.source).toBe("test-prov-provider");
-      expect(merged.AAPL.fieldObservations?.peRatio?.asOf).toBeTruthy();
+      expect(merged.AAPL.fieldObservations?.peRatio?.fetchedAt).toBeTruthy();
+      expect(merged.AAPL.fieldObservations?.peRatio?.asOf).toBeUndefined();
 
       // Allow async store write (void import path)
       await new Promise((r) => setTimeout(r, 50));
@@ -127,6 +132,106 @@ describe("cascade merge provenance stamps", () => {
       expect(bySym.AAPL.sharesOutstanding.source).toBe("test-prov-provider");
       expect(bySym.AAPL.sharesOutstanding.asOf).toBeTruthy();
       expect(bySym.AAPL.headlines.source).toBe("test-prov-provider");
+    } finally {
+      resetDbForTesting();
+      if (prevDb === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDb;
+      try {
+        rmSync(dir, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+});
+
+describe("cascade merge arbitrates the new quote fields", () => {
+  it("takeScalars bidSize/askSize/prevClose/open/high/low/netChange with source + observations", async () => {
+    // Codex P1 review on #3449: these fields were populated by providers but
+    // dropped by the cascade merge (never takeScalar'd). They must reach the
+    // merged enrichment with per-field source and observations.
+    const provider: MarketEnrichmentProvider = {
+      name: "test-quote-provider",
+      configured: true,
+      async enrich() {
+        const data: Record<string, SymbolEnrichment> = {
+          AAPL: {
+            price: 150,
+            bid: 149.9,
+            ask: 150.1,
+            bidSize: 100,
+            askSize: 200,
+            prevClose: 148,
+            open: 149,
+            high: 151,
+            low: 147.5,
+            netChange: 2,
+            asOf: "2026-09-21T14:00:00.000Z"
+          }
+        };
+        return data;
+      }
+    };
+
+    const { CascadingEnrichmentProvider } = await import("../src/lib/data-providers");
+    const cascade = new CascadingEnrichmentProvider([provider]);
+    const merged = await cascade.enrich(["AAPL"]);
+
+    for (const field of ["bidSize", "askSize", "prevClose", "open", "high", "low", "netChange"] as const) {
+      expect((merged.AAPL as any)[field]).toBeDefined();
+      expect(merged.AAPL.sources?.[field]).toBe("test-quote-provider");
+      expect(merged.AAPL.fieldObservations?.[field]?.source).toBe("test-quote-provider");
+      expect(merged.AAPL.fieldObservations?.[field]?.fetchedAt).toBeTruthy();
+    }
+    expect(merged.AAPL.bidSize).toBe(100);
+    expect(merged.AAPL.askSize).toBe(200);
+    expect(merged.AAPL.prevClose).toBe(148);
+    expect(merged.AAPL.open).toBe(149);
+    expect(merged.AAPL.high).toBe(151);
+    expect(merged.AAPL.low).toBe(147.5);
+    expect(merged.AAPL.netChange).toBe(2);
+    // Provider-supplied asOf is preserved on the observations (not fabricated).
+    expect(merged.AAPL.fieldObservations?.prevClose?.asOf).toBe("2026-09-21T14:00:00.000Z");
+  });
+});
+
+describe("cascade merge preserves provider-supplied asOf", () => {
+  it("carries a provider fieldDates / record asOf through to the observation instead of the cascade clock", async () => {
+    const dir = mkdtempSync(join(tmpdir(), `prov-cascade-asof-${randomUUID()}-`));
+    const prevDb = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = `file:${join(dir, "test.db")}`;
+    resetDbForTesting();
+
+    try {
+      const providerAsOf = "2026-08-05T13:59:00.000Z";
+      const peAsOf = "2026-08-04T20:00:00.000Z";
+      const provider: MarketEnrichmentProvider = {
+        name: "test-prov-provider",
+        configured: true,
+        async enrich() {
+          const data: Record<string, SymbolEnrichment> = {
+            AAPL: {
+              asOf: providerAsOf,
+              peRatio: 30,
+              fieldDates: { peRatio: peAsOf },
+              sector: "Technology"
+            }
+          };
+          return data;
+        }
+      };
+
+      const { CascadingEnrichmentProvider } = await import("../src/lib/data-providers");
+      const merged = await new CascadingEnrichmentProvider([provider]).enrich(["AAPL"]);
+
+      // Per-field provider date wins; a field with no per-field date falls back to the provider's own
+      // record-level asOf (still a provider claim, not the cascade clock).
+      expect(merged.AAPL.fieldObservations?.peRatio?.asOf).toBe(peAsOf);
+      expect(merged.AAPL.fieldObservations?.sector?.asOf).toBe(providerAsOf);
+      // fetchedAt is the cascade's retrieval clock and is always stamped.
+      expect(merged.AAPL.fieldObservations?.peRatio?.fetchedAt).toBeTruthy();
+      expect(merged.AAPL.fieldObservations?.peRatio?.fetchedAt).not.toBe(peAsOf);
+      await new Promise((r) => setTimeout(r, 50));
     } finally {
       resetDbForTesting();
       if (prevDb === undefined) delete process.env.DATABASE_URL;

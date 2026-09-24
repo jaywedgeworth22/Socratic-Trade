@@ -1,6 +1,6 @@
 # Financial Modeling Prep (FMP) capability and routing map
 
-> **RETIRED for direct use in Socratic.Trade (owner 2026-08-04).** This app must
+> **RETIRED for direct use in Socratic-Trade (owner 2026-08-04).** This app must
 > **never** call `financialmodelingprep.com`. **Fundamentals** come from the
 > multi-provider cascade (Yahoo, Finnhub, ROIC, SEC XBRL, Tiingo, …). **Congressional**
 > disclosures/analytics come from **Congress.Trade**. Choke points:
@@ -9,18 +9,18 @@
 > looking at the **shared** FMP dashboard (which may still show Congress.Trade
 > latency/probe traffic).
 
-This was the source of truth for what Socratic.Trade used to call.
+This was the source of truth for what Socratic-Trade used to call.
 
 ## Dashboard attribution
 
 The FMP credential is shared with Congress.Trade, so endpoint counts in FMP's
-dashboard are not Socratic.Trade-only telemetry. In particular,
+dashboard are not Socratic-Trade-only telemetry. In particular,
 `historical-price-eod/dividend-adjusted`, `profile`, `house-latest`, and
 `senate-latest` are used by Congress.Trade. At the time of the screenshot,
-Socratic.Trade's call-volume view aggregated by provider/credential rather than
+Socratic-Trade's call-volume view aggregated by provider/credential rather than
 attributing each durable dispatch to an endpoint.
 
-## Production Socratic.Trade endpoints
+## Production Socratic-Trade endpoints
 
 `FmpEnrichmentProvider` uses the stable base URL and sends the API key in the
 `apikey` header so credentials do not appear in URLs or error logs.
@@ -39,7 +39,7 @@ attributing each durable dispatch to an endpoint.
 The prior `/api/v4/insider-trading` and `/api/v4/senate-trading` calls were
 legacy routes. The Senate call was also the wrong ownership boundary:
 Congress.Trade is the system of record for House/Senate disclosures and sends
-normalized congressional signals to Socratic.Trade. Duplicating that feed per
+normalized congressional signals to Socratic-Trade. Duplicating that feed per
 symbol wastes the shared quota and creates inconsistent truth.
 
 FMP requests remain covered by the shared 290-request/minute credential quota,
@@ -48,7 +48,7 @@ provenance. Coverage hints can skip redundant ratios/consensus calls when fresh
 Congress.Trade facts already identify those exact upstream fields.
 Crash-durable provider-dispatch events carry the scrubbed stable operation name
 (`enrichment-profile`, `enrichment-ratios-ttm`, and so on) in addition to
-provider/credential scope, so Socratic.Trade's endpoint mix is distinguishable
+provider/credential scope, so Socratic-Trade's endpoint mix is distinguishable
 without exposing API keys.
 
 PR #1616 also landed typed capability adapters for FMP quote/index/ETF,

@@ -7,7 +7,7 @@ Owner directives (2026-07-30):
    (10 GiB storage, 1M Class A ops, 10M Class B ops) and alert whenever usage
    is *on pace* to exceed 70% of any metric — "never be on pace to use over
    70% of it for a month ever."
-2. Unify the R2/S3 Infisical secret names between Socratic.Trade
+2. Unify the R2/S3 Infisical secret names between Socratic-Trade
    (`LITESTREAM_S3_*`) and Congress.Trade (`AWS_*`), renaming whichever side
    is cheaper — including code changes where needed.
 3. Backups should move to the new `socratic-trade-bucket` on the

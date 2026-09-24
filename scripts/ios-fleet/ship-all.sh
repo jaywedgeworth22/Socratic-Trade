@@ -30,7 +30,7 @@ resolve_root() {
         "$HOME/apps/trading-grok-ios-tf" \
         "$HOME/apps/trading-grok" \
         "$HOME/apps/trading-monet" \
-        "$HOME/Code/Socratic.Trade"
+        "$HOME/Code/Socratic-Trade"
       do [[ -d "$p/ios" ]] && echo "$p" && return 0; done
       ;;
     congress)

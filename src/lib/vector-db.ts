@@ -36,7 +36,7 @@ import { RetrievalStageTrace, type RetrievalTraceSnapshot } from "./rag/retrieva
 import { dedupeSimilar, type DedupeSimilarReport } from "./rag/dedupe-similar";
 import { getCachedQueryEmbedding, setCachedQueryEmbedding } from "./rag/query-embed-cache";
 import { recordRagOperation, shouldDegradeForBudget } from "./rag/run-budget";
-import { estimateRagDispatchCost, getRagUsageSummary, hasRagIngestPointsBudget, hashQuery, meterEmbed, meterPineconeQuery, meterPineconeUpsert, meterRerank, recordRetrievalQuality, retrievalTelemetryEnabled, type RagEmbedRerankProvider } from "./rag-metering";
+import { auditRagIngestPointsGateSkip, estimateRagDispatchCost, getRagUsageSummary, hasRagIngestPointsBudget, hashQuery, meterEmbed, meterPineconeQuery, meterPineconeUpsert, meterRerank, ragIngestPointsBudgetDeferUntil, ragMaxDailyIngestPoints, recordRetrievalQuality, retrievalTelemetryEnabled, usedRagUpsertPointsLast24h, type RagEmbedRerankProvider } from "./rag-metering";
 import {
   EMBED_REQUEST_TOKEN_BUDGET,
   embedRequestFits,
@@ -140,15 +140,29 @@ function shouldEmitPineconeWuBudgetSentry(nowMs: number = Date.now()): boolean {
 }
 const RAG_CONNECTION_ALERT_COOLDOWN_MS = 60 * 60_000;
 const RAG_INGEST_BUDGET_ALERT_PREFIX = "vectorStore:ingestBudgetAlert";
-const RAG_INGEST_BUDGET_ALERT_COOLDOWN_MS = 30 * 60_000;
+// 6h matches PINECONE_WU_BUDGET_SENTRY_COOLDOWN_MS above and DEFAULT_ALERT_COOLDOWN_MS in
+// usage-limit-alerts.ts — one cooldown convention for "a budget/quota condition is still true"
+// warnings across the RAG lane. Raised from 30 minutes (SOCRATIC-TRADE-2E, 2026-09-08 follow-up):
+// the 2026-09-07 P2 fix below stopped the per-batch flood, but 30 minutes still pages up to
+// ~48x/day for as long as a backfill keeps the daily text budget pinned at zero — nowhere near
+// "once per window" for a condition whose window (RAG_INGEST_MAX_TEXTS_PER_DAY) is 24h.
+const RAG_INGEST_BUDGET_ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const inMemoryRagIngestBudgetAlertCooldown = new Map<string, number>();
+/** @internal — exported for the rollup-coverage test in test/rag-ingest-budget-sentry-rollup.test.ts
+ *  to rewind the in-memory cooldown alongside the persisted one when simulating the
+ *  window having elapsed. Do NOT mutate from production code; this is a test seam. */
+export const __ragIngestBudgetAlertCooldownTestHandle__ = inMemoryRagIngestBudgetAlertCooldown;
 
 /**
  * A persistent daily-ingest-budget exhaustion must page ONCE per cooldown window, not once per
  * document/tick. Unlike alertRagConnectionFailure (which has always had a cooldown), this Sentry
  * warning had none: SOCRATIC-TRADE-27 fired 8,036 times over 2 days (roughly every 10-20s,
  * matching the SEC ingest worker's 5s tick x up to 5 tasks/tick claimed against one persistent
- * condition) and buried the handful of real "embed connection failed" events underneath it.
+ * condition) and buried the handful of real "embed connection failed" events underneath it. The
+ * per-batch signal is not lost: storeContextsImpl's `audit("vector_ingest_budget", ...)` call
+ * (below, in the caller) is unconditional and fires every throttled batch regardless of this gate
+ * — this cooldown only throttles the noisy, paging-shaped Sentry captureMessage, not the durable
+ * audit-log line an operator can still replay batch-by-batch.
  */
 function shouldEmitRagIngestBudgetSentry(userId: string, nowMs: number = Date.now()): boolean {
   // Fail-soft: getInternalSetting/setInternalSetting are synchronous SQLite calls and can throw
@@ -248,6 +262,10 @@ export interface StoreContextsResult {
   wuExhausted?: boolean;
   /** ISO instant the monthly WU breaker expires (first day of next month UTC). */
   wuExhaustedUntil?: string;
+  /** Set with skipped when the rolling 24h Qdrant point ingest fuse is spent. */
+  ingestPointsBudgetExhausted?: boolean;
+  /** ISO instant producers should retry after a Qdrant daily-point fuse park (typically +1h). */
+  ingestPointsBudgetExhaustedUntil?: string;
   /**
    * The real embed-api-failed text (e.g. an HTTP 400/429 body) from the LAST rejected batch,
    * even on the non-throwing success path — a batch-isolated embed failure just drops that
@@ -732,6 +750,19 @@ export function hasPineconeWriteBudget(userId: string = "local"): boolean {
   if (usesQdrantWrites()) return true;
   if (!pineconeWriteBudgetEnabled()) return true;
   return usedPineconeWriteUnitsLast24h(userId) < pineconeMaxWriteUnitsPerDay();
+}
+
+/**
+ * Active write-backend daily ingest headroom.  When writes are on Qdrant this is the rolling
+ * 24h point fuse (`RAG_MAX_DAILY_INGEST_POINTS`); when on Pinecone it is the WU daily fuse.
+ * Producers (SEC filings / 8-K / transcripts / SecIngest) must call this instead of only
+ * `hasPineconeWriteBudget`, which is a no-op under Qdrant and previously thrashed soft-skips.
+ */
+export function hasVectorIngestWriteBudget(userId: string = "local", requested: number = 1): boolean {
+  if (usesQdrantWrites()) {
+    return hasRagIngestPointsBudget(userId, requested, "qdrant");
+  }
+  return hasPineconeWriteBudget(userId);
 }
 
 async function notifyPineconeDailyWriteFuse(input: {
@@ -2096,6 +2127,10 @@ async function assertIndexMetric(
   accountDeletionRequestId?: string
 ): Promise<void> {
   assertVectorStoreLease(leaseGuard);
+  // Pinecone retired for writes: skip control-plane describeIndex / metric assert entirely.
+  // Qdrant has its own Cosine guard (`assertQdrantCollectionMetric`). Authority for managed
+  // receipts comes from the durable ledger / qdrantProviderAuthority, not Pinecone host.
+  if (usesQdrantWrites()) return;
   if (indexMetricChecked.has(initCacheKey) && indexAuthorityByInitKey.has(initCacheKey)) return;
   let described = false;
   try {
@@ -2725,7 +2760,7 @@ async function embedWithRetry(
             // OpenRouter embed path. Enrichment never breaks the call — see
             // applyOpenRouterClassifierEnrichment.
             headers["HTTP-Referer"] = "https://socratictrade.com";
-            headers["X-Title"] = "Socratic.Trade";
+            headers["X-Title"] = "Socratic-Trade";
             applyOpenRouterClassifierEnrichment(body, { userId, service: "rag", feature: "embed" });
           }
           const response = await withGenAiSpan(
@@ -2916,7 +2951,7 @@ export async function rerankMatches(
           // embed path above. Enrichment never breaks the call — see
           // applyOpenRouterClassifierEnrichment.
           rerankHeaders["HTTP-Referer"] = "https://socratictrade.com";
-          rerankHeaders["X-Title"] = "Socratic.Trade";
+          rerankHeaders["X-Title"] = "Socratic-Trade";
           applyOpenRouterClassifierEnrichment(rerankBody, { userId, service: "rag", feature: "rerank" });
         }
         const maxAttempts = 3;
@@ -3371,14 +3406,24 @@ async function storeContextsImpl(
     }
   }
   if (writeBackend === "qdrant" && !hasRagIngestPointsBudget(userId, validDocuments.length, "qdrant")) {
-    console.warn(
-      `[vector-db] Qdrant daily point ingestion budget exceeded for ${userId}; skipping storeContexts of ${validDocuments.length} docs.`
+    const until = ragIngestPointsBudgetDeferUntil();
+    auditRagIngestPointsGateSkip(
+      {
+        operation: "storeContexts",
+        attempted: validDocuments.length,
+        until,
+        used: usedRagUpsertPointsLast24h(userId, "qdrant"),
+        limit: ragMaxDailyIngestPoints()
+      },
+      userId
     );
     return {
       attempted: validDocuments.length,
       indexed: 0,
       skipped: true,
-      writeUnitBudgetSkipped: validDocuments.length
+      writeUnitBudgetSkipped: validDocuments.length,
+      ingestPointsBudgetExhausted: true,
+      ingestPointsBudgetExhaustedUntil: until
     };
   }
   const privateLedgerAuthority = scope === PRIVATE_SCOPE && !options?.managedCommit
@@ -4399,12 +4444,24 @@ async function storeDocumentImpl(
     }
   }
   if (writeBackend === "qdrant" && !hasRagIngestPointsBudget(userId, chunked.length, "qdrant")) {
-    console.warn(`[vector-db] Qdrant daily point ingestion budget exceeded for ${userId}; skipping ${chunked.length} chunks.`);
+    const until = ragIngestPointsBudgetDeferUntil();
+    auditRagIngestPointsGateSkip(
+      {
+        operation: "storeDocument",
+        attempted: chunked.length,
+        until,
+        used: usedRagUpsertPointsLast24h(userId, "qdrant"),
+        limit: ragMaxDailyIngestPoints()
+      },
+      userId
+    );
     return {
       attempted: chunked.length,
       indexed: 0,
       skipped: true,
       writeUnitBudgetSkipped: chunked.length,
+      ingestPointsBudgetExhausted: true,
+      ingestPointsBudgetExhaustedUntil: until,
       documentComplete: false
     };
   }
@@ -7435,17 +7492,11 @@ export async function retrieveContextDetailed(
     let privateIndex: any;
     let fmpIndex: any;
 
-    // R7 index-metric assertion runs on BOTH read backends whenever a Pinecone client exists.
-    // #3138 skipped it when `pc` was absent; #3158 narrowed it further to `readBackend ===
-    // "pinecone"`, which silently dropped BOTH of its jobs on the Qdrant path: the cosine-metric
-    // warning, and populating `indexAuthorityByInitKey` — the only in-process source of a
-    // Pinecone-derived provider authority.  It is cached per init key (`indexMetricChecked`) and
-    // documented never to throw for provider/metric faults, so running it here costs at most one
-    // `describeIndex` per process and cannot fail a retrieval pass.  Only the AUTHORITY it mints
-    // stays backend-specific: on the Qdrant path the records were committed under the durable
-    // authority read from the commit ledger below, so the Pinecone host authority must NOT
-    // pre-empt it — taking it here would drop every managed match on an authority mismatch.
-    if (pc && initCacheKey) {
+    // R7 Pinecone index-metric assertion only when Pinecone is still the write backend.
+    // With Qdrant-only writes (Pinecone retired), `assertIndexMetric` short-circuits and we
+    // never call describeIndex — Cosine is asserted via `assertQdrantCollectionMetric` below.
+    // Authority for managed receipts comes from the durable ledger / qdrantProviderAuthority.
+    if (pc && initCacheKey && !usesQdrantWrites()) {
       try {
         await assertIndexMetric(pc, initCacheKey, pineconeSource, userId);
       } catch {
@@ -8330,12 +8381,16 @@ export async function retrieveContextDetailed(
   } catch (err) {
     console.error("[vector-db] Error retrieving context:", err);
     if (!wasRagSentryCaptured(err)) {
+      // Same leftover as the storeContexts catch (fixed 2026-09-07): a hardcoded
+      // `provider: "pinecone"` folded post-cutover Qdrant retrieve failures into
+      // SOCRATIC-TRADE-1T / PD #116 even when denseTierQuery never touched Pinecone.
       await captureRagSentryMessage("error", "RAG retrieval failed", {
-        provider: "pinecone",
+        provider: readBackend,
         operation: "retrieveContext",
         source: userId === "local" ? "operator" : "user",
         symbol,
-        reason: err instanceof Error ? err.message : String(err)
+        reason: err instanceof Error ? err.message : String(err),
+        ...(isTransientNetworkError(err) ? { isTransient: true } : {})
       });
     }
     reportRetrievalStatus(options, "lookup_failed", { userId, symbol });

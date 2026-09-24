@@ -448,6 +448,32 @@ describe("getThesisScorecard", () => {
     expect(efficacy.totalVetoes).toBe(1);
   });
 
+  // 2026-09-18: the audit-kind scan defaulted to a 500-row LIMIT. That was a soft ceiling while
+  // proposal_rejected_by_red_team rows were also being hard-deleted after 90 days (audit-prune.ts)
+  // — the prune bug always evicted history long before 500 accumulated. Once that exemption
+  // landed (AUDIT_PRUNE_NEVER_PRUNED_KINDS), lifetime veto history can genuinely exceed 500 on any
+  // account with sustained Red Team activity, and the old default would have silently truncated
+  // this rollup back down to the newest 500 — the exact failure mode the prune fix was meant to
+  // end. Proves the DEFAULT (no auditLimit override) now reaches every one of >500 matured vetoes.
+  it("getRedTeamEfficacy's default audit scan reaches every matured veto past the old 500-row cap", async () => {
+    const { audit, insertSkippedCounterfactualCandidate, markSkippedCounterfactualMatured } = await import("../src/lib/db");
+    const userId = `redteam-eff-past500-${randomUUID()}`;
+    const total = 520;
+
+    for (let i = 0; i < total; i += 1) {
+      const runId = `run-rt-past500-${i}`;
+      const symbol = `SYM${i}`;
+      audit("proposal_rejected_by_red_team", { runId, symbol, side: "buy", reason: "Overbought.", model: "openai/gpt-4.1-mini" }, userId);
+      insertSkippedCounterfactualCandidate({ userId, runId, symbol, snapshotAt: "2026-06-01T00:00:00.000Z", refPrice: 100, horizonDays: 5, targetDate: "2026-06-06" });
+      markSkippedCounterfactualMatured({ id: `${userId}:${runId}:${symbol}:5`, userId, exitDate: "2026-06-06", exitPrice: 90, returnPct: -10 });
+    }
+
+    const efficacy = getRedTeamEfficacy(userId);
+    expect(efficacy.totalVetoes).toBe(total);
+    expect(efficacy.maturedVetoes).toBe(total);
+    expect(efficacy.byModel.find((m) => m.model === "gpt-mini-latest")?.maturedVetoes).toBe(total);
+  });
+
   it("getRedTeamEfficacy excludes EXIT vetoes from totals (no counterfactual is ever recorded for them)", async () => {
     const { audit } = await import("../src/lib/db");
     const userId = `redteam-eff-exit-${randomUUID()}`;

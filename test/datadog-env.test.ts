@@ -41,6 +41,7 @@ const DD_ENV_KEYS = [
   "NEXT_PUBLIC_DD_SESSION_REPLAY_ENABLED",
   "NEXT_PUBLIC_DD_SESSION_REPLAY_SAMPLE_RATE",
   "DD_RUM_ENABLED",
+  "DD_HOSTNAME",
   "DD_APPLICATION_ID",
   "DD_CLIENT_TOKEN",
   "DD_RUM_APPLICATION_ID",
@@ -126,6 +127,15 @@ describe("datadog env resolution", () => {
     expect(rum?.sessionReplayEnabled).toBe(false);
     expect(rum?.sessionReplaySampleRate).toBe(0);
     expect(rum?.site).toBe(DEFAULT_DD_SITE);
+  });
+
+  it("enables RUM from server DD_* tokens unless DD_RUM_ENABLED is off", () => {
+    process.env.DD_APPLICATION_ID = "app-id";
+    process.env.DD_CLIENT_TOKEN = "pub-token";
+    expect(datadogRumEnabled()).toBe(true);
+    process.env.DD_RUM_ENABLED = "false";
+    expect(datadogRumEnabled()).toBe(false);
+    expect(resolvePublicRumConfig()).toBeNull();
   });
 
   it("turns RUM session replay on only when the existing opt-in flag is true", () => {

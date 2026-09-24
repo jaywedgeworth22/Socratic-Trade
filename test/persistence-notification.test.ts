@@ -603,10 +603,10 @@ describe("persistence and notifications", () => {
     expect(emailBody).toMatchObject({
       from: "alerts@example.test",
       to: ["ops@example.test"],
-      subject: "[Socratic.Trade] AAPL fill"
+      subject: "[Socratic-Trade] AAPL fill"
     });
     expect(String(emailBody.text)).toContain("AAPL");
-    expect(String(emailBody.text)).toMatch(/\n\(sent by Socratic\.Trade\)$/);
+    expect(String(emailBody.text)).toMatch(/\n\(sent by Socratic-Trade\)$/);
     const audit = getDb()
       .prepare("SELECT payload FROM audit_events WHERE user_id = ? AND kind = 'notify.sent' ORDER BY created_at DESC LIMIT 1")
       .get(userId) as { payload: string } | undefined;

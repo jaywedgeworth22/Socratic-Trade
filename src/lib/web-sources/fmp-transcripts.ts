@@ -283,7 +283,7 @@ export function fmpTranscriptStorageRightsConfirmed(
 
 /**
  * Two explicit opt-ins for the transcript *machinery* (rights + feature flags).
- * Even when both are on, requestFmpJson is hard-blocked — Socratic.Trade never
+ * Even when both are on, requestFmpJson is hard-blocked — Socratic-Trade never
  * opens a socket to FMP (owner 2026-08-04). Keep the dual-opt-in so rights /
  * inventory / purge tooling and contract tests stay meaningful.
  */
@@ -2233,8 +2233,8 @@ async function refreshFmpTranscriptsUnlocked(
     let retrySameSymbol = false;
     for (const ref of refsToAttempt) {
       const accession = transcriptAccession(ref.symbol, ref.year, ref.quarter);
-      const { hasIngestTextBudget, hasPineconeWriteBudget } = await import("../vector-db");
-      if (!hasIngestTextBudget(userId) || !hasPineconeWriteBudget(userId)) {
+      const { hasIngestTextBudget, hasVectorIngestWriteBudget } = await import("../vector-db");
+      if (!hasIngestTextBudget(userId) || !hasVectorIngestWriteBudget(userId)) {
         result.deferredForEmbedBudget += 1;
         retrySameSymbol = true;
         break;

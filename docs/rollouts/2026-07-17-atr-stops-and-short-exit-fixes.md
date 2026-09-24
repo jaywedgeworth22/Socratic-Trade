@@ -22,7 +22,7 @@ Fixed two bugs flagged by automated Codex review comments on PR #1705:
   2. `npx tsc --noEmit` (Passed cleanly)
   3. `npm test` (All 4,758 tests across 405 files passed cleanly)
   4. `npm run build` (Next.js build succeeded and compiled cleanly)
-- Open PR opened: [PR #1713](https://github.com/jaywedgeworth22/Socratic.Trade/pull/1713) with auto-merge enabled.
+- Open PR opened: [PR #1713](https://github.com/jaywedgeworth22/Socratic-Trade/pull/1713) with auto-merge enabled.
 
 ## Follow-ups
 None. Once PR #1713 checks are complete, it will squash-merge to `main` and auto-deploy to production on the Hetzner box.

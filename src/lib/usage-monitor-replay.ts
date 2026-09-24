@@ -1,4 +1,4 @@
-// Crash-durable replay of Socratic.Trade's local usage ledgers into API Usage Monitor.
+// Crash-durable replay of Socratic-Trade's local usage ledgers into API Usage Monitor.
 //
 // Live writes still enqueue immediately through usage-monitor-push.ts. This worker closes the
 // durability gap left by a process crash: it reconstructs events from llm_usage / rag_usage using

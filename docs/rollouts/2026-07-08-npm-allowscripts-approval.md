@@ -36,7 +36,7 @@ carries a malformed `allow-scripts` line — that host hygiene remains a separat
 ## Deliberately NOT included
 
 This was extracted from a larger uncommitted change sitting in the integration worktree
-(`~/Code/Socratic.Trade`) that also (a) added `@sentry/cloudflare` and (b) regenerated the entire
+(`~/Code/Socratic-Trade`) that also (a) added `@sentry/cloudflare` and (b) regenerated the entire
 lockfile (~7.7k lines). Both were dropped:
 - `@sentry/cloudflare` is the Sentry SDK for the **Cloudflare Workers** runtime — dead weight in this
   Next.js/Coolify **server** app (imported nowhere; Sentry here is already handled by `@sentry/nextjs`).

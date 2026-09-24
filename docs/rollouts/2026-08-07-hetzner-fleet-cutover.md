@@ -3,7 +3,7 @@
 ## Context & Objective
 
 Oracle Cloud production host was suspended/unreachable (edge 522s). Fleet moved to a new
-Hetzner server so Socratic.Trade, Congress.Trade, Usage Monitor, and Coolify run again with
+Hetzner server so Socratic-Trade, Congress.Trade, Usage Monitor, and Coolify run again with
 working DNS, backups, and health verification. Hetzner host backups are ON and complement
 app-level SQLite snapshots (they are not a substitute for frequent app RPO).
 
@@ -20,7 +20,7 @@ app-level SQLite snapshots (they are not a substitute for frequent app RPO).
 
 | App | Domain | Coolify UUID | Notes |
 |-----|--------|--------------|-------|
-| Socratic.Trade | socratictrade.com (+ www, admin) | `<ST_COOLIFY_APP_UUID>` | Litestream L9 snapshot restored + integrity repair (`task_journal` salvage). Live trading DB. |
+| Socratic-Trade | socratictrade.com (+ www, admin) | `<ST_COOLIFY_APP_UUID>` | Litestream L9 snapshot restored + integrity repair (`task_journal` salvage). Live trading DB. |
 | Congress.Trade | congress.trade (+ www) | `<CT_COOLIFY_APP_UUID>` | Fresh local SQLite + `/api/admin/migrate`. **No Oracle CT DB copy** — empty pipeline data until re-ingest / future R2 restore. Runtime container: `congress-app-live` (Traefik labels + coolify network). Compose sqlite-web port conflict avoided (proxy owns :8080). |
 | Usage Monitor | usage.jays.services | `<UM_COOLIFY_APP_UUID>` | Booted with `LITESTREAM_EMERGENCY_DISABLE=true` (R2 LTX non-contiguous). Volume perms fixed for uid 1000. Fresh DB schema via migrate-safe. |
 

@@ -7,7 +7,7 @@ accounts, guaranteed free-tier safe.** End state per app:
 
 | App | Account | Bucket | Status |
 | --- | --- | --- | --- |
-| Socratic.Trade | SocraticTrade.com (94ec35cf…) | socratic-trade-bucket | ✅ live since 2026-07-31; retention tuned this session |
+| Socratic-Trade | SocraticTrade.com (94ec35cf…) | socratic-trade-bucket | ✅ live since 2026-07-31; retention tuned this session |
 | Congress.Trade | Congress.Trade (0e9f5a0c…) | congress-trade-bucket | ✅ wired this session (was: no continuous backup at all) |
 | Usage Monitor | Usage.Jays.Services (3a936805…) | (needs backups bucket) | ⏳ blocked on owner-created R2 API token |
 

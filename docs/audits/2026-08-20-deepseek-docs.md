@@ -1,4 +1,4 @@
-# Docs audit — Socratic.Trade ops/deploy accuracy vs code + topology (commit 41a7a438d, origin/main)
+# Docs audit — Socratic-Trade ops/deploy accuracy vs code + topology (commit 41a7a438d, origin/main)
 
 Auditor: review subagent (read-only). Ground truth: AGENTS.md (repo root), code at HEAD, docs under audit.
 

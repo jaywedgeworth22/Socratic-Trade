@@ -5,7 +5,7 @@
  * 2. openRouterSlug — OpenRouter chat/completions `model` on live calls
  * 3. nativeSlug — direct provider APIs (not used for live traffic today)
  *
- * Parentheticals in owner copy (e.g. "gpt-mini-latest (5.4)") are version hints
+ * Parentheticals in owner copy (e.g. "gemini-pro-latest (3.1)") are version hints
  * only.  They are never stored.
  */
 
@@ -35,6 +35,10 @@ export interface LlmCatalogEntry {
   recommendedRed?: boolean;
   /** Older persisted / OpenRouter / native ids that must resolve to this row. */
   aliases: readonly string[];
+  /** Model family/lineage identifier (e.g. "openai-sol", "anthropic-sonnet", "google-flash"). */
+  lineage?: string;
+  /** Immediate and historical predecessor model slugs whose stats roll forward into this model. */
+  predecessors?: readonly string[];
 }
 
 export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
@@ -44,9 +48,14 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     nativeSlug: "gpt-6-astra-pro",
     openRouterOnly: true,
     provider: "openai",
-    label: "GPT-6 Astra Pro — via OpenRouter",
+    // Same underlying model as gpt-6-astra, served with reasoning.mode=pro (same $/token,
+    // more thinking tokens per call). OpenAI's native API has no gpt-6-astra-pro model id —
+    // "pro" is a request parameter there, not a distinct SKU — hence openRouterOnly above.
+    label: "gpt-6-astra-pro — GPT-6 Astra in pro reasoning mode (more thinking per call)",
     tier: "$$$",
-    aliases: ["openai/gpt-6-astra-pro"]
+    aliases: ["openai/gpt-6-astra-pro"],
+    lineage: "openai-astra",
+    predecessors: ["gpt-6-astra"]
   },
   {
     displaySlug: "gpt-6-astra",
@@ -55,25 +64,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     provider: "openai",
     label: "gpt-6-astra — frontier OpenAI reasoning",
     tier: "$$$",
-    aliases: ["openai/gpt-6-astra"]
-  },
-  {
-    displaySlug: "gpt-5.4-nano",
-    openRouterSlug: "openai/gpt-5.4-nano",
-    nativeSlug: "gpt-5.4-nano",
-    provider: "openai",
-    label: "gpt-5.4-nano — lowest cost OpenAI",
-    tier: "$",
-    aliases: ["gpt-nano-latest", "openai/gpt-5.4-nano", "openai/gpt-nano-latest"]
-  },
-  {
-    displaySlug: "gpt-mini-latest",
-    openRouterSlug: "~openai/gpt-mini-latest",
-    nativeSlug: "gpt-5.4-mini",
-    provider: "openai",
-    label: "gpt-mini-latest (5.4) — proven low-cost OpenAI",
-    tier: "$$",
-    aliases: ["gpt-5.4-mini", "openai/gpt-mini-latest", "openai/gpt-5.4-mini"]
+    aliases: ["openai/gpt-6-astra"],
+    lineage: "openai-astra",
+    predecessors: ["gpt-5.6-sol", "gpt-5.6-terra"]
   },
   {
     displaySlug: "gpt-5.6-luna",
@@ -82,17 +75,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     provider: "openai",
     label: "gpt-5.6-luna — current cost-sensitive tier",
     tier: "$$",
-    aliases: ["gpt-luna-latest", "openai/gpt-5.6-luna"]
-  },
-  {
-    displaySlug: "gpt-5.6-terra",
-    openRouterSlug: "openai/gpt-5.6-terra",
-    nativeSlug: "gpt-5.6-terra",
-    provider: "openai",
-    label: "gpt-5.6-terra — balanced current-generation analysis",
-    tier: "$$$",
-    recommendedGreen: true,
-    aliases: ["gpt-terra-latest", "openai/gpt-5.6-terra"]
+    aliases: ["gpt-luna-latest", "openai/gpt-5.6-luna"],
+    lineage: "openai-luna",
+    predecessors: ["gpt-luna-latest", "gpt-5.4", "gpt-4o-mini"]
   },
   {
     displaySlug: "gpt-5.6-sol",
@@ -101,26 +86,14 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     provider: "openai",
     label: "gpt-5.6-sol — frontier professional reasoning",
     tier: "$$$",
+    // Green recommendation moved here from the removed gpt-5.6-terra (2026-09-18): same
+    // input price as terra, cheaper output, and the stronger model — see
+    // docs/rollouts/2026-09-18-model-catalog-cleanup.md.
+    recommendedGreen: true,
     recommendedRed: true,
-    aliases: ["gpt-sol-latest", "openai/gpt-5.6-sol", "gpt-5.6"]
-  },
-  {
-    displaySlug: "gpt-4o",
-    openRouterSlug: "openai/gpt-4o",
-    nativeSlug: "gpt-4o",
-    provider: "openai",
-    label: "gpt-4o — flagship OpenAI GPT-4o",
-    tier: "$$$",
-    aliases: ["gpt-4o-latest", "openai/gpt-4o"]
-  },
-  {
-    displaySlug: "gpt-4o-mini",
-    openRouterSlug: "openai/gpt-4o-mini",
-    nativeSlug: "gpt-4o-mini",
-    provider: "openai",
-    label: "gpt-4o-mini — small GPT-4o",
-    tier: "$$",
-    aliases: ["openai/gpt-4o-mini"]
+    aliases: ["gpt-sol-latest", "openai/gpt-5.6-sol", "gpt-5.6"],
+    lineage: "openai-sol",
+    predecessors: ["gpt-5.6-terra", "gpt-5.5", "gpt-5.6"]
   },
   {
     displaySlug: "claude-haiku-latest",
@@ -136,7 +109,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
       "claude-haiku",
       "anthropic/claude-haiku-latest",
       "anthropic/claude-haiku-4.5"
-    ]
+    ],
+    lineage: "anthropic-haiku",
+    predecessors: ["claude-haiku-4.5", "claude-haiku-4-5", "claude-haiku"]
   },
   {
     displaySlug: "claude-sonnet-latest",
@@ -153,7 +128,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
       "claude-sonnet",
       "anthropic/claude-sonnet-latest",
       "anthropic/claude-sonnet-5"
-    ]
+    ],
+    lineage: "anthropic-sonnet",
+    predecessors: ["claude-sonnet-5", "claude-sonnet-4-6", "claude-sonnet-4.6", "claude-3-5-sonnet"]
   },
   {
     displaySlug: "claude-opus-latest",
@@ -169,7 +146,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
       "claude-opus",
       "anthropic/claude-opus-latest",
       "anthropic/claude-opus-5"
-    ]
+    ],
+    lineage: "anthropic-opus",
+    predecessors: ["claude-opus-5", "claude-opus-4-8", "claude-opus-4.8"]
   },
   {
     displaySlug: "claude-fable-latest",
@@ -178,16 +157,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     provider: "anthropic",
     label: "claude-fable-latest (5.1) — most capable Claude",
     tier: "$$$",
-    aliases: ["claude-fable-5-1", "claude-fable-5.1", "anthropic/claude-fable-5.1", "claude-fable-5", "claude-fable", "anthropic/claude-fable-latest", "anthropic/claude-fable-5"]
-  },
-  {
-    displaySlug: "grok-build-0.1",
-    openRouterSlug: "x-ai/grok-build-0.1",
-    nativeSlug: "grok-build-0.1",
-    provider: "xai",
-    label: "grok-build-0.1 — coding specialist",
-    tier: "$",
-    aliases: ["grok-build-latest", "x-ai/grok-build-0.1", "xai/grok-build-0.1"]
+    aliases: ["claude-fable-5-1", "claude-fable-5.1", "anthropic/claude-fable-5.1", "claude-fable-5", "claude-fable", "anthropic/claude-fable-latest", "anthropic/claude-fable-5"],
+    lineage: "anthropic-fable",
+    predecessors: ["claude-fable-5-1", "claude-fable-5"]
   },
   {
     displaySlug: "grok-latest",
@@ -196,14 +168,16 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     provider: "xai",
     label: "grok-latest (4.6) — default Grok analysis",
     tier: "$$",
-    aliases: ["grok-4.6", "x-ai/grok-4.6", "grok-4.5", "grok-4.3", "grok", "x-ai/grok-latest", "x-ai/grok-4.5", "xai/grok-latest"]
+    aliases: ["grok-4.6", "x-ai/grok-4.6", "grok-4.5", "grok-4.3", "grok", "x-ai/grok-latest", "x-ai/grok-4.5", "xai/grok-latest"],
+    lineage: "xai-grok",
+    predecessors: ["grok-4.6", "grok-4.5", "grok-4.3", "grok-build-0.1"]
   },
   {
     displaySlug: "gemini-flash-lite-latest",
     openRouterSlug: "google/gemini-3.5-flash-lite",
     nativeSlug: "gemini-flash-lite-latest",
     provider: "gemini",
-    label: "gemini-flash-lite-latest — low-cost Gemini",
+    label: "gemini-flash-lite-latest (3.5) — low-cost Gemini",
     tier: "$",
     aliases: [
       "gemini-3.5-flash-lite",
@@ -211,14 +185,16 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
       "gemini-2.5-flash-lite",
       "google/gemini-3.5-flash-lite",
       "google/gemini-flash-lite-latest"
-    ]
+    ],
+    lineage: "google-flash-lite",
+    predecessors: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite"]
   },
   {
     displaySlug: "gemini-flash-latest",
     openRouterSlug: "~google/gemini-flash-latest",
     nativeSlug: "gemini-flash-latest",
     provider: "gemini",
-    label: "gemini-flash-latest — current flagship Flash (3.8)",
+    label: "gemini-flash-latest (3.8) — current flagship Flash",
     tier: "$$",
     recommendedGreen: true,
     aliases: [
@@ -232,14 +208,16 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
       "google/gemini-flash-latest",
       "google/gemini-3.7-flash",
       "google/gemini-3.6-flash"
-    ]
+    ],
+    lineage: "google-flash",
+    predecessors: ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"]
   },
   {
     displaySlug: "gemini-pro-latest",
     openRouterSlug: "~google/gemini-pro-latest",
     nativeSlug: "gemini-pro-latest",
     provider: "gemini",
-    label: "gemini-pro-latest — deepest Gemini reasoning",
+    label: "gemini-pro-latest (3.1) — deepest Gemini reasoning",
     tier: "$$$",
     recommendedRed: true,
     aliases: [
@@ -248,7 +226,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
       "gemini-pro",
       "google/gemini-pro-latest",
       "google/gemini-3.1-pro-preview"
-    ]
+    ],
+    lineage: "google-pro",
+    predecessors: ["gemini-3.1-pro-preview", "gemini-2.5-pro", "gemini-pro"]
   },
   {
     displaySlug: "mistral-small-latest",
@@ -262,31 +242,53 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
       "mistral-small-2506",
       "mistralai/mistral-small-2603",
       "mistralai/mistral-small-latest"
-    ]
+    ],
+    lineage: "mistral-small",
+    predecessors: ["mistral-small-2603", "mistral-small-2506"]
   },
   {
     displaySlug: "mistral-medium-latest",
     openRouterSlug: "mistralai/mistral-medium-3-5",
     nativeSlug: "mistral-medium-latest",
     provider: "mistral",
-    label: "mistral-medium-latest — frontier Mistral Medium",
-    tier: "$$",
+    // "Frontier" was Mistral's marketing language, not a price/capability rank: this is the
+    // COSTLIEST Mistral row (1.50/7.50 vs Large's 0.50/1.50) — see the tier fix below and
+    // docs/rollouts/2026-09-18-model-catalog-cleanup.md.
+    label: "mistral-medium-latest — priciest Mistral tier",
+    tier: "$$$",
     aliases: [
       "mistral-medium-3.5",
       "mistral-medium-3-5",
       "mistralai/mistral-medium-3.5",
       "mistralai/mistral-medium-3-5",
       "mistralai/mistral-medium-latest"
-    ]
+    ],
+    lineage: "mistral-medium",
+    predecessors: ["mistral-medium-3.5", "mistral-medium-3-5"]
   },
   {
     displaySlug: "mistral-large-latest",
+    // VERIFIED 2026-09-18 against the live OpenRouter catalog (446 models): only
+    // "mistralai/mistral-large-2512:batch" is listed for the current Mistral Large 3
+    // generation — no non-batch route exists. The two non-batch ids OpenRouter DOES list,
+    // "mistralai/mistral-large-2407" and "mistralai/mistral-large", are the OLDER
+    // Nov-2024/Feb-2024 generation at $2/$6 — pointing here at either would be a downgrade
+    // (stale model, worse price), not a fix, and would break the "always newest version"
+    // rule. Left pointing at the (currently unservable in non-batch form) 2512 id rather
+    // than a stale one: a live pick of this row with an OpenRouter credential configured
+    // will 404 and fall into the model-rotation cooldown (src/lib/model-rotation.ts); the
+    // reliable path today is the native Mistral API fallback, used automatically when no
+    // OpenRouter credential is configured. See docs/rollouts/2026-09-18-model-catalog-cleanup.md.
     openRouterSlug: "mistralai/mistral-large-2512",
     nativeSlug: "mistral-large-latest",
     provider: "mistral",
     label: "mistral-large-latest — Mistral Large",
-    tier: "$$$",
-    aliases: ["mistral-large", "mistral-large-2512", "mistralai/mistral-large", "mistralai/mistral-large-latest"]
+    // Cheapest of the three Mistral rows (0.50/1.50) — below Medium, which is now the
+    // priciest. See docs/rollouts/2026-09-18-model-catalog-cleanup.md.
+    tier: "$$",
+    aliases: ["mistral-large", "mistral-large-2512", "mistralai/mistral-large", "mistralai/mistral-large-latest"],
+    lineage: "mistral-large",
+    predecessors: ["mistral-large-2512", "mistral-large-2407"]
   },
   {
     displaySlug: "kimi-latest",
@@ -295,7 +297,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     provider: "moonshot",
     label: "kimi-latest (k3) — Kimi frontier model",
     tier: "$$",
-    aliases: ["kimi-k3", "kimi", "moonshot", "moonshot-latest", "moonshotai/kimi-latest", "~moonshotai/kimi-latest"]
+    aliases: ["kimi-k3", "kimi", "moonshot", "moonshot-latest", "moonshotai/kimi-latest", "~moonshotai/kimi-latest"],
+    lineage: "moonshot-kimi",
+    predecessors: ["kimi-k3", "moonshot-latest"]
   },
   {
     displaySlug: "deepseek-flash-latest",
@@ -304,7 +308,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     provider: "deepseek",
     label: "deepseek-flash-latest (v4) — fast DeepSeek Flash",
     tier: "$",
-    aliases: ["deepseek-v4-flash-0731", "deepseek/deepseek-v4-flash-0731", "deepseek-v4-flash", "deepseek-chat", "deepseek/deepseek-v4-flash", "deepseek/deepseek-flash-latest"]
+    aliases: ["deepseek-v4-flash-0731", "deepseek/deepseek-v4-flash-0731", "deepseek-v4-flash", "deepseek-chat", "deepseek/deepseek-v4-flash", "deepseek/deepseek-flash-latest"],
+    lineage: "deepseek-flash",
+    predecessors: ["deepseek-v4-flash-0731", "deepseek-chat"]
   },
   {
     displaySlug: "deepseek-pro-latest",
@@ -313,79 +319,42 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     provider: "deepseek",
     label: "deepseek-pro-latest (v4) — stronger DeepSeek Pro",
     tier: "$$",
-    aliases: ["deepseek-v4-pro-0813", "deepseek/deepseek-v4-pro-0813", "deepseek-v4-pro", "deepseek/deepseek-v4-pro", "deepseek/deepseek-pro-latest"]
-  },
-  {
-    displaySlug: "deepseek-r1",
-    openRouterSlug: "deepseek/deepseek-r1",
-    nativeSlug: "deepseek-reasoner",
-    provider: "deepseek",
-    label: "deepseek-r1 — reasoning DeepSeek R1",
-    tier: "$$$",
-    aliases: ["deepseek-reasoner", "deepseek-r1-latest", "deepseek/deepseek-r1", "deepseek/deepseek-reasoner"]
+    aliases: ["deepseek-v4-pro-0813", "deepseek/deepseek-v4-pro-0813", "deepseek-v4-pro", "deepseek/deepseek-v4-pro", "deepseek/deepseek-pro-latest"],
+    lineage: "deepseek-pro",
+    predecessors: ["deepseek-v4-pro-0813", "deepseek-r1"]
   },
   {
     displaySlug: "minimax-m3",
     openRouterSlug: "minimax/minimax-m3",
     nativeSlug: "MiniMax-M3",
     provider: "minimax",
-    label: "MiniMax M3 — general-purpose reasoning",
+    label: "minimax-m3 — general-purpose reasoning",
     tier: "$",
-    aliases: ["minimax/minimax-m3"]
-  },
-  {
-    displaySlug: "minimax-m2.7",
-    openRouterSlug: "minimax/minimax-m2.7",
-    nativeSlug: "MiniMax-M2.7",
-    provider: "minimax",
-    label: "MiniMax M2.7 — efficient reasoning",
-    tier: "$",
-    aliases: ["minimax/minimax-m2.7"]
+    aliases: ["minimax/minimax-m3"],
+    lineage: "minimax",
+    predecessors: ["minimax-m2.7"]
   },
   {
     displaySlug: "muse-spark-1.3",
     openRouterSlug: "meta/muse-spark-1.3",
     nativeSlug: "muse-spark-1.3",
     provider: "meta",
-    label: "Muse Spark 1.3 — multimodal reasoning and agents",
+    label: "muse-spark-1.3 — multimodal reasoning and agents",
     tier: "$$",
-    aliases: ["meta/muse-spark-1.3"]
+    aliases: ["meta/muse-spark-1.3"],
+    lineage: "meta-muse",
+    predecessors: ["llama-4-scout", "llama-3.3-70b-instruct"]
   },
   {
     displaySlug: "muse-glimmer-30b",
     openRouterSlug: "meta/muse-glimmer-30b",
     nativeSlug: "muse-glimmer-30b",
     provider: "meta",
-    label: "Muse Glimmer 30B — efficient agent model",
+    label: "muse-glimmer-30b — efficient agent model",
     tier: "$",
-    aliases: ["meta/muse-glimmer-30b"]
-  },
-  {
-    displaySlug: "llama-4-maverick",
-    openRouterSlug: "meta-llama/llama-4-maverick",
-    nativeSlug: "llama-4-maverick",
-    provider: "meta",
-    label: "Llama 4 Maverick — general-purpose open-weight model",
-    tier: "$",
-    aliases: ["meta-llama/llama-4-maverick"]
-  },
-  {
-    displaySlug: "llama-4-scout",
-    openRouterSlug: "meta-llama/llama-4-scout",
-    nativeSlug: "llama-4-scout",
-    provider: "meta",
-    label: "Llama 4 Scout — efficient open-weight model",
-    tier: "$",
-    aliases: ["meta-llama/llama-4-scout"]
-  },
-  {
-    displaySlug: "llama-3.3-70b-instruct",
-    openRouterSlug: "meta-llama/llama-3.3-70b-instruct",
-    nativeSlug: "llama-3.3-70b-instruct",
-    provider: "meta",
-    label: "llama-3.3-70b-instruct — Llama 3.3 analysis",
-    tier: "$$",
-    aliases: ["llama-70b-latest", "meta-llama/llama-3.3-70b-instruct"]
+    aliases: ["meta/muse-glimmer-30b"],
+    lineage: "meta-muse",
+    predecessors: ["llama-4-maverick"]
   }
 ];
 
@@ -453,8 +422,23 @@ export function nativeSlugFor(model: string | null | undefined): string {
   return bare.includes("/") ? bare.split("/").pop() || bare : bare;
 }
 
-export const ROTATION_EXCLUDED_DISPLAY_SLUGS: readonly string[] = ["grok-build-0.1"];
+// grok-build-0.1 (the previous sole exclusion — a coding-specialist checkpoint unsuited to
+// either team role) was removed from the catalog entirely on 2026-09-18, not just excluded
+// from rotation; see docs/rollouts/2026-09-18-model-catalog-cleanup.md. Empty for now — kept
+// as a mechanism for a future model that should stay curated/selectable but not rotate.
+export const ROTATION_EXCLUDED_DISPLAY_SLUGS: readonly string[] = [];
 
 export const CATALOG_ROTATION_POOL: readonly string[] = CATALOG_DISPLAY_SLUGS.filter(
   (id) => !ROTATION_EXCLUDED_DISPLAY_SLUGS.includes(id)
 );
+
+/**
+ * Return all configured predecessor model slugs for a model (or empty array if none).
+ * Enables rolling forward historical cost, latency, token, and performance stats into
+ * newly adopted or bumped model versions before they establish their own sample size.
+ */
+export function getPredecessorModelIds(model: string | null | undefined): string[] {
+  if (!model) return [];
+  const entry = catalogEntryFor(model);
+  return entry?.predecessors ? [...entry.predecessors] : [];
+}

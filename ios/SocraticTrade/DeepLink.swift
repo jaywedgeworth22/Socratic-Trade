@@ -84,7 +84,7 @@ enum DeepLinkDestination: Equatable {
 enum DeepLink {
     /// The one host the app claims.  Subdomains (console./mobile.) and `www.` are not claimed
     /// in the entitlement, so accepting them here would be a lie about what iOS will deliver.
-    static let universalLinkHost = "socratictrade.com"
+    static let universalLinkHost = MobileAPIClient.productionBaseURL.host!
     /// Reserved for the OAuth callback — never a content route.  See above.
     static let authCallbackScheme = "socratictrade"
 
@@ -200,7 +200,7 @@ enum DeepLink {
 /// file (`app/.well-known/apple-app-site-association/route.ts`).  Claiming it would swallow
 /// the tap back into the app and land nowhere.  `openURL` therefore opens Safari.
 enum ConsoleHandoff {
-    static let connections = URL(string: "https://socratictrade.com/console/connections")!
+    static let connections = MobileAPIClient.productionBaseURL.appending(path: "/console/connections")
 
     /// True when this URL is a Safari-only console page, not an in-app universal link.
     static func isSafariOnly(_ url: URL) -> Bool {

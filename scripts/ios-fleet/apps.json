@@ -3,7 +3,7 @@
   "apps": {
     "socratic": {
       "displayName": "Socratic-Trade",
-      "bundleId": "trade.socratic.ios",
+      "bundleId": "com.socratictrade.ios",
       "appleId": 6799238379,
       "scheme": "SocraticTrade",
       "projectRel": "ios/Socratic Trade.xcodeproj",
@@ -11,7 +11,7 @@
       "xcodegenDir": "ios",
       "worktreeHint": "~/apps/trading-grok-ios-tf",
       "marketingVersionDefault": "1.0.68",
-      "notes": "BUNDLE RENAME 2026-09-22: bundleId is trade.socratic.ios but appleId 6799238379 still belongs to the OLD trade.socratic.app ASC record (bundle IDs are immutable on an ASC app). NO-SHIP until Jay creates a new ASC app for trade.socratic.ios and this appleId is updated to that new record. Do not invent an Apple ID."
+      "notes": "BUNDLE RENAME 2026-09-22: bundleId is com.socratictrade.ios but appleId 6799238379 still belongs to the OLD trade.socratic.app ASC record (bundle IDs are immutable on an ASC app). NO-SHIP until Jay creates a new ASC app for com.socratictrade.ios and this appleId is updated to that new record. Do not invent an Apple ID."
     },
     "congress": {
       "displayName": "Congress.Trade",

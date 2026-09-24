@@ -67,7 +67,8 @@ describe("usage-budget: cheaperModel", () => {
   it("maps known models down a tier and returns undefined when none", () => {
     expect(budget.cheaperModel("openai/gpt-4o")).toBe("openai/gpt-5.6-luna");
     expect(budget.cheaperModel("anthropic/claude-opus-4-8")).toBe("anthropic/claude-sonnet-latest");
-    expect(budget.cheaperModel("anthropic/claude-opus-5-5")).toBe("anthropic/claude-sonnet-latest");
+    expect(budget.cheaperModel("anthropic/claude-opus-5-5")).toBeUndefined(); // owner rule (#3705): Opus 5.5 never downgrades on budget exhaustion
+    expect(budget.cheaperModel("claude-opus-5.5")).toBeUndefined(); // owner rule (#3705): Opus 5.5 never downgrades on budget exhaustion
     expect(budget.cheaperModel("claude-haiku-4-5-20251001")).toBeUndefined(); // already cheapest (prefix)
     expect(budget.cheaperModel("openai/gpt-5.4-nano")).toBe("openai/gpt-5.6-luna"); // historical; lands on luna
     expect(budget.cheaperModel("gpt-5.5")).toBe("gpt-5.6-luna");

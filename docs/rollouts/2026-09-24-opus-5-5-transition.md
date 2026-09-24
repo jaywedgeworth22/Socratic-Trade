@@ -19,7 +19,7 @@ Transition Socratic.Trade across all surfaces to exclusively offer and use Claud
 - **Reasoning Controls & Capabilities (`src/lib/llm-request.ts`)**:
   - Updated `isAnthropicAdaptiveThinkingModel` regex to support `claude-opus-5-5` and `claude-opus-5.5`.
 - **Budget Downgrades (`src/lib/usage-budget.ts`)**:
-  - Added fallback downgrade mappings for `claude-opus-5-5` and `claude-opus-5.5` to `claude-sonnet-latest`.
+  - No fallback downgrade mapping for `claude-opus-5-5` / `claude-opus-5.5` (owner rule 2026-09-24, PR #3705 review: Opus 5.5 never downgrades on budget exhaustion -- the model chosen is the model used).
 - **Console Models Mapping (`app/console/lib/models.ts`)**:
   - Added display name mappings for `claude-opus-5-5` and `claude-opus-5.5` to `"Claude Opus"`.
 - **Unit & Integration Tests**:

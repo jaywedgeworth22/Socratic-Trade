@@ -1,6 +1,6 @@
 # 2026-09-22 — Bundle Identifier Migration
 
-> **2026-09-24 retarget:** the interim new ID `trade.socratic.ios` was wrong. Jay corrected the new bundle to **`com.socratictrade.ios`** (tests `com.socratictrade.ios.tests`, App Group `group.com.socratictrade`). Old ASC app `6799238379` stays on `trade.socratic.app`. **NO-SHIP** until Jay creates an ASC app for `com.socratictrade.ios` and writes the new Apple ID into `scripts/ios-fleet/apps.json` + `ios-app-versions.json`.
+> **2026-09-24 retarget:** the interim new ID `com.socratictrade.ios` was wrong. Jay corrected the new bundle to **`com.socratictrade.ios`** (tests `com.socratictrade.ios.tests`, App Group `group.com.socratictrade`). Old ASC app `6799238379` stays on `trade.socratic.app`. **NO-SHIP** until Jay creates an ASC app for `com.socratictrade.ios` and writes the new Apple ID into `scripts/ios-fleet/apps.json` + `ios-app-versions.json`.
 
 Issue raised on the macOS signing-cert change window, where the owner approved a fleet-wide bundle rename so every app uses a domain Jay owns as its base.  This document covers **Socratic.Trade only**; the rest of the fleet (BotFleet, Autorotate, ContactLogo, DealDex, HogHunter, Congress.Trade, Usage-Monitor, the MiniMax-ios companion) is on separate lanes owned by other seats.  The fleet-wide context lives in `/Users/jay/.minimax/sessions/mvs_0bdfe8c73c1046a986df888aa99dcb2e/workspace/fleet-bundle-id-plan.md`.
 
@@ -166,7 +166,7 @@ Each file below gets a one-line `> **2026-09-22 [MM] archaeology note:**` at the
 - Code-signing cert refresh (vendor).
 - TestFlight re-upload (vendor).
 - `APNS_BUNDLE_ID` / `AUTH_APPLE_ID` env-var rotation in prod Infisical (owner — see Owner Action Items §5 and §6).
-- Keychain service strings (Socratic.Trade does not currently expose a named Keychain service group; if one is added later it will use the `trade.socratic` namespace to mirror the App Group).
+- Keychain service strings (Socratic.Trade does not currently expose a named Keychain service group; if one is added later it will use the `com.socratictrade` namespace to mirror the App Group).
 - Internal storage paths (`~/Library/Containers/...`), log paths, and the `osascript`/`pgrep` display name — none are bundle IDs.
 - Renaming pre-rename prose in `docs/audits/*`, `docs/reviews/*`, and pre-rename `docs/rollouts/*` — historical record, preserved with a dated top-of-file archaeology note each.
 - Renaming prior `docs/EFFORT-LOG.md` rows or `STATUS.md` historical snapshots — same rationale (chronological historical record).

@@ -115,7 +115,7 @@ function isAnthropicAdaptiveThinkingModel(model: string | undefined): boolean {
   return (
     /^claude-fable-5(?:$|[-.:_])/.test(normalized) ||
     /^claude-mythos-5(?:$|[-.:_])/.test(normalized) ||
-    /^claude-opus-(?:5|4-(?:6|7|8))(?:$|[-.:_])/.test(normalized) ||
+    /^claude-opus-(?:5(?:\.5|-5)?|4-(?:6|7|8))(?:$|[-.:_])/.test(normalized) ||
     /^claude-sonnet-(?:5|4-6)(?:$|[-.:_])/.test(normalized) ||
     /^claude-(?:sonnet|haiku|opus|fable)-latest(?:$|[-.:_])/.test(normalized)
   );

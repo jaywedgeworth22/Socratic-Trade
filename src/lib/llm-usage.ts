@@ -126,8 +126,10 @@ const MODEL_PRICE_PER_M: Record<string, [number, number]> = {
   "grok-4.6": [2, 6],
   "grok-latest": [2, 6],
   "claude-fable-latest": [10, 50],
+  "claude-opus-latest": [4.5, 22.5],
+  "claude-opus-5-5": [4.5, 22.5],
+  "claude-opus-5.5": [4.5, 22.5],
   "claude-opus-5": [5, 25],
-  "claude-opus-latest": [5, 25],
   "claude-sonnet-5": [2, 10], // was [3, 15] — real price is $2/$10 (verified 2026-09-18)
   "claude-sonnet-4-6": [2, 10], // was [3, 15] — kept in sync with claude-sonnet-5 above
   "claude-sonnet-latest": [2, 10], // was [3, 15] — real price is $2/$10 (verified 2026-09-18)
@@ -194,9 +196,9 @@ function priceForModel(model: string | undefined): [number, number] {
   m = m.replace(/^openrouter\//, ""); // strip leading "openrouter/" if present
   const slashIdx = m.indexOf("/");
   if (slashIdx !== -1) m = m.slice(slashIdx + 1); // strip one vendor segment (e.g. "openai/")
+  if (MODEL_PRICE_PER_M[m]) return MODEL_PRICE_PER_M[m];
   const canonical = canonicalModelId(model);
   if (canonical && MODEL_PRICE_PER_M[canonical]) return MODEL_PRICE_PER_M[canonical];
-  if (MODEL_PRICE_PER_M[m]) return MODEL_PRICE_PER_M[m];
   // Prefix match (e.g. dated suffixes like claude-haiku-4-5-20251001).
   // Longest-prefix wins so family aliases cannot shadow a more specific tier snapshot
   // (e.g. gpt-5.6 must not price gpt-5.6-terra-* as Sol).
@@ -331,7 +333,7 @@ export function recordLlmUsage(entry: LlmUsageEntry): void {
       entry.provider === "openrouter" && typeof entry.billedCostUsd === "number" && Number.isFinite(entry.billedCostUsd) && entry.billedCostUsd >= 0
         ? entry.billedCostUsd
         : undefined;
-    const estimatedCostUsd = estimateLlmCostUsd(canonical.model, entry.promptTokens, entry.completionTokens, entry.cachedPromptTokens, entry.cacheCreationTokens);
+    const estimatedCostUsd = estimateLlmCostUsd(entry.model ?? canonical.model, entry.promptTokens, entry.completionTokens, entry.cachedPromptTokens, entry.cacheCreationTokens);
     const cost = billedCostUsd ?? estimatedCostUsd;
     // Provenance travels with the row so the Usage page can label an estimate as an estimate
     // instead of mixing it into a "billed" total.  Null only when there is no cost at all.

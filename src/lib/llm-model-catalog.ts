@@ -135,11 +135,15 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
   {
     displaySlug: "claude-opus-latest",
     openRouterSlug: "~anthropic/claude-opus-latest",
-    nativeSlug: "claude-opus-5",
+    nativeSlug: "claude-opus-5-5",
     provider: "anthropic",
-    label: "claude-opus-latest (5) — premium Claude reasoning",
+    label: "claude-opus-latest (5.5) — premium Claude reasoning",
     tier: "$$$",
     aliases: [
+      "claude-opus-5-5",
+      "claude-opus-5.5",
+      "anthropic/claude-opus-5-5",
+      "anthropic/claude-opus-5.5",
       "claude-opus-5",
       "claude-opus-4-8",
       "claude-opus-4.8",

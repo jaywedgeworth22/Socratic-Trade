@@ -389,6 +389,8 @@ const CHEAPER_MODEL: Record<string, string> = {
   // Anthropic
   "claude-fable-latest": "claude-sonnet-latest",
   "claude-opus-latest": "claude-sonnet-latest",
+  "claude-opus-5-5": "claude-sonnet-latest",
+  "claude-opus-5.5": "claude-sonnet-latest",
   "claude-sonnet-latest": "claude-haiku-latest",
   "claude-fable-5": "claude-sonnet-latest",
   "claude-opus-5": "claude-sonnet-latest",

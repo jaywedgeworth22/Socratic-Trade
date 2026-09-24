@@ -3,5 +3,5 @@
 # Refresh with: bash scripts/ios-fleet-pin.sh --update  (then land it in a PR)
 8fa110415eda677b1c60123e0a9c151b0f974e94c5bbdd67fb1ed662b950de91  ship-testflight.sh
 30ba58a9ad54187e21e4d029e209fbd36df81602793958215cc9b4cc35004a09  asc-api.mjs
-57fe37037bfe8007846d43d22fdcc6740b47647d53f4a36516ba377db8dbe79f  apps.json
+4f9feda9e1091d2b54caceeffa2edff4c4a3ac340884db02d5394130fa4acb7f  apps.json
 ce7ed95efdbe98cae61686075dbdf98e840950e1a6917881947cbc127fd4c64a  AppUpdatePrompt.swift

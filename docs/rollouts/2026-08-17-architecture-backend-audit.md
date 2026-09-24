@@ -2,7 +2,7 @@
 
 ## Context & Objective
 
-Owner asked for a top-to-bottom read-only audit of Socratic.Trade's framework, API, state machines, queues, persistence, caching, concurrency, failure recovery, scalability, latency, and production durability.  Goal: an evidence-based report that does not restate already-fixed June–August incidents, and a PR that contains no product fixes.
+Owner asked for a top-to-bottom read-only audit of Socratic-Trade's framework, API, state machines, queues, persistence, caching, concurrency, failure recovery, scalability, latency, and production durability.  Goal: an evidence-based report that does not restate already-fixed June–August incidents, and a PR that contains no product fixes.
 
 ## Changes Made
 
@@ -33,9 +33,9 @@ Not run (docs-only, no product change): `npm run lint`, `npx tsc --noEmit`, `npm
 Issue/PR cross-check run:
 
 ```bash
-gh issue list --repo jaywedgeworth22/Socratic.Trade --state open --limit 80
-gh issue list --repo jaywedgeworth22/Socratic.Trade --search "architecture OR sqlite OR litestream OR scheduler OR queue OR concurrency OR durability" --state all --limit 40
-gh pr list --repo jaywedgeworth22/Socratic.Trade --state open --limit 30
+gh issue list --repo jaywedgeworth22/Socratic-Trade --state open --limit 80
+gh issue list --repo jaywedgeworth22/Socratic-Trade --search "architecture OR sqlite OR litestream OR scheduler OR queue OR concurrency OR durability" --state all --limit 40
+gh pr list --repo jaywedgeworth22/Socratic-Trade --state open --limit 30
 ```
 
 ## Next Steps & Blockers

@@ -24,6 +24,7 @@
 import crypto from "crypto";
 import { isAbortOrTimeoutError, isTransientNetworkError } from "../network-errors";
 import { hasRagIngestPointsBudget, recordRagUsage } from "../rag-metering";
+import { yieldEventLoop } from "../slow-sync-guard";
 import { serverKnobOverride } from "../server-knobs";
 import {
   qdrantTenantFilter,
@@ -440,7 +441,9 @@ export async function qdrantInventoryByMetadata(options: {
   maxScanned?: number;
 } = {}): Promise<QdrantInventoryRow[]> {
   const batchSize = Math.max(1, Math.min(1_000, Math.floor(options.batchSize ?? DEFAULT_SCROLL_LIMIT)));
-  const maxScanned = Math.max(1, Math.min(1_000_000, Math.floor(options.maxScanned ?? 250_000)));
+  const configuredMaxScanned = Number(process.env.VECTOR_INVENTORY_MAX_SCANNED ?? process.env.MANAGED_VECTOR_MAX_SCANNED);
+  const defaultMaxScanned = Number.isFinite(configuredMaxScanned) && configuredMaxScanned > 0 ? configuredMaxScanned : 250_000;
+  const maxScanned = Math.max(1, Math.min(1_000_000, Math.floor(options.maxScanned ?? defaultMaxScanned)));
   const ns = pineconeNamespaceToQdrantTenant(options.namespace);
   const extraFilter: Record<string, unknown> = {};
   if (options.source !== undefined) extraFilter.source = { $eq: options.source };
@@ -498,6 +501,9 @@ export async function qdrantInventoryByMetadata(options: {
       found.push({ id: pcId, metadata });
     }
     offset = parsed.result?.next_page_offset ?? null;
+    if (offset != null && offset !== "") {
+      await yieldEventLoop();
+    }
   } while (offset != null && offset !== "");
   return found.sort((a, b) => a.id.localeCompare(b.id));
 }

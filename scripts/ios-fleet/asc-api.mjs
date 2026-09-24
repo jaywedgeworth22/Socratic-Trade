@@ -9,7 +9,7 @@
  *
  * Usage:
  *   node asc-api.mjs GET /v1/apps
- *   node asc-api.mjs GET "/v1/apps?filter[bundleId]=trade.socratic.app"
+ *   node asc-api.mjs GET "/v1/apps?filter[bundleId]=com.socratictrade.ios"
  *   node asc-api.mjs PATCH /v1/betaAppReviewDetails/<id> '{"data":{...}}'
  *   node asc-api.mjs latest-build-seq <bundleId> <prefix>   # e.g. ... trade.congress.ios 1.0
  *
@@ -83,7 +83,7 @@ const AGENT_NAMES = "grok|claude|monet|codex|antigravity|cursor|kimi|fable|gemin
 // position 0. The fleet's actual convention puts the tag at the END, e.g.
 // "fix(ios): set App Category to Finance (#1030) [AG] (#1264)". Measured
 // 2026-08-13: Congress.Trade has 48 subjects carrying a NON-leading [AG] and
-// ZERO leading ones (Socratic.Trade: 2 and 2). An earlier version of this file
+// ZERO leading ones (Socratic-Trade: 2 and 2). An earlier version of this file
 // stripped only /^\[[A-Za-z]+\]/ and left "AG" out of the deny-list below on
 // the stated assumption that the strip covered it. It did not: every one of
 // those 48 subjects would have published "[AG]" straight to TestFlight, which

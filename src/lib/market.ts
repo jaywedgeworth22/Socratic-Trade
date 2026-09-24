@@ -18,6 +18,7 @@ import {
 } from "./scan-settings";
 import { fetchYahooFinanceQuote, fetchYahooFinanceQuotesBatch, type YahooFinanceQuote } from "./yahoo-finance";
 import type {
+  BrokerQuote,
   EnrichmentFieldObservations,
   EnrichmentSources,
   EquityPosition,
@@ -1073,23 +1074,7 @@ export function scoreFactors(quote: MarketQuote, weights: ScoringWeights = DEFAU
 
 export function mergeQuoteData(
   scan: MarketScan,
-  quoteData: Record<
-    string,
-    {
-      bid?: number;
-      ask?: number;
-      price?: number;
-      volume?: number;
-      asOf?: string;
-      provider?: string;
-      venuePriceAuthoritative?: boolean;
-      fetchedAt?: string;
-      delayedFallback?: boolean;
-      syntheticSpread?: boolean;
-      syntheticBid?: boolean;
-      syntheticAsk?: boolean;
-    }
-  >
+  quoteData: Record<string, Partial<BrokerQuote>>
 ): MarketScan {
   // When a merge accepts a real broker bid/ask/price/volume, refresh THAT field's provenance too.
   // Otherwise a "yahoo-finance-synthetic" tag from the quote-only fallback (toQuoteOnlyMarketQuote)
@@ -1099,7 +1084,7 @@ export function mergeQuoteData(
   // sources.price, so the drilldown/table price tooltip would misattribute the shown value.
   const refreshSideProvenance = (
     base: EnrichmentSources | undefined,
-    extra: { bid?: number; ask?: number; price?: number; volume?: number; provider?: string; syntheticSpread?: boolean; syntheticBid?: boolean; syntheticAsk?: boolean }
+    extra: Partial<BrokerQuote>
   ): EnrichmentSources | undefined => {
     if (!extra.provider) return base;
     const usedBid = positiveNumber(extra.bid) !== undefined;
@@ -1124,48 +1109,93 @@ export function mergeQuoteData(
   };
   const stampQuoteMergeObservations = (
     prior: EnrichmentFieldObservations | undefined,
-    extra: {
+    extra: Partial<BrokerQuote>,
+    resolved: {
       bid?: number;
       ask?: number;
       price?: number;
       volume?: number;
-      asOf?: string;
-      provider?: string;
-      fetchedAt?: string;
-      syntheticSpread?: boolean;
-      syntheticBid?: boolean;
-      syntheticAsk?: boolean;
-    },
-    resolved: { bid?: number; ask?: number; price?: number; volume?: number }
+      prevClose?: number;
+      vwap?: number;
+      bidSize?: number;
+      askSize?: number;
+    }
   ): EnrichmentFieldObservations | undefined => {
-    if (!extra.provider) return prior;
+    if (!extra.provider && !extra.fieldProvenance) return prior;
     const usedBid = positiveNumber(extra.bid) !== undefined;
     const usedAsk = positiveNumber(extra.ask) !== undefined;
     const usedPrice = positiveNumber(extra.price) !== undefined;
     const usedVol = !!(extra.volume && extra.volume > 0);
-    if (!usedBid && !usedAsk && !usedPrice && !usedVol) return prior;
-    const provider = extra.provider;
-    const asOf = extra.asOf;
-    const fetchedAt = extra.fetchedAt ?? extra.asOf ?? new Date().toISOString();
+    const usedPrevClose = positiveNumber(extra.prevClose) !== undefined;
+    const usedVwap = positiveNumber(extra.vwap) !== undefined;
+    const usedBidSize = positiveNumber(extra.bidSize) !== undefined;
+    const usedAskSize = positiveNumber(extra.askSize) !== undefined;
+    if (
+      !usedBid &&
+      !usedAsk &&
+      !usedPrice &&
+      !usedVol &&
+      !usedPrevClose &&
+      !usedVwap &&
+      !usedBidSize &&
+      !usedAskSize
+    ) {
+      return prior;
+    }
+    // Prefer cascade per-field receipts when present so a coalesced BrokerQuote does not
+    // attribute every observation to the quote-level price provider (Codex P1 on #3449).
+    const receiptFor = (field: string) => {
+      const receipt = extra.fieldProvenance?.[field];
+      const provider =
+        receipt?.provider ??
+        extra.provider ??
+        "unknown";
+      const asOf = receipt?.asOf ?? extra.asOf;
+      const fetchedAt = receipt?.fetchedAt ?? extra.fetchedAt ?? extra.asOf ?? new Date().toISOString();
+      return { provider, asOf, fetchedAt };
+    };
     const next: EnrichmentFieldObservations = { ...(prior ?? {}) };
     if (usedPrice && resolved.price !== undefined) {
+      const { provider, asOf, fetchedAt } = receiptFor("price");
       next.price = stampFieldObservation(resolved.price, provider, { asOf, fetchedAt });
     }
     if (usedBid && resolved.bid !== undefined) {
+      const { provider, asOf, fetchedAt } = receiptFor("bid");
       const bidSrc =
         (extra.syntheticBid ?? extra.syntheticSpread) ? `${provider}-synthetic` : provider;
       next.bid = stampFieldObservation(resolved.bid, bidSrc, { asOf, fetchedAt });
     }
     if (usedAsk && resolved.ask !== undefined) {
+      const { provider, asOf, fetchedAt } = receiptFor("ask");
       const askSrc =
         (extra.syntheticAsk ?? extra.syntheticSpread) ? `${provider}-synthetic` : provider;
       next.ask = stampFieldObservation(resolved.ask, askSrc, { asOf, fetchedAt });
     }
     if (usedVol && resolved.volume !== undefined) {
+      const { provider, asOf, fetchedAt } = receiptFor("volume");
       next.volume = stampFieldObservation(resolved.volume, provider, { asOf, fetchedAt });
     }
-    if (asOf) {
-      next.asOf = stampFieldObservation(asOf, provider, { asOf, fetchedAt });
+    if (usedPrevClose && resolved.prevClose !== undefined) {
+      const { provider, asOf, fetchedAt } = receiptFor("prevClose");
+      next.prevClose = stampFieldObservation(resolved.prevClose, provider, { asOf, fetchedAt });
+    }
+    if (usedVwap && resolved.vwap !== undefined) {
+      const { provider, asOf, fetchedAt } = receiptFor("vwap");
+      next.vwap = stampFieldObservation(resolved.vwap, provider, { asOf, fetchedAt });
+    }
+    if (usedBidSize && resolved.bidSize !== undefined) {
+      const { provider, asOf, fetchedAt } = receiptFor("bidSize");
+      next.bidSize = stampFieldObservation(resolved.bidSize, provider, { asOf, fetchedAt });
+    }
+    if (usedAskSize && resolved.askSize !== undefined) {
+      const { provider, asOf, fetchedAt } = receiptFor("askSize");
+      next.askSize = stampFieldObservation(resolved.askSize, provider, { asOf, fetchedAt });
+    }
+    const quoteAsOf = extra.asOf;
+    if (quoteAsOf) {
+      const provider = extra.provider ?? "unknown";
+      const fetchedAt = extra.fetchedAt ?? quoteAsOf;
+      next.asOf = stampFieldObservation(quoteAsOf, provider, { asOf: quoteAsOf, fetchedAt });
     }
     return next;
   };
@@ -1182,11 +1212,32 @@ export function mergeQuoteData(
       (extra.volume && extra.volume > 0 ? extra.volume : undefined) ??
       (quote.volume > 0 ? quote.volume : undefined) ??
       0;
+    const effectivePrice = usedPrice ?? quote.price;
+    const effectivePrevClose = positiveNumber(extra.prevClose) ?? positiveNumber(quote.prevClose);
+    let intradayChangePct = quote.intradayChangePct;
+    let netChange = quote.netChange;
+    if (effectivePrice !== undefined && effectivePrevClose !== undefined && effectivePrevClose > 0) {
+      intradayChangePct = Math.round(((effectivePrice - effectivePrevClose) / effectivePrevClose) * 10000) / 100;
+      netChange = Math.round((effectivePrice - effectivePrevClose) * 100) / 100;
+    } else if (extra.changePct !== undefined) {
+      intradayChangePct = extra.changePct;
+      netChange = extra.change ?? netChange;
+    }
     return {
       ...quote,
       bid: usedBid ?? quote.bid,
       ask: usedAsk ?? quote.ask,
-      price: usedPrice ?? quote.price,
+      bidSize: positiveNumber(extra.bidSize) ?? quote.bidSize,
+      askSize: positiveNumber(extra.askSize) ?? quote.askSize,
+      price: effectivePrice,
+      prevClose: effectivePrevClose ?? quote.prevClose,
+      open: positiveNumber(extra.open) ?? quote.open,
+      high: positiveNumber(extra.high) ?? quote.high,
+      low: positiveNumber(extra.low) ?? quote.low,
+      vwap: positiveNumber(extra.vwap) ?? quote.vwap,
+      companyName: extra.companyName ?? quote.companyName,
+      intradayChangePct,
+      netChange,
       // Use broker/Yahoo volume if the screener didn't supply it (NASDAQ tableonly has no volume field).
       volume,
       asOf: extra.asOf ?? quote.asOf,
@@ -1205,8 +1256,12 @@ export function mergeQuoteData(
       fieldObservations: stampQuoteMergeObservations(quote.fieldObservations, extra, {
         bid: usedBid ?? quote.bid,
         ask: usedAsk ?? quote.ask,
-        price: usedPrice ?? quote.price,
-        volume
+        bidSize: positiveNumber(extra.bidSize) ?? quote.bidSize,
+        askSize: positiveNumber(extra.askSize) ?? quote.askSize,
+        price: effectivePrice,
+        volume,
+        prevClose: effectivePrevClose,
+        vwap: positiveNumber(extra.vwap) ?? quote.vwap
       })
     };
   };
@@ -1223,11 +1278,32 @@ export function mergeQuoteData(
         extra && extra.volume && extra.volume > 0
           ? extra.volume
           : quote.volume;
+      const effectivePrice = usedPrice ?? quote.price;
+      const effectivePrevClose = positiveNumber(extra?.prevClose) ?? positiveNumber(quote.prevClose);
+      let intradayChangePct = quote.intradayChangePct;
+      let netChange = quote.netChange;
+      if (effectivePrice !== undefined && effectivePrevClose !== undefined && effectivePrevClose > 0) {
+        intradayChangePct = Math.round(((effectivePrice - effectivePrevClose) / effectivePrevClose) * 10000) / 100;
+        netChange = Math.round((effectivePrice - effectivePrevClose) * 100) / 100;
+      } else if (extra?.changePct !== undefined) {
+        intradayChangePct = extra.changePct;
+        netChange = extra.change ?? netChange;
+      }
       const merged: MarketQuoteSummary = {
         ...quote,
         bid: usedBid ?? quote.bid,
         ask: usedAsk ?? quote.ask,
-        price: usedPrice ?? quote.price,
+        bidSize: positiveNumber(extra?.bidSize) ?? quote.bidSize,
+        askSize: positiveNumber(extra?.askSize) ?? quote.askSize,
+        price: effectivePrice,
+        prevClose: effectivePrevClose ?? quote.prevClose,
+        open: positiveNumber(extra?.open) ?? quote.open,
+        high: positiveNumber(extra?.high) ?? quote.high,
+        low: positiveNumber(extra?.low) ?? quote.low,
+        vwap: positiveNumber(extra?.vwap) ?? quote.vwap,
+        companyName: extra?.companyName ?? quote.companyName,
+        intradayChangePct,
+        netChange,
         volume: volume ?? quote.volume,
         provider: extra?.provider ?? quote.provider,
         asOf: extra?.asOf ?? quote.asOf,
@@ -1241,8 +1317,12 @@ export function mergeQuoteData(
           ? stampQuoteMergeObservations(quote.fieldObservations, extra, {
               bid: usedBid ?? quote.bid,
               ask: usedAsk ?? quote.ask,
-              price: usedPrice ?? quote.price,
-              volume: volume ?? quote.volume
+              bidSize: positiveNumber(extra.bidSize) ?? quote.bidSize,
+              askSize: positiveNumber(extra.askSize) ?? quote.askSize,
+              price: effectivePrice,
+              volume: volume ?? quote.volume,
+              prevClose: effectivePrevClose,
+              vwap: positiveNumber(extra.vwap) ?? quote.vwap
             })
           : quote.fieldObservations
       };
@@ -1259,6 +1339,25 @@ export function mergeQuoteData(
       price,
       bid: positiveNumber(quote.bid),
       ask: positiveNumber(quote.ask),
+      bidSize: positiveNumber(quote.bidSize),
+      askSize: positiveNumber(quote.askSize),
+      prevClose: positiveNumber(quote.prevClose),
+      open: positiveNumber(quote.open),
+      high: positiveNumber(quote.high),
+      low: positiveNumber(quote.low),
+      vwap: positiveNumber(quote.vwap),
+      companyName: quote.companyName,
+      intradayChangePct: quote.changePct ?? (
+        positiveNumber(quote.prevClose) && price
+          ? Math.round(((price - quote.prevClose!) / quote.prevClose!) * 10000) / 100
+          : undefined
+      ),
+      netChange: quote.change ?? (
+        positiveNumber(quote.prevClose) && price
+          ? Math.round((price - quote.prevClose!) * 100) / 100
+          : undefined
+      ),
+      volume: positiveNumber(quote.volume),
       score: 0,
       provider: quote.provider,
       asOf: quote.asOf,
@@ -1571,7 +1670,8 @@ async function fetchQuoteOnlyMarketQuotes(symbols: string[], positions: EquityPo
 }
 
 function toQuoteOnlyMarketQuote(symbol: string, quote: YahooFinanceQuote, positions: EquityPosition[]): MarketQuote {
-  const prevClose = quote.prevClose > 0 ? quote.prevClose : quote.price;
+  const yahooPrevClose = quote.prevClose;
+  const prevClose = typeof yahooPrevClose === "number" && yahooPrevClose > 0 ? yahooPrevClose : quote.price;
   const netChange = quote.price - prevClose;
   const intradayChangePct = prevClose > 0 ? Math.round((netChange / prevClose) * 10_000) / 100 : 0;
   const position = positions.find((p) => normalizeSymbol(p.symbol) === symbol);
@@ -1622,6 +1722,13 @@ export function applyEnrichment(quote: MarketQuote, extra: SymbolEnrichment): Ma
     price: extra.price && extra.price > 0 ? extra.price : quote.price,
     bid: enrichmentBid ? extra.bid : quote.bid,
     ask: enrichmentAsk ? extra.ask : quote.ask,
+    bidSize: extra.bidSize && extra.bidSize > 0 ? extra.bidSize : quote.bidSize,
+    askSize: extra.askSize && extra.askSize > 0 ? extra.askSize : quote.askSize,
+    prevClose: extra.prevClose && extra.prevClose > 0 ? extra.prevClose : quote.prevClose,
+    open: extra.open && extra.open > 0 ? extra.open : quote.open,
+    high: extra.high && extra.high > 0 ? extra.high : quote.high,
+    low: extra.low && extra.low > 0 ? extra.low : quote.low,
+    netChange: typeof extra.netChange === "number" ? extra.netChange : quote.netChange,
     // Enrichment providers supply REAL bid/ask (exchange/broker); clear the synthetic flag when they
     // override a side. When enrichment doesn't provide bid/ask, the original flag is preserved by spread.
     syntheticBid: enrichmentBid ? false : quote.syntheticBid,

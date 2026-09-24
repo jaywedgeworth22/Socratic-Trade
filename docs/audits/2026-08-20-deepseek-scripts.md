@@ -1,4 +1,4 @@
-# DeepSeek review — operator/deploy scripts in `scripts/` (Socratic.Trade)
+# DeepSeek review — operator/deploy scripts in `scripts/` (Socratic-Trade)
 
 Repo: /Users/jay/apps/trading-deepseek (origin/main @ 41a7a438d, clean except `docs/EFFORT-LOG.md` locally modified — a doc, not scripts).
 READ-ONLY review.  No repo file was modified.

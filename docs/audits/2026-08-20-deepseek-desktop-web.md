@@ -1,4 +1,4 @@
-# Socratic.Trade Desktop Website (Console) Review — 2026-08-21
+# Socratic-Trade Desktop Website (Console) Review — 2026-08-21
 
 Reviewer: DEEPSEEK review subagent (read-only). Repo: `/Users/jay/apps/trading-deepseek` (clean checkout, branch `deepseek/lane`, base `41a7a438d`). Scope: console site at widths ≥1024px, app shell, middleware, live-site probes. Live production sha observed: `e0a4959a7` (health/`release`), ~4 commits behind origin/main.
 

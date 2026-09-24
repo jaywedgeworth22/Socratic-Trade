@@ -172,7 +172,7 @@
 
 ## Verification
 
-Run from `/Users/jay/Code/Socratic.Trade/.claude/worktrees/monet-regime-scorer`:
+Run from `/Users/jay/Code/Socratic-Trade/.claude/worktrees/monet-regime-scorer`:
 
 - `npx tsc --noEmit` — clean, no output.
 - `npx vitest run test/regime-severity.test.ts test/regime-watch.test.ts` — 25/25 passed.

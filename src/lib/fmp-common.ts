@@ -23,7 +23,7 @@ export function scrubUrl(url: string, apiKey?: string): string {
 
 /**
  * Shared FMP capability adapter — permanently no-op.
- * Owner: Socratic.Trade does not call FMP; Congress.Trade owns that quota and
+ * Owner: Socratic-Trade does not call FMP; Congress.Trade owns that quota and
  * exposes fundamentals/analyst/congressional data via App A read paths.
  */
 export async function requestFmp<T>(

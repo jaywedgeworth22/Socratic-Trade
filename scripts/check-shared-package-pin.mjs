@@ -2,7 +2,7 @@
 /**
  * Vendor-era shared-package pin check (ST / UM / CT triangle).
  *
- * Socratic.Trade and Usage-Monitor npm-pin
+ * Socratic-Trade and Usage-Monitor npm-pin
  * github:jaywedgeworth22/congress-trading-shared#vX.Y.Z.
  * Congress.Trade vendors src/ and records the release in
  * app/vendor/congress-trading-shared/VENDOR-PROVENANCE.md. CT must NOT
@@ -103,7 +103,7 @@ export function comparePins(input) {
   const problems = [];
   const stSpec = input.stSpec;
   const umSpec = input.umSpec;
-  if (!stSpec) problems.push("Socratic.Trade package.json has no pin for " + PKG);
+  if (!stSpec) problems.push("Socratic-Trade package.json has no pin for " + PKG);
   if (!umSpec) problems.push("Usage-Monitor package.json has no pin for " + PKG);
   const stV = normVersion(stSpec);
   const umV = normVersion(umSpec);

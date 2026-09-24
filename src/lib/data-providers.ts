@@ -167,7 +167,14 @@ export interface SymbolEnrichment {
   price?: number;
   bid?: number;
   ask?: number;
+  bidSize?: number;
+  askSize?: number;
   intradayChangePct?: number;
+  netChange?: number;
+  prevClose?: number;
+  open?: number;
+  high?: number;
+  low?: number;
   vwap?: number;        // session volume-weighted average price (Alpaca dailyBar.vw)
   asOf?: string;
   sentiment?: number;    // 0–100 news tone (50 = neutral). News-derived only.
@@ -247,6 +254,13 @@ export type EnrichmentSourcedField =
   | "price"
   | "bid"
   | "ask"
+  | "bidSize"
+  | "askSize"
+  | "prevClose"
+  | "open"
+  | "high"
+  | "low"
+  | "netChange"
   | "intradayChangePct"
   | "vwap"
   | "asOf"
@@ -1699,6 +1713,13 @@ export class CascadingEnrichmentProvider implements MarketEnrichmentProvider {
         takeScalar("price", name, r.price);
         takeScalar("bid", name, r.bid);
         takeScalar("ask", name, r.ask);
+        takeScalar("bidSize", name, r.bidSize);
+        takeScalar("askSize", name, r.askSize);
+        takeScalar("prevClose", name, r.prevClose);
+        takeScalar("open", name, r.open);
+        takeScalar("high", name, r.high);
+        takeScalar("low", name, r.low);
+        takeScalar("netChange", name, r.netChange);
         takeScalar("intradayChangePct", name, r.intradayChangePct);
         takeScalar("vwap", name, r.vwap);
         takeScalar("asOf", name, r.asOf);
@@ -1972,6 +1993,13 @@ const EMPTY_SOURCED: Record<EnrichmentSourcedField, true> = {
   price: true,
   bid: true,
   ask: true,
+  bidSize: true,
+  askSize: true,
+  prevClose: true,
+  open: true,
+  high: true,
+  low: true,
+  netChange: true,
   intradayChangePct: true,
   vwap: true,
   asOf: true,
@@ -2559,7 +2587,7 @@ export class AlpacaSnapshotEnrichmentProvider implements MarketEnrichmentProvide
 
 interface AlpacaSnapshot {
   latestTrade?: { p?: number; t?: string };
-  latestQuote?: { bp?: number; ap?: number; t?: string };
+  latestQuote?: { bp?: number; ap?: number; bs?: number; as?: number; t?: string };
   dailyBar?: { o?: number; h?: number; l?: number; c?: number; v?: number; vw?: number; t?: string };
   prevDailyBar?: { c?: number };
 }
@@ -2573,6 +2601,8 @@ export function parseAlpacaSnapshot(snap: AlpacaSnapshot | undefined | null): Sy
 
   const bid = typeof snap.latestQuote?.bp === "number" && snap.latestQuote.bp > 0 ? snap.latestQuote.bp : undefined;
   const ask = typeof snap.latestQuote?.ap === "number" && snap.latestQuote.ap > 0 ? snap.latestQuote.ap : undefined;
+  const bidSize = typeof snap.latestQuote?.bs === "number" && snap.latestQuote.bs > 0 ? snap.latestQuote.bs : undefined;
+  const askSize = typeof snap.latestQuote?.as === "number" && snap.latestQuote.as > 0 ? snap.latestQuote.as : undefined;
 
   const volume = typeof snap.dailyBar?.v === "number" && snap.dailyBar.v > 0 ? snap.dailyBar.v : undefined;
 
@@ -2580,26 +2610,45 @@ export function parseAlpacaSnapshot(snap: AlpacaSnapshot | undefined | null): Sy
   // it is a real positive number — never fabricate.
   const vwap = typeof snap.dailyBar?.vw === "number" && snap.dailyBar.vw > 0 ? snap.dailyBar.vw : undefined;
 
+  const open = typeof snap.dailyBar?.o === "number" && snap.dailyBar.o > 0 ? snap.dailyBar.o : undefined;
+  const high = typeof snap.dailyBar?.h === "number" && snap.dailyBar.h > 0 ? snap.dailyBar.h : undefined;
+  const low = typeof snap.dailyBar?.l === "number" && snap.dailyBar.l > 0 ? snap.dailyBar.l : undefined;
+
   let intradayChangePct: number | undefined;
+  let netChange: number | undefined;
   const prevClose = typeof snap.prevDailyBar?.c === "number" && snap.prevDailyBar.c > 0 ? snap.prevDailyBar.c : undefined;
-  if (barClose !== undefined && prevClose !== undefined && prevClose > 0) {
-    intradayChangePct = Math.round(((barClose - prevClose) / prevClose) * 10000) / 100;
+  const refPrice = barClose ?? price;
+  if (refPrice !== undefined && prevClose !== undefined && prevClose > 0) {
+    intradayChangePct = Math.round(((refPrice - prevClose) / prevClose) * 10000) / 100;
+    netChange = Math.round((refPrice - prevClose) * 100) / 100;
   }
 
   // Stamp asOf from whichever timestamp backs the winning PRICE field, so the staleness gate
   // (policy.ts maxQuoteAgeSec) sees the quote's true age instead of inheriting a screener/enrichment
   // asOf from an unrelated field (or none at all — parseAlpacaSnapshot never set asOf before this).
   // Preference mirrors the price fallback above: latestTrade.t when latestTrade.p won, else
-  // dailyBar.t when dailyBar.c won. A malformed/missing timestamp is simply omitted — never guessed.
-  const asOfRaw = tradePrice !== undefined ? snap.latestTrade?.t : barClose !== undefined ? snap.dailyBar?.t : undefined;
+  // dailyBar.t when dailyBar.c won, falling back to latestQuote.t when both are absent.
+  const asOfRaw =
+    tradePrice !== undefined
+      ? snap.latestTrade?.t
+      : barClose !== undefined
+        ? snap.dailyBar?.t
+        : snap.latestQuote?.t;
   const asOf = typeof asOfRaw === "string" && !Number.isNaN(new Date(asOfRaw).getTime()) ? asOfRaw : undefined;
 
   return {
     ...(price !== undefined && { price }),
     ...(bid !== undefined && { bid }),
     ...(ask !== undefined && { ask }),
+    ...(bidSize !== undefined && { bidSize }),
+    ...(askSize !== undefined && { askSize }),
     ...(volume !== undefined && { volume }),
     ...(vwap !== undefined && { vwap }),
+    ...(prevClose !== undefined && { prevClose }),
+    ...(open !== undefined && { open }),
+    ...(high !== undefined && { high }),
+    ...(low !== undefined && { low }),
+    ...(netChange !== undefined && { netChange }),
     ...(intradayChangePct !== undefined && { intradayChangePct }),
     ...(asOf !== undefined && { asOf })
   };
@@ -3258,10 +3307,35 @@ export class FinnhubEnrichmentProvider implements MarketEnrichmentProvider {
                 if (headlines.length > 0) sentiment = scoreHeadlines(headlines);
               }
 
-              // Quote → volume
+              // Quote → volume and intraday price metrics
               let volume: number | undefined;
+              let quotePrice: number | undefined;
+              let prevClose: number | undefined;
+              let open: number | undefined;
+              let high: number | undefined;
+              let low: number | undefined;
+              let intradayChangePct: number | undefined;
+              let netChange: number | undefined;
+              let quoteAsOf: string | undefined;
+
               if (quoteRaw.status === "fulfilled") {
                 const q = quoteRaw.value as Record<string, unknown>;
+                const c = firstNumber(q, ["c"]);
+                if (typeof c === "number" && c > 0) quotePrice = c;
+                const pc = firstNumber(q, ["pc"]);
+                if (typeof pc === "number" && pc > 0) prevClose = pc;
+                const o = firstNumber(q, ["o"]);
+                if (typeof o === "number" && o > 0) open = o;
+                const h = firstNumber(q, ["h"]);
+                if (typeof h === "number" && h > 0) high = h;
+                const l = firstNumber(q, ["l"]);
+                if (typeof l === "number" && l > 0) low = l;
+                const d = firstNumber(q, ["d"]);
+                if (typeof d === "number") netChange = d;
+                const dp = firstNumber(q, ["dp"]);
+                if (typeof dp === "number") intradayChangePct = dp;
+                const t = firstNumber(q, ["t"]);
+                if (typeof t === "number" && t > 0) quoteAsOf = new Date(t * 1000).toISOString();
                 if (typeof q?.v === "number" && q.v > 0) volume = q.v;
               }
 
@@ -3303,6 +3377,14 @@ export class FinnhubEnrichmentProvider implements MarketEnrichmentProvider {
               // Prefer the current session volume; fall back to metric average when session volume is 0 (e.g. after hours).
               const resolvedVolume = (volume && volume > 0 ? volume : undefined) ?? volumeFromMetric;
               const data: SymbolEnrichment = {
+                ...(quotePrice !== undefined && { price: quotePrice }),
+                ...(prevClose !== undefined && { prevClose }),
+                ...(open !== undefined && { open }),
+                ...(high !== undefined && { high }),
+                ...(low !== undefined && { low }),
+                ...(netChange !== undefined && { netChange }),
+                ...(intradayChangePct !== undefined && { intradayChangePct }),
+                ...(quoteAsOf !== undefined && { asOf: quoteAsOf }),
                 ...(sentiment !== undefined && { sentiment }),
                 ...(headlines.length > 0 && { headlines }),
                 ...(peRatio !== undefined && { peRatio }),
@@ -5752,8 +5834,16 @@ export class TiingoEnrichmentProvider implements MarketEnrichmentProvider {
             let price: number | undefined;
             let bid: number | undefined;
             let ask: number | undefined;
+            let bidSize: number | undefined;
+            let askSize: number | undefined;
             let volume: number | undefined;
+            let prevClose: number | undefined;
+            let open: number | undefined;
+            let high: number | undefined;
+            let low: number | undefined;
             let intradayChangePct: number | undefined;
+            let netChange: number | undefined;
+            let asOf: string | undefined;
 
             if (iexRaw.status === "fulfilled") {
               const arr = Array.isArray(iexRaw.value) ? iexRaw.value : [iexRaw.value];
@@ -5765,12 +5855,29 @@ export class TiingoEnrichmentProvider implements MarketEnrichmentProvider {
                 if (b && b > 0) bid = b;
                 const a = firstNumber(q, ["askPrice"]);
                 if (a && a > 0) ask = a;
+                const bs = firstNumber(q, ["bidSize"]);
+                if (bs && bs > 0) bidSize = bs;
+                const as_ = firstNumber(q, ["askSize"]);
+                if (as_ && as_ > 0) askSize = as_;
                 const v = firstNumber(q, ["volume"]);
                 if (v && v > 0) volume = v;
-                const prevClose = firstNumber(q, ["prevClose"]);
+                const pc = firstNumber(q, ["prevClose"]);
+                if (pc && pc > 0) prevClose = pc;
+                const o = firstNumber(q, ["open"]);
+                if (o && o > 0) open = o;
+                const h = firstNumber(q, ["high"]);
+                if (h && h > 0) high = h;
+                const l = firstNumber(q, ["low"]);
+                if (l && l > 0) low = l;
+
                 if (price && prevClose && prevClose > 0) {
                   intradayChangePct = Math.round(((price - prevClose) / prevClose) * 10000) / 100;
+                  netChange = Math.round((price - prevClose) * 100) / 100;
                 }
+                const stamp = typeof q.timestamp === "string" ? q.timestamp :
+                  typeof q.lastSaleTimestamp === "string" ? q.lastSaleTimestamp :
+                  typeof q.quoteTimestamp === "string" ? q.quoteTimestamp : undefined;
+                if (stamp && !Number.isNaN(new Date(stamp).getTime())) asOf = stamp;
               }
             }
 
@@ -5794,8 +5901,16 @@ export class TiingoEnrichmentProvider implements MarketEnrichmentProvider {
               ...(price !== undefined && { price }),
               ...(bid !== undefined && { bid }),
               ...(ask !== undefined && { ask }),
+              ...(bidSize !== undefined && { bidSize }),
+              ...(askSize !== undefined && { askSize }),
               ...(volume !== undefined && { volume }),
+              ...(prevClose !== undefined && { prevClose }),
+              ...(open !== undefined && { open }),
+              ...(high !== undefined && { high }),
+              ...(low !== undefined && { low }),
+              ...(netChange !== undefined && { netChange }),
               ...(intradayChangePct !== undefined && { intradayChangePct }),
+              ...(asOf !== undefined && { asOf }),
               ...(companyName !== undefined && { companyName }),
               ...(headlines !== undefined && { headlines }),
               ...(sentiment !== undefined && { sentiment })
@@ -6479,7 +6594,7 @@ export class SecXbrlEnrichmentProvider implements MarketEnrichmentProvider {
 
 // ── RapidAPI: Financial Modeling Prep ────────────────────────────────────────
 // RETIRED (owner 2026-08-04): never call FMP (native or RapidAPI-hosted) from
-// Socratic.Trade. Class kept as a no-op so imports/tests that construct it stay stable.
+// Socratic-Trade. Class kept as a no-op so imports/tests that construct it stay stable.
 
 export class FmpRapidApiEnrichmentProvider implements MarketEnrichmentProvider {
   readonly name = "fmp-rapidapi";

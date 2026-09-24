@@ -7,7 +7,7 @@
 ---
 
 ## 1. Context & Objective
-The user requested Desktop Web and Mobile PWA UX enhancements across Socratic.Trade:
+The user requested Desktop Web and Mobile PWA UX enhancements across Socratic-Trade:
 1. **Desktop Web**: Hotkeys in `command-palette.tsx` (`Cmd+K`, `A`, `R`, `1-6`), skeleton loading components (`ApprovalCardSkeleton`, `PortfolioOverviewSkeleton`), and dark theme design token synchronization in `console.css`.
 2. **Mobile Web PWA**: Modularization of `mobile-pwa-client.tsx` into `app/mobile/components/` (`MobileHeader.tsx`, `MobileNavBar.tsx`, `MobileHomeTab.tsx`, `MobileProposalsTab.tsx`), plus enforcing WebKit top scroll boundary checks (`scrollTop === 0` set to `1`) and CSS `overscroll-behavior-y: contain` to eliminate body scroll chaining in iOS Safari.
 3. **Verification**: Full type-checking (`npx tsc --noEmit`), linting (`npm run lint`), vitest test suite (`npm test`), and production build verification (`npm run build`).

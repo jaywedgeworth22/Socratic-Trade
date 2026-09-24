@@ -1,6 +1,6 @@
 # 2026-07-11 — Expensive admin-operation abuse/cost controls
 
-PR: <https://github.com/jaywedgeworth22/Socratic.Trade/pull/1409> (merged as `9552b648`)
+PR: <https://github.com/jaywedgeworth22/Socratic-Trade/pull/1409> (merged as `9552b648`)
 
 ## Summary
 

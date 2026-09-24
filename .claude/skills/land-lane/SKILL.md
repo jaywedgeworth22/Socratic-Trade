@@ -5,7 +5,7 @@ description: Land a feature branch to main via the fleet worktree-and-script pro
 
 # Land a Feature Branch to Main
 
-Use this procedure to merge a feature branch into `main` safely across the multi-agent fleet. **Do not run this from the main integration worktree** (`~/Code/Socratic.Trade`) **or from branch `main`** -- `land.sh` refuses to run from either.
+Use this procedure to merge a feature branch into `main` safely across the multi-agent fleet. **Do not run this from the main integration worktree** (`~/Code/Socratic-Trade`) **or from branch `main`** -- `land.sh` refuses to run from either.
 
 ## Preconditions
 
@@ -90,7 +90,7 @@ bash scripts/land.sh
 If the box is under load (multiple lanes gating simultaneously), post per the repo-first format in `/Users/jay/apps/AGENT-SYNC.md`, e.g.:
 
 ```bash
-bash scripts/slack-sync.sh post "repo: Socratic.Trade | [SEAT->FLEET] gating now"
+bash scripts/slack-sync.sh post "repo: Socratic-Trade | [SEAT->FLEET] gating now"
 ```
 
 After the gate completes, post a one-line follow-up (`gate done`).

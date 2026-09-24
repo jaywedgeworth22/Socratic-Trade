@@ -16,11 +16,11 @@
 
 ## Files
 
-- [route.ts](file:///Users/jay/Code/Socratic.Trade/app/api/admin/server-metrics/route.ts) [NEW] — operator API route for fetching and structuring metrics.
-- [page.tsx](file:///Users/jay/Code/Socratic.Trade/app/admin/server/page.tsx) [NEW] — server metrics page wrapper.
-- [server-metrics-client.tsx](file:///Users/jay/Code/Socratic.Trade/app/admin/server/server-metrics-client.tsx) [NEW] — client visualizer page showing resource utilization and running container list.
-- [page.tsx](file:///Users/jay/Code/Socratic.Trade/app/admin/page.tsx) [MODIFY] — added Server & infrastructure link to operator hub grid.
-- [server-metrics.test.ts](file:///Users/jay/Code/Socratic.Trade/test/server-metrics.test.ts) [NEW] — unit tests for the metrics API endpoint (verification of admin checks, development fallback, and API parser logic).
+- [route.ts](file:///Users/jay/Code/Socratic-Trade/app/api/admin/server-metrics/route.ts) [NEW] — operator API route for fetching and structuring metrics.
+- [page.tsx](file:///Users/jay/Code/Socratic-Trade/app/admin/server/page.tsx) [NEW] — server metrics page wrapper.
+- [server-metrics-client.tsx](file:///Users/jay/Code/Socratic-Trade/app/admin/server/server-metrics-client.tsx) [NEW] — client visualizer page showing resource utilization and running container list.
+- [page.tsx](file:///Users/jay/Code/Socratic-Trade/app/admin/page.tsx) [MODIFY] — added Server & infrastructure link to operator hub grid.
+- [server-metrics.test.ts](file:///Users/jay/Code/Socratic-Trade/test/server-metrics.test.ts) [NEW] — unit tests for the metrics API endpoint (verification of admin checks, development fallback, and API parser logic).
 
 ## Verification
 

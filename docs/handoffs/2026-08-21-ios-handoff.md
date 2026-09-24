@@ -6,7 +6,7 @@ Source: full review in `/tmp/deepseek-review-ios.md`.  Base: clean checkout at `
 
 ## 1) Implement first — items with anchors
 
-1. **P1 — Required CI gate must compile AND test Swift.** `.github/workflows/ci.yml` (no xcodebuild anywhere), `.github/workflows/ios-build.yml:40-92` (build-only, non-required), ruleset `main-protection` requires only `verify` (`gh api repos/jaywedgeworth22/Socratic.Trade/rulesets/17945518` → `required_status_checks: [verify]`).
+1. **P1 — Required CI gate must compile AND test Swift.** `.github/workflows/ci.yml` (no xcodebuild anywhere), `.github/workflows/ios-build.yml:40-92` (build-only, non-required), ruleset `main-protection` requires only `verify` (`gh api repos/jaywedgeworth22/Socratic-Trade/rulesets/17945518` → `required_status_checks: [verify]`).
 2. **P1 — Privacy manifest (ITMS-91053 risk).** `ios/project.yml` (no `PrivacyInfo.xcprivacy` in `sources:`); UserDefaults used at `ios/SocraticTrade/MobileStore.swift:150-163`, `ios/SocraticTrade/MobileControlView.swift:94`, `ios/SocraticTrade/CoachView.swift:10`.
 3. **P1 — Crash: `Dictionary(uniqueKeysWithValues:)`.** `ios/SocraticTrade/MobileStore.swift:46`.
 4. **P1 — Staleness gate disables Approve on one failed reload; no polling fallback.** `ios/SocraticTrade/MobileStore.swift:265-268` (`isSnapshotStale`), `:309` (`canSubmit` guard), `:350` (`snapshotLoadFailed = true`), `:355-396` (`startEvents` reconnect loop, no periodic reload).

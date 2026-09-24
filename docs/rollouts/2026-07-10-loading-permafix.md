@@ -114,7 +114,7 @@ Run from a dedicated isolated worktree (see "Worktree note" below):
   correctly, since neither threshold condition (>3000ms or a timeout) was met.
 
 ## Worktree note (environment issue, not part of the fix)
-The assigned worktree (`/Users/jay/Code/Socratic.Trade/.claude/worktrees/vibrant-bouman-10388c`)
+The assigned worktree (`/Users/jay/Code/Socratic-Trade/.claude/worktrees/vibrant-bouman-10388c`)
 turned out to be concurrently in use by a live, long-running Claude session on branch
 `claude/settings-global-only` (the tracked "Settings IA restructure" effort — see that entry in
 `docs/EFFORT-LOG.md`). While this task's edits sat uncommitted, that other session checked out its

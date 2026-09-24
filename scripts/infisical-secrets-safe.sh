@@ -7,7 +7,7 @@
 #   bash scripts/infisical-secrets-safe.sh names --projectId ID --env prod
 #   bash scripts/infisical-secrets-safe.sh delete KEY --projectId ID --env prod
 #
-# LLM provider API keys must NEVER be stored in Infisical for Socratic.Trade.
+# LLM provider API keys must NEVER be stored in Infisical for Socratic-Trade.
 # They belong on Connections (user_api_keys). `set` refuses those names.
 #
 # Forbidden (agents must not run these):
@@ -64,7 +64,7 @@ case "$cmd" in
     esac
     key="${pair%%=*}"
     if is_llm_runtime_key "$key"; then
-      die "refusing to set $key — LLM runtime keys must not live in Infisical for Socratic.Trade; paste them on Connections"
+      die "refusing to set $key — LLM runtime keys must not live in Infisical for Socratic-Trade; paste them on Connections"
     fi
     # never echo value
     infisical secrets set "$pair" "$@" >/dev/null

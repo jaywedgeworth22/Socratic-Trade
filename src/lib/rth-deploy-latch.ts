@@ -179,7 +179,7 @@ export async function resolveCommitMessageForLatch(
   const fromEnv = env.COMMIT_MESSAGE ?? env.COOLIFY_COMMIT_MESSAGE;
   if (fromEnv && fromEnv.trim()) return fromEnv;
   const sha = latchCommitSha(env);
-  const repo = (env.GITHUB_REPOSITORY ?? "jaywedgeworth22/Socratic.Trade").trim();
+  const repo = (env.GITHUB_REPOSITORY ?? "jaywedgeworth22/Socratic-Trade").trim();
   if (sha) {
     const fromGithub = await fetchGithubCommitMessage(sha, repo, fetchImpl);
     if (fromGithub) return fromGithub;
@@ -194,7 +194,7 @@ export async function resolveChangedFilesForLatch(
   const fromEnv = parseChangedFiles(env.CHANGED_FILES);
   if (fromEnv.length > 0) return fromEnv;
   const sha = latchCommitSha(env);
-  const repo = (env.GITHUB_REPOSITORY ?? "jaywedgeworth22/Socratic.Trade").trim();
+  const repo = (env.GITHUB_REPOSITORY ?? "jaywedgeworth22/Socratic-Trade").trim();
   if (!sha) return undefined;
   return fetchGithubCommitFiles(sha, repo, fetchImpl);
 }

@@ -4,6 +4,10 @@
 export const CASCADE_BUDGET_MS = 6_000;
 /** After the Yahoo chart floor is in, wait this long for quoteSummary PE/EPS.  Do not wait the 6s cascade. */
 export const YAHOO_SUMMARY_GRACE_MS = 1_500;
+/** After the Yahoo chart floor is in, wait this long for the live quote cascade to
+ *  produce an overlay before returning the floor.  The response never waits for the
+ *  full cascade — the live overlay is opportunistic (Codex P1 review). */
+export const LIVE_CASCADE_OVERLAY_GRACE_MS = 1_500;
 
 /** AbortController + timer for the on-demand enrichment cascade budget. */
 export function startCascadeBudget(budgetMs: number = CASCADE_BUDGET_MS): {

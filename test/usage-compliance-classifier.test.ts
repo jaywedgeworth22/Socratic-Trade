@@ -530,7 +530,7 @@ describe("WS1 gap #3: search-fusion fetchAlternativeEmbedding meters + enriches"
     const req = embedRequests[0]!;
     expect(req.url).toBe("https://openrouter.ai/api/v1/embeddings");
     expect(req.headers["HTTP-Referer"]).toBe("https://socratictrade.com");
-    expect(req.headers["X-Title"]).toBe("Socratic.Trade");
+    expect(req.headers["X-Title"]).toBe("Socratic-Trade");
     const trace = req.body.trace as Record<string, unknown>;
     expect(trace.sourceApp).toBe("socratic-trade");
     expect(trace.service).toBe("rag");

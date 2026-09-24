@@ -2,7 +2,7 @@
 
 **Date**: 2026-07-24  
 **Author**: ANTIGRAVITY  
-**PR**: [#2219](https://github.com/jaywedgeworth22/Socratic.Trade/pull/2219)
+**PR**: [#2219](https://github.com/jaywedgeworth22/Socratic-Trade/pull/2219)
 
 ---
 
@@ -30,4 +30,4 @@ Fixed an OpenRouter model resolution issue where generic model tier aliases (e.g
 - `tsc --noEmit` exit 0
 - `npx vitest run test/openrouter-model-availability.test.ts` exit 0
 - `npx vitest run test/dashboard-feed.test.ts` exit 0
-- PR [#2219](https://github.com/jaywedgeworth22/Socratic.Trade/pull/2219) opened and pushed.
+- PR [#2219](https://github.com/jaywedgeworth22/Socratic-Trade/pull/2219) opened and pushed.

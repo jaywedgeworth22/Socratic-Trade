@@ -1,7 +1,7 @@
 # 2026-07-18 — Decision/status display truth (Codex items 22, 23, 24, 26, 29)
 
 Branch: `claude/decision-status-truth-fix` (worktree
-`/Users/jay/Code/Socratic.Trade/.claude/worktrees/agent-a76603c7aabd157d7`; the sibling
+`/Users/jay/Code/Socratic-Trade/.claude/worktrees/agent-a76603c7aabd157d7`; the sibling
 branch name `claude/decision-status-truth` was already checked out in another agent's
 worktree, so this lane took the `-fix` suffix). Display-truth batch: every change makes a
 UI/health surface stop asserting something that is no longer (or never was) true. No

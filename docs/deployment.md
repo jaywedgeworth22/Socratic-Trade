@@ -1,7 +1,7 @@
 # Production Deployment
 
 Production is **[socratictrade.com](https://socratictrade.com)** on Coolify app
-**uuid `socratic-app`** (name "Socratic.Trade", branch `main`, dockerfile build pack).
+**uuid `socratic-app`** (name "Socratic-Trade", branch `main`, dockerfile build pack).
 
 **Host (current):** Coolify on the production fleet box (see private
 `jaywedgeworth22/fleet-ops:ATTACK-MAP.md`; dashboard/API `https://host.jays.services`).
@@ -131,7 +131,7 @@ bash scripts/isolate-shared-box-batch.sh                  # dry-run; default 5 c
 ISOLATE_SHARED_BOX_APPLY=1 bash scripts/isolate-shared-box-batch.sh --apply
 ```
 
-The script never restarts a container and never matches Socratic.Trade, Coolify,
+The script never restarts a container and never matches Socratic-Trade, Coolify,
 or Usage Monitor.  `--apply` requires the env latch.  `docker update` CPU limits
 are ephemeral: the next CT Coolify recreate overwrites them unless compose
 carries `cpus: '5.0'` on `scan-cpu-worker`.

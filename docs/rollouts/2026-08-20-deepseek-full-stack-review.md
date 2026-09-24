@@ -2,7 +2,7 @@
 
 ## 1. Context & Objective
 
-Owner asked DEEPSEEK (new fleet seat) to run a top-to-bottom review of Socratic.Trade across the desktop website, the phone-width website, and the native iOS app, and to outline the fixes/improvements that can and should be made.  This is a review-only (zero-code) unit: the deliverable is a prioritized outline, board findings, and this paper trail.
+Owner asked DEEPSEEK (new fleet seat) to run a top-to-bottom review of Socratic-Trade across the desktop website, the phone-width website, and the native iOS app, and to outline the fixes/improvements that can and should be made.  This is a review-only (zero-code) unit: the deliverable is a prioritized outline, board findings, and this paper trail.
 
 ## 2. Changes Made
 
@@ -13,7 +13,7 @@ Owner asked DEEPSEEK (new fleet seat) to run a top-to-bottom review of Socratic.
 
 ## 3. Decisions & Trade-offs
 
-- Review base = the clean lane at `origin/main` `41a7a438d`, NOT the dirty main worktree (`/Users/jay/Code/Socratic.Trade` has another agent's uncommitted work — left untouched).
+- Review base = the clean lane at `origin/main` `41a7a438d`, NOT the dirty main worktree (`/Users/jay/Code/Socratic-Trade` has another agent's uncommitted work — left untouched).
 - Findings already on the board (Kimi audit, MONET expert review) are referenced by id and verified against current main, not re-filed; state changes are recorded (89249c60 and 3b343933 look fixed on main; 830c892f, 410bda84, LIVE-02 confirmed open).
 - No code changes made (zero-code review).  No production writes.
 

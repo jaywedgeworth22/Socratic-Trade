@@ -1,4 +1,4 @@
-# Socratic.Trade — Logo Concepts
+# Socratic-Trade — Logo Concepts
 
 Twelve logo ideas exploring the two halves of the name: **Socratic** (question,
 dialogue, examination, Greek antiquity) × **trading** (candlesticks, trend
@@ -33,14 +33,14 @@ lines, delta). First brand exploration for the app (dashboard title today:
 | `examined.svg` | The Examined Trade | Pictogram | Magnifier over one green + one red candle — "the unexamined trade is not worth making." |
 | `meander.svg` | Meander | Pattern mark | Greek key fret read literally as a staircase of higher highs, topped with a candle. |
 | `dialectic.svg` | Dialectic | Pictogram | **SELECTED.** Two speech bubbles: a question asked, a trend answered. |
-| `dialectic-lockup.svg` | Dialectic lockup | Lockup | **SELECTED.** The Dialectic mark with `Socratic.Trade` set beside it. |
+| `dialectic-lockup.svg` | Dialectic lockup | Lockup | **SELECTED.** The Dialectic mark with `Socratic-Trade` set beside it. |
 | `stoa.svg` | The Stoa | Emblem | Temple whose middle column is a live candle. |
 | `noctua.svg` | Noctua | Mascot | Athena's owl re-minted as a coin; chest feather is a small candle. |
 | `delta.svg` | Delta | Letterform | Δ (change) framing a single candle. |
 | `laurel.svg` | The Laurel | Emblem | Open wreath crowning the winning trade. |
 | `serpentine.svg` | Serpentine | Monogram | The S of Socratic as one continuous price path ending on a last-print dot. |
 | `torch.svg` | The Torch | Pictogram | Torch whose flame doubles as a candle body. |
-| `wordmark.svg` | The Wordmark | Wordmark | Serif caps; the period of "Socratic.Trade" re-cut as a candlestick. |
+| `wordmark.svg` | The Wordmark | Wordmark | Serif caps; the period of "Socratic-Trade" re-cut as a candlestick. |
 
 ## Selected mark (2026-07-05): Dialectic
 
@@ -52,7 +52,7 @@ owner selected **Dialectic** and asked to save it in two forms:
   odd"): tails are now integrated into each bubble's outline path instead of
   separate triangle/stroke shapes.
 - **`dialectic-lockup.svg`** — the mark with the name beside it
-  (`Socratic.Trade`, serif, emerald period), viewBox 292×64.
+  (`Socratic-Trade`, serif, emerald period), viewBox 292×64.
 
 The other eleven marks (including the two shortlist runners-up) stay in this
 directory as archive/reference.

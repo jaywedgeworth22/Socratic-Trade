@@ -49,7 +49,7 @@ Two owner-reported production bugs, both fixed on `monet/roth-gemini-400-runonce
 ## Process note
 
 The run-once lane's subagent accidentally worked in the integration tree
-(`/Users/jay/Code/Socratic.Trade`, branch `main`) — its edits were relocated
+(`/Users/jay/Code/Socratic-Trade`, branch `main`) — its edits were relocated
 into the session worktree, the integration tree fully restored, and the
 copies reconciled against the CURRENT main (naive copies would have reverted
 #1173's chrome.tsx and #1174's api.ts additions; only the intended hunks were

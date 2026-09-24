@@ -77,7 +77,7 @@ Other decisions:
 - New Swift files were avoided (checked-in pbxproj is explicit file refs; no xcodegen
   here).  Chrome lives in `AppComponents.swift`.
 
-PR: [#3028](https://github.com/jaywedgeworth22/Socratic.Trade/pull/3028).
+PR: [#3028](https://github.com/jaywedgeworth22/Socratic-Trade/pull/3028).
 
 ## 4. Verification State
 

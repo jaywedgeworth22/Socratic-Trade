@@ -2,7 +2,7 @@
 
 ## Summary
 
-Owner chose **option 1**: ROIC.ai is integrated **on Socratic.Trade only**.
+Owner chose **option 1**: ROIC.ai is integrated **on Socratic-Trade only**.
 Congress.Trade continues to take all EOD prices from ST via `PRICE_PROVIDER=peer`
 and never holds a ROIC key.
 

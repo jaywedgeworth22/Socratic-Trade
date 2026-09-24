@@ -2,7 +2,7 @@
 
 ## 1. Context & Objective
 
-Socratic.Trade served a public 503 window on 2026-09-09: the container healthcheck
+Socratic-Trade served a public 503 window on 2026-09-09: the container healthcheck
 (`curl /api/live`, 5s timeout, 3 retries) kept timing out, Docker marked a **healthy**
 container `unhealthy` (`FailingStreak: 5`), and Traefik pulled it out of rotation.  The
 objective was to find and remove the actual cause of the periodic ~8s event-loop stalls,

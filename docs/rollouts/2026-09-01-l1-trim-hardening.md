@@ -13,7 +13,7 @@ Two things came out of actually running the hardened tool against a large real l
 both are the substance of this note:
 
 1. **Congress.Trade's L1 had never been trimmed at all, and its L2 was wedged exactly the way
-   Socratic.Trade's was.**  The tool is therefore now a fleet tool with an `--app` selector
+   Socratic-Trade's was.**  The tool is therefore now a fleet tool with an `--app` selector
    rather than a Socratic-only script.
 2. **The first CT run deleted nothing while reporting success**, because `--b2-hard-delete`
    is not usable with the host's scoped key.  That produced two further fixes, and it is the
@@ -163,7 +163,7 @@ Verified against B2 on 2026-09-01, from the `--app congress` run's own output:
   snapshot, leaving **51 objects (12 MB)**.  The first kept object
   `000000000005b50c-000000000005b534.ltx` reaches the boundary, and the contiguity walk found
   no internal gaps.
-- CT's **L2 level held ZERO objects** - the same wedge state Socratic.Trade was in.  ST's L2
+- CT's **L2 level held ZERO objects** - the same wedge state Socratic-Trade was in.  ST's L2
   is also at zero, with L1 at 172 objects after its earlier heals.
 
 That CT had accumulated 2,413 never-trimmed L1 objects while its L2 stayed empty is the

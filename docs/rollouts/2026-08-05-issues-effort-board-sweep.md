@@ -1,7 +1,7 @@
 # 2026-08-05 — Issues + effort-board sweep (GROK)
 
 ## Context & Objective
-Owner asked to work all GitHub issues and effort-log issues for Socratic.Trade (they should
+Owner asked to work all GitHub issues and effort-log issues for Socratic-Trade (they should
 mirror each other). Most open issues were effort-board mirrors of already-landed work.
 
 ## Changes Made

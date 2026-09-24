@@ -2,7 +2,7 @@
 
 ## Summary
 
-Replaced the typed **"Socratic.Trade"** brand text in the console top bar with a
+Replaced the typed **"Socratic-Trade"** brand text in the console top bar with a
 live **candlestick "SOCRATIC TRADE"** logo that ticks forever, and made the
 first-load intro splash shrink into and hand off to that exact element.
 
@@ -14,7 +14,7 @@ first-load intro splash shrink into and hand off to that exact element.
   forever. Draws only candles (no background), so it sits on the header surface
   in both themes. `prefers-reduced-motion` → static frame. Marked
   `role="img" aria-label="Socratic Trade"` and tagged `data-brand-logo`.
-- **Changed:** `app/console/components/shell.tsx` — the top-bar `<span>Socratic.Trade</span>`
+- **Changed:** `app/console/components/shell.tsx` — the top-bar `<span>Socratic-Trade</span>`
   is now `<HeaderLogo/>` (same `hidden … lg:block` gating as the old text).
 - **Changed:** `app/console/components/intro-canvas.tsx`:
   - **Background → transparent** (owner choice) instead of the hard-coded

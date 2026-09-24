@@ -48,7 +48,7 @@ Repeated final-head checkouts then exposed a lifecycle mismatch rather than a Gi
 the runner image was configured with `EPHEMERAL=1`, but Coolify's Compose service used
 `restart: always`. The image's documented fully-ephemeral pattern requires removing the container
 after each job; Docker restart reused the same writable container layer, so a canceled checkout left
-`/_work/Socratic.Trade/Socratic.Trade/.git` with no valid `HEAD` for every later registration. The
+`/_work/Socratic-Trade/Socratic-Trade/.git` with no valid `HEAD` for every later registration. The
 Socratic CI service now wraps `/entrypoint.sh` with a hardcoded, bounded cleanup of `/_work` before
 each registration, then execs the image's normal runner command. No host or persistent volume is
 mounted there. The first post-change registration completed checkout and the shared-package pin

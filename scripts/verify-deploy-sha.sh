@@ -66,7 +66,7 @@ fail_usage() {
 command -v curl >/dev/null 2>&1 || fail_usage "curl is required."
 command -v git >/dev/null 2>&1 || fail_usage "git is required."
 command -v jq >/dev/null 2>&1 || fail_usage "jq is required (brew install jq / apt-get install jq)."
-git rev-parse --git-dir >/dev/null 2>&1 || fail_usage "must run inside the Socratic.Trade git repo."
+git rev-parse --git-dir >/dev/null 2>&1 || fail_usage "must run inside the Socratic-Trade git repo."
 
 FETCH_ATTEMPTS=0
 try_fetch() {

@@ -1,7 +1,7 @@
 # 2026-07-21 — Voyage AI Purge & OpenRouter BAAI bge-m3 / cohere Reranker Standardization
 
 ## Summary
-Completely purged Voyage AI SDK and dependencies from `Socratic.Trade`. Standardized default RAG embedding on OpenRouter (`baai/bge-m3`) with fallback to SiliconFlow (`BAAI/bge-m3`), and default cross-encoder reranking on OpenRouter (`cohere/rerank-v3.5`) with fallback to SiliconFlow (`Qwen/Qwen3-Reranker-8B`).
+Completely purged Voyage AI SDK and dependencies from `Socratic-Trade`. Standardized default RAG embedding on OpenRouter (`baai/bge-m3`) with fallback to SiliconFlow (`BAAI/bge-m3`), and default cross-encoder reranking on OpenRouter (`cohere/rerank-v3.5`) with fallback to SiliconFlow (`Qwen/Qwen3-Reranker-8B`).
 
 ## Context & Rationale
 Per explicit owner directive: Voyage AI is no longer used, and Voyage fallback logic and health checks were causing false 503s on `/api/health` during Voyage service outages even though OpenRouter was serving embeddings. Removing `voyageai` eliminates dependency churn, reduces bundle size, and prevents cross-provider confusion.

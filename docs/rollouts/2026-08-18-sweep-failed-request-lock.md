@@ -58,7 +58,7 @@ npx tsc --noEmit   # exit 0
 
 Earlier on this branch (before the click-path heal): `npm run lint` 0 errors; `npm run build` compiled.
 
-PR: https://github.com/jaywedgeworth22/Socratic.Trade/pull/2847
+PR: https://github.com/jaywedgeworth22/Socratic-Trade/pull/2847
 
 ## Next Steps & Blockers
 

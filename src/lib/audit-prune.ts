@@ -55,19 +55,19 @@ export const AUDIT_PRUNE_OBSERVABILITY_KINDS: readonly string[] = [
 ];
 
 /**
- * Kinds that feed the Red Team veto efficacy rollup (Results page "Red Team veto efficacy"
- * card + Model Stats drawer reviewer column, both via getRedTeamEfficacy in
- * src/lib/performance.ts) — exempt from the default 90-day retention. Unlike the
- * observability kinds above, these are the SOLE, irreplaceable source for that user-facing
- * metric, not noise volume being traded off against disk: once a row is gone, its veto is
- * permanently invisible to the scorecard. Verified against every writer as of 2026-09-18
- * (src/lib/strategy.ts:2625,2650,3628; src/lib/dashboard.ts:931-932).
+ * Kinds that feed user-facing model stats scorecards (Results page "Red Team veto efficacy"
+ * card, Model Stats drawer latency p50, and reviewer column, via getRedTeamEfficacy in
+ * src/lib/performance.ts and listAuditByKind in model-stats/route.ts) — exempt from the default
+ * 90-day retention. Unlike the observability kinds above, these are the SOLE, irreplaceable
+ * source for user-facing latency and veto efficacy metrics, not noise volume being traded off
+ * against disk: once a row is gone, its history is permanently invisible to the scorecard.
  */
 export const AUDIT_PRUNE_NEVER_PRUNED_KINDS: readonly string[] = [
   "proposal_rejected_by_red_team",
   "red_team_veto_override_requested",
   "red_team_veto_overridden",
-  "socratic_override_applied"
+  "socratic_override_applied",
+  "llm_call_latency"
 ];
 
 export const AUDIT_PRUNE_OBSERVABILITY_DAYS = 14;

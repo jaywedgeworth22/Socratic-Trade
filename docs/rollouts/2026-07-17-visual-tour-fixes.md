@@ -40,7 +40,7 @@ file sets, reconciled and verified by the MONET main loop.
    instead of a duplicate card); `humanizeKind` now strips `.` as well as `_` (no `Foo.bar` in
    the UI); a `STATUS_LESS_AUDIT_KINDS` set stops pure preference logs (data_pool_consent) from
    getting a fabricated "Completed" chip. +3 tests. (`src/lib/dashboard-feed.ts`)
-9. **[P3] Brand string** — welcome hero "Socratic.Trade" → "Socratic Trade" (dot form is the
+9. **[P3] Brand string** — welcome hero "Socratic-Trade" → "Socratic Trade" (dot form is the
    domain; product name uses a space). (`app/welcome/page.tsx`)
 10. **[P3] earningscalls Sentry probe noise** — the integration is configured but pre-subscription
     (known permanent HTTP 405 until the owner finishes the RapidAPI plan), yet every 405 logged a

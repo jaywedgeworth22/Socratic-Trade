@@ -4,7 +4,7 @@
 **Branch**: `agent/antigravity`
 
 ## Summary
-Resolved two unresolved sets of issues occurring in the production Sentry project for Socratic.Trade:
+Resolved two unresolved sets of issues occurring in the production Sentry project for Socratic-Trade:
 1. **RangeError on `/console`**: A recursive array spreading limit exception on Safari iOS devices.
 2. **Noisy Provider Limit Sentry Alerts**: `alertConnectionFailure` generated Sentry events for expected API rate limits from Tiingo, Alpha Vantage, and Congress.Trade SSE stream.
 

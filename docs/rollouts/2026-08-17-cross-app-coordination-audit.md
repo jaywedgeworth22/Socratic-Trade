@@ -2,7 +2,7 @@
 
 ## Context & Objective
 
-Owner asked for a portfolio audit of coordination among Socratic.Trade,
+Owner asked for a portfolio audit of coordination among Socratic-Trade,
 Congress.Trade, Usage-Monitor, congress-trading-shared, DealDex, and the
 fleet / effort-board protocols.  Focus: shared contracts and version drift,
 health lanes, data ownership, duplication, event/SSE, alert routing,

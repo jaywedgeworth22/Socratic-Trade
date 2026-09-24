@@ -2,7 +2,7 @@
 
 ## Summary
 Corrected the documented Claude Code Cloud "Setup script" value from a bare
-`bash scripts/cloud-setup.sh` to `cd Socratic.Trade && bash
+`bash scripts/cloud-setup.sh` to `cd Socratic-Trade && bash
 scripts/cloud-setup.sh`. Updated the header comment in
 `scripts/cloud-setup.sh` and the instructions in `docs/slack-coordination.md`
 accordingly. No application code changed.
@@ -42,7 +42,7 @@ ls: cannot access 'scripts': No such file or directory
 
 The container's working directory when the Setup script runs is `/home/user`
 — the **parent** of the cloned repo — not the repo root. `git clone` creates a
-`Socratic.Trade/` subdirectory one level below that (standard `git clone`
+`Socratic-Trade/` subdirectory one level below that (standard `git clone`
 behavior: the target directory matches the repo name), so the documented bare
 `bash scripts/cloud-setup.sh` command never resolved a `scripts/` folder at
 that cwd.
@@ -50,7 +50,7 @@ that cwd.
 A red herring along the way: the `***SLACK_TOPIC***` entry in the `ls -la`
 output is not a literal directory name — it's the environment's own
 secret-redaction filter. The `SLACK_TOPIC` env var's value is literally the
-string `Socratic.Trade`, which coincidentally matches the actual clone
+string `Socratic-Trade`, which coincidentally matches the actual clone
 directory name, so the output panel masked every occurrence of that string,
 including the directory listing. The clone itself succeeded the entire time;
 only the cwd assumption was wrong.
@@ -78,7 +78,7 @@ because logic changed)
   repeatedly here. Flagged in `#agent-sync` (CLAUDE→FLEET, tagging MONET)
   with the corrected value; Monet (or the owner on Monet's behalf) needs to
   open its own "Update cloud environment" dialog and change the Setup script
-  field to `cd Socratic.Trade && bash scripts/cloud-setup.sh`. This cannot be
+  field to `cd Socratic-Trade && bash scripts/cloud-setup.sh`. This cannot be
   fixed from this session — it's a per-account cloud environment setting, not
   repo state.
 - Codex/Antigravity cloud environments for this repo (if any exist) should be

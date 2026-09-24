@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-14
 **Branch:** `agent/ag-watchlist-tooltip-fix`
-**PR:** https://github.com/jaywedgeworth22/Socratic.Trade/pull/1575
+**PR:** https://github.com/jaywedgeworth22/Socratic-Trade/pull/1575
 
 ## Summary
 

@@ -11,9 +11,9 @@ token, base URL config) — delivery/retry behavior only.
 ## Why
 
 Owner-directed incident response: `usage.jays.services` (API-usage-monitor) was OOM-down for ~2
-days. Both Congress.Trade and Socratic.Trade kept pushing telemetry to the dead endpoint (~35
+days. Both Congress.Trade and Socratic-Trade kept pushing telemetry to the dead endpoint (~35
 req/s of ~70KB POSTs aggregate across both apps) and ran up a 200GB Render bandwidth overage on
-the receiver side. This change is the Socratic.Trade side of the fix (a companion agent handles
+the receiver side. This change is the Socratic-Trade side of the fix (a companion agent handles
 Congress.Trade).
 
 Investigation of `src/lib/usage-monitor-push.ts` found the live-push flush loop already had a

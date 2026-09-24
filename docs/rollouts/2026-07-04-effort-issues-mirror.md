@@ -34,7 +34,7 @@
 - Rolled out identically to `congress-trading-shared` and `API-usage-monitor` (same two files,
   no repo-specific edits — the script reads its own repo context from the `GITHUB_REPOSITORY`
   env var GitHub Actions sets automatically). See those repos' own PRs for their landing details;
-  this note covers the Socratic.Trade rollout plus the design shared by all three.
+  this note covers the Socratic-Trade rollout plus the design shared by all three.
 - Canonical protocol updated: `/Users/jay/apps/EFFORT-LOG-PROTOCOL.md` gained an "Issues mirror
   (standard)" subsection, and its new-app bootstrap checklist now includes copying
   `scripts/sync-effort-issues.py` + `.github/workflows/effort-issues-sync.yml` into any future app.
@@ -77,15 +77,15 @@
 ## Verification
 
 - Unit-level: loaded `parse_board()` directly against all three repos' real `docs/EFFORT-LOG.md`
-  content (Socratic.Trade's 58-item board, congress-trading-shared's 1-item board,
+  content (Socratic-Trade's 58-item board, congress-trading-shared's 1-item board,
   API-usage-monitor's 2-item board) and confirmed correct section classification and placeholder
   skipping for every item.
-- Found and fixed a real bug during this verification: Socratic.Trade's board has a genuine
+- Found and fixed a real bug during this verification: Socratic-Trade's board has a genuine
   duplicate row ("Wave-1 quick wins from the composite expert review" appears twice under In
   Progress, lines 217 and 301 at time of writing) which would have produced two identical mirrored
   issues on a single run. Added in-run dedup keyed on the same SHA1 identity so duplicate board rows
   reconcile against one issue instead of multiplying.
-- Live dry run: `GITHUB_TOKEN=$(gh auth token) GITHUB_REPOSITORY=jaywedgeworth22/Socratic.Trade python3 scripts/sync-effort-issues.py --dry-run`
+- Live dry run: `GITHUB_TOKEN=$(gh auth token) GITHUB_REPOSITORY=jaywedgeworth22/Socratic-Trade python3 scripts/sync-effort-issues.py --dry-run`
   against the real repo (labels listed live, all existing issues listed live, writes simulated).
   Result: 57 items would be created (58 parsed, 1 duplicate skipped), correctly bucketed by state,
   zero unexpected matches against existing issues (none carry the marker yet).

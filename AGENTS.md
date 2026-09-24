@@ -1,5 +1,8 @@
 # Agent Instructions
 
+> [!IMPORTANT]
+> **2026-09-22 [MM] bundle-ID migration landed.** The iOS bundle identifier changed from `trade.socratic.app` → `com.socratictrade.ios`, the iOS test bundle from `trade.socratic.app.tests` → `com.socratictrade.ios.tests`, the App Group `group.com.socratictrade` was added, and the Associated Domain `socratic.trade` was added (`applinks` + `webcredentials`) on top of the existing `socratictrade.com`. The Sign in with Apple native audience is now `com.socratictrade.ios`. The server-side AASA `appIDs` claim `CC8UTF7ATG.com.socratictrade.ios`. See `docs/rollouts/2026-09-22-bundle-id-migration.md` for the rollout doc, the new IDs table, the archaeology list, and the owner action items (Apple Developer Portal App ID + App Group registration on the new bundle IDs, `socratic.trade` DNS + AASA). **2026-09-24 FIXER tip:** interim `trade.socratic.ios` was wrong — retargeted to `com.socratictrade.ios` + `group.com.socratictrade`. Server coexistence patches landed in PR #3451 (dual native SIWA audiences, dual APNs topics, dual AASA appIDs + webcredentials, ios-fleet pin refresh). **2026-09-24 update:** Jay created the new ASC app for `com.socratictrade.ios` — `appleId` `6815511597` (owner-supplied via iMessage 2026-09-23 ~11:05 PM CT); `6799238379` is the old record.
+
 Read this before making changes. It exists to save you (and whichever other AI
 tool touches this repo next — Claude Code, Codex, Antigravity/Gemini, Cursor,
 etc.) the time/tokens of re-deriving things a previous session already learned
@@ -8,7 +11,7 @@ the hard way.
 ## Before you start
 
 > [!CAUTION]
-> **CRITICAL RULE: DO NOT WORK IN `/Users/jay/Code/Socratic.Trade` (OR WHATEVER THE MAIN WORKTREE IS).**
+> **CRITICAL RULE: DO NOT WORK IN `/Users/jay/Code/Socratic-Trade` (OR WHATEVER THE MAIN WORKTREE IS).**
 > That is the human owner's integration tree and the fleet's review base. If you check out your branch in the main folder, you will corrupt the review base for other agents (causing it to be drastically out-of-sync with production).
 > **You MUST `cd` into your designated agent lane (`~/apps/trading-<name>` — Claude → `trading-claude`, Codex → `trading-codex`, Antigravity → `trading-antigravity`, Cursor → `trading-cursor`, Monet → `trading-monet`, Kimi → `trading-kimi`) BEFORE doing any work.** A `pre-commit` hook is installed to block agent commits in the main folder.
 
@@ -241,7 +244,7 @@ cleanup thresholds matter — a build burst filled the old box's disk on 2026-07
 rollout note).
 
 **PRODUCTION IS ON COOLIFY (cut over 2026-07-07, owner-directed, MONET; verified).**
-`socratictrade.com` = Coolify app **uuid `socratic-app`** (name "Socratic.Trade", branch `main`,
+`socratictrade.com` = Coolify app **uuid `socratic-app`** (name "Socratic-Trade", branch `main`,
 dockerfile build pack, SSH deploy-key git source). The old uuid `m1os7ijf31bg3fanil152e4b` and the
 nixpacks note are STALE — the app was recreated during the Oracle migration; API calls against the
 old uuid return a bare `{"message":...}` that is easy to misread as a permissions problem.
@@ -448,7 +451,7 @@ installed by `scripts/setup-slack-sync.sh` (run automatically by `scripts/cloud-
 injects the recent channel into each session. Gated on `SLACK_BOT_TOKEN` (env secret;
 silent no-op without it — safe in any repo). Optional env: `SLACK_AGENT_NAME` (prefixes
 `[name]`), `SLACK_TOPIC` (project tag — filters reads to your lane, auto-prefixes posts;
-canonical tags: `Socratic.Trade`, `Congress.Trade`, `API-Usage-Monitor`,
+canonical tags: `Socratic-Trade`, `Congress.Trade`, `API-Usage-Monitor`,
 `Congress-Trading-Shared`), `SLACK_CHANNEL_ID` (per-repo channel override). Setup and FAQ:
 `docs/slack-coordination.md`.
 
@@ -666,7 +669,7 @@ paternalism that keeps creeping back in from every agent (Claude, Codex, others)
  Cursor, Monet, cloud sessions, and any sub-agent they spawn.) The owner
  maintains exactly ONE intended key per provider per app, with spend caps and
  rate guardrails deliberately configured on that key. Agents provisioning their
- own keys — for Socratic.Trade and Congress.Trade both — silently routed
+ own keys — for Socratic-Trade and Congress.Trade both — silently routed
  production spend around those guardrails and made "which key is even in use?"
  unanswerable. That is the failure this rule exists to prevent.
   - Do not create, mint, rotate, or regenerate a key in ANY provider console or
@@ -803,9 +806,33 @@ and runs `scripts/ios-ship-testflight.sh`, which execs in-repo
 gh workflow run ios-ship.yml
 ```
 
-Bundle ID `trade.socratic.app`, team `CC8UTF7ATG`. Do not mint a new App Store
+Bundle ID `com.socratictrade.ios` (renamed 2026-09-22 from `trade.socratic.app`; rollout `docs/rollouts/2026-09-22-bundle-id-migration.md`), team `CC8UTF7ATG`. Do not mint a new App Store
 Connect key. Do not exec `/Users/jay/apps/ios-fleet/ship-testflight.sh` from a
 cloud seat -- that path does not exist on hosted runners.
+
+## Bundle identifiers (canonical table — 2026-09-22)
+
+| Surface | Identifier | Notes |
+|---|---|---|
+| iOS app target (`PRODUCT_BUNDLE_IDENTIFIER`) | `com.socratictrade.ios` | Source: `ios/project.yml` (regenerated by `xcodegen generate` into `ios/Socratic Trade.xcodeproj/project.pbxproj`). Was `trade.socratic.app` until 2026-09-22. |
+| iOS test target (`PRODUCT_BUNDLE_IDENTIFIER`) | `com.socratictrade.ios.tests` | `ios/SocraticTradeTests/`. Was `trade.socratic.app.tests`. |
+| Sign in with Apple native audience (`NATIVE_APPLE_CLIENT_ID`) | `com.socratictrade.ios` (+ legacy `trade.socratic.app` during coexistence) | `src/lib/auth/apple-client-id.ts` hardcodes BOTH native IDs in `resolveAppleClientIds` until old TF is retired. `APPLE_CLIENT_ID` is the web Service ID — do NOT rely on it for the legacy native audience. |
+| APNs topic | `com.socratictrade.ios` (+ legacy `trade.socratic.app` during coexistence) | `resolveAcceptedApnsBundleIds` always accepts both; register rejects unknowns; `sendApnsPush` uses per-device `topic` (stored bundleId). Optional `APNS_BUNDLE_IDS` CSV extends the set. Flip Infisical `APNS_BUNDLE_ID` only after new TF is live. |
+| App Group (new) | `group.com.socratictrade` | `com.apple.security.application-groups` in `ios/SocraticTrade/SocraticTrade.entitlements` + `ios/project.yml` entitlements block. Must be registered per App ID in the Apple Developer Portal before any shared-container `UserDefaults` writes work. |
+| Associated Domain — applinks | `socratic.trade` (new), `socratictrade.com` (existing) | `com.apple.developer.associated-domains` in `ios/SocraticTrade/SocraticTrade.entitlements` + `ios/project.yml`. The existing `socratictrade.com` universal-link surface is preserved. |
+| Associated Domain — webcredentials | `socratic.trade` (new) | Same key; webcredentials is required for Shared Safari Credentials on the new domain. |
+| Server-side AASA `appIDs` + `webcredentials.apps` | both `CC8UTF7ATG.com.socratictrade.ios` and `CC8UTF7ATG.trade.socratic.app` | `app/.well-known/apple-app-site-association/route.ts`. Keep BOTH appIDs until old TF retired; top-level `webcredentials` required for `webcredentials:socratic.trade`. |
+| Server-side URL scheme (deep links) | `socratictrade://` | Unchanged. iOS routes the tap, not the bundle ID. |
+
+Internal namespaces (NOT bundle IDs — do not rename in a future cleanup):
+
+- `com.apple.developer.teamid.appleSignIn` audience list — keep as web service ID (`AUTH_APPLE_ID`).
+- `NATIVE_APPLE_CLIENT_ID` — native bundle ID (this row above).
+- `APNS_BUNDLE_ID` env — native bundle ID (this row above).
+- Keychain service strings — out of scope per fleet-wide decision (see rollout doc).
+- `~/Library/Application Support/Socratic Trade/` — internal storage path, not a bundle ID.
+
+Full archaeology list and owner action items in `docs/rollouts/2026-09-22-bundle-id-migration.md`.
 
 ## Theme default = light (owner 2026-08-10)
 

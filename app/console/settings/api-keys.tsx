@@ -178,7 +178,7 @@ export function ApiKeysCard() {
                         {retired && (
                           <Chip
                             tone="muted"
-                            title={entry.retiredNote ?? "Retired on Socratic.Trade — Congress.Trade only."}
+                            title={entry.retiredNote ?? "Retired on Socratic-Trade — Congress.Trade only."}
                           >
                             Retired · CT-only
                           </Chip>

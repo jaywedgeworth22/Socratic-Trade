@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-17
 **Agent:** `[codex-autofix]` (Claude Code)
-**PR:** [#1703](https://github.com/jaywedgeworth22/Socratic.Trade/pull/1703) — `antigravity/openrouter-universal-routing`
+**PR:** [#1703](https://github.com/jaywedgeworth22/Socratic-Trade/pull/1703) — `antigravity/openrouter-universal-routing`
 
 ## Summary
 

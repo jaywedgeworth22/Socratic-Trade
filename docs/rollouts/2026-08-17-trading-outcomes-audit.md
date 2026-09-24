@@ -2,7 +2,7 @@
 
 ## Context & Objective
 
-Owner asked for a quantitative / microstructure / risk / trading-systems / model-validation audit of Socratic.Trade's macro analysis, Green/Red/Bull process, proposal→execution outcomes, portfolio/risk, backtests, benchmarks, slippage/fees, causality/leakage, paper-vs-live parity, learning loops, and outcome accuracy.  Goal: a dated evidence report and a prioritized test/eval plan, without placing trades or changing money-path behavior.
+Owner asked for a quantitative / microstructure / risk / trading-systems / model-validation audit of Socratic-Trade's macro analysis, Green/Red/Bull process, proposal→execution outcomes, portfolio/risk, backtests, benchmarks, slippage/fees, causality/leakage, paper-vs-live parity, learning loops, and outcome accuracy.  Goal: a dated evidence report and a prioritized test/eval plan, without placing trades or changing money-path behavior.
 
 ## Changes Made
 

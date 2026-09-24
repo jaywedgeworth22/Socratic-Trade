@@ -37,14 +37,14 @@ the requests build and route correctly to `openai/responses` with a valid key; O
 rejected them at the model-lookup/authorization layer. Cross-checked `GET /v1/models` with
 the same prod key — 16 models visible, the newest gpt-5 being **gpt-5.5 / gpt-5.5-pro**
 (2026-04-23); no `gpt-5.6` of any variant and nothing named sol/terra/luna. So for
-Socratic.Trade's prod OpenAI project these IDs are unreachable — either not real OpenAI
+Socratic-Trade's prod OpenAI project these IDs are unreachable — either not real OpenAI
 model names, or private/ungranted models behind a different account. (A peer MONET session
 on Congress.Trade noted gpt-5.6 sol/terra/luna as "released yesterday" for that repo's
 extraction pipeline — but that is a different account/context; it does not change that
-Socratic.Trade's key has no access.)
+Socratic-Trade's key has no access.)
 
 **No benchmark data was produced (0/18 successful calls) and none was fabricated.** To run
-this benchmark, the Socratic.Trade prod OpenAI project must be granted access to these
+this benchmark, the Socratic-Trade prod OpenAI project must be granted access to these
 models (or a key/project that has access must be provided); then re-run:
 `npx tsx scripts/benchmark-llm-models.ts --models gpt-5.6-sol,gpt-5.6-terra,gpt-5.6-luna
 --rounds 3 --role both`. Awaiting owner direction (offered: benchmark the accessible

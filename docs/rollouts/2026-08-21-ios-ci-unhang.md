@@ -69,7 +69,7 @@ Test Suite 'TabPreferencesTests' passed ... Executed 30 tests, with 0 failures
 Executed 232 tests, with 0 failures (0 unexpected)
 ```
 
-Job URL: https://github.com/jaywedgeworth22/Socratic.Trade/actions/runs/32529663287
+Job URL: https://github.com/jaywedgeworth22/Socratic-Trade/actions/runs/32529663287
 
 ## 5. Next Steps & Blockers
 

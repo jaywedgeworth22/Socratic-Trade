@@ -518,7 +518,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = trade.socratic.app.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.socratictrade.ios.tests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Socratic Trade.app/Socratic Trade";
@@ -606,7 +606,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = trade.socratic.app.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.socratictrade.ios.tests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Socratic Trade.app/Socratic Trade";
@@ -626,7 +626,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = trade.socratic.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.socratictrade.ios;
 				PRODUCT_MODULE_NAME = SocraticTrade;
 				PRODUCT_NAME = "Socratic Trade";
 				SDKROOT = iphoneos;
@@ -648,7 +648,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = trade.socratic.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.socratictrade.ios;
 				PRODUCT_MODULE_NAME = SocraticTrade;
 				PRODUCT_NAME = "Socratic Trade";
 				SDKROOT = iphoneos;

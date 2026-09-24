@@ -1,6 +1,6 @@
-# Socratic.Trade iOS
+# Socratic-Trade iOS
 
-Native, phone-first desk for Socratic.Trade. Pin Home, Proposals, Assets,
+Native, phone-first desk for Socratic-Trade. Pin Home, Proposals, Assets,
 Activity, Insights, Coach, Scan, Guardrails, or Results — More keeps every
 screen reachable. Insights stays a snapshot brief; Coach is the live
 `/api/chat` conversation.
@@ -38,7 +38,7 @@ xcodebuild \
   CODE_SIGNING_ALLOWED=NO test
 ```
 
-The canonical application bundle identifier is `trade.socratic.app`. The
+The canonical application bundle identifier is `com.socratictrade.ios`. The
 project includes the Sign in with Apple entitlement and the `socratictrade` URL
 scheme. The app signs in directly with Apple's identity-token endpoint. Google
 and GitHub use `ASWebAuthenticationSession`, but the custom callback carries a

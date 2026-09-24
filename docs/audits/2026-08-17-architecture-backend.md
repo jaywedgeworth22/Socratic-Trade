@@ -1,4 +1,4 @@
-# Socratic.Trade — Architecture & Backend Audit
+# Socratic-Trade — Architecture & Backend Audit
 
 **Date:** 2026-08-17  
 **Auditor:** Cursor Cloud (read-only)  
@@ -12,7 +12,7 @@ This is a point-in-time evidence audit of current `main`, not a standing task li
 
 ## 1. Executive conclusion
 
-Socratic.Trade is a **single-process, single-writer trading system**: Next.js 16 App Router, one Coolify container, one `better-sqlite3` connection, WAL, Litestream 0.5.12 to Backblaze B2, weekly R2 cold snapshots.  The money path (approve / place / reconcile / halt) is substantially hardened after the June–August 2026 incident series.  Most June 2026 “critical” findings (unauthenticated APIs, non-atomic approve, missing CI, ephemeral `ENCRYPTION_KEY`) are **closed**.
+Socratic-Trade is a **single-process, single-writer trading system**: Next.js 16 App Router, one Coolify container, one `better-sqlite3` connection, WAL, Litestream 0.5.12 to Backblaze B2, weekly R2 cold snapshots.  The money path (approve / place / reconcile / halt) is substantially hardened after the June–August 2026 incident series.  Most June 2026 “critical” findings (unauthenticated APIs, non-atomic approve, missing CI, ephemeral `ENCRYPTION_KEY`) are **closed**.
 
 **No active P0 in current code.**  The remaining material risk is operational and architectural:
 

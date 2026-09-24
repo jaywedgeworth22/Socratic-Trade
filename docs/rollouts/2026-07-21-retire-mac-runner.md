@@ -5,10 +5,10 @@ Owner directive: permanently stop, uninstall, and delete the Mac self-hosted run
 
 ## Changes Made
 1. **Runner Process & Service Cleanup:**
-   - Stopped and uninstalled the macOS LaunchAgent service `actions.runner.jaywedgeworth22-Socratic.Trade.trading-live-mac`.
+   - Stopped and uninstalled the macOS LaunchAgent service `actions.runner.jaywedgeworth22-Socratic-Trade.trading-live-mac`.
    - Killed all running `Runner.Listener` processes.
 2. **GitHub Repository Runner Deletion:**
-   - Deleted runner ID `22` (`trading-live-mac`) from `jaywedgeworth22/Socratic.Trade`.
+   - Deleted runner ID `22` (`trading-live-mac`) from `jaywedgeworth22/Socratic-Trade`.
    - Deleted runner ID `687` (`trading-live-mac-ci`) from `jaywedgeworth22/Congress.Trade`.
 3. **Workflow Routing Updates:**
    - Updated `.github/workflows/ci.yml`, `security.yml`, `cleanup-caches.yml`, `sentry-ci-report.yml`, `_merge-shepherd-impl.yml`, `shared-package-pin-check.yml`, `e2e.yml`, `codex-autofix.yml`, and `effort-issues-sync.yml` to use `runs-on: [self-hosted, Linux, X64]`.
@@ -16,6 +16,6 @@ Owner directive: permanently stop, uninstall, and delete the Mac self-hosted run
    - Added explicit rule stanza in `AGENTS.md` under "Hosting & dev servers" prohibiting any agent from ever starting, re-registering, or referencing `trading-live-mac` or `trading-live` runner labels.
 
 ## Verification
-- Verified runner list via `gh api repos/jaywedgeworth22/Socratic.Trade/actions/runners` returns `[]`.
+- Verified runner list via `gh api repos/jaywedgeworth22/Socratic-Trade/actions/runners` returns `[]`.
 - Verified `grep -rn "trading-live" .github/workflows` returns zero active runner label references.
 - `npx tsc --noEmit` and `npm test` verified locally.

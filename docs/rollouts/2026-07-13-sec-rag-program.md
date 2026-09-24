@@ -49,7 +49,7 @@ The discovery and parser lane files will be appended after adversarial integrati
 - `git status --short --branch` - clean baseline before board/docs edits.
 - `gh pr view 1494 --json ...` - confirmed merged with green checks.
 - `gh pr view 1533 --json ...` - confirmed open fileset KEEPOUT.
-- `python3 /Users/jay/apps/codex-coordination-audit.py --repo /Users/jay/Code/Socratic.Trade` - read-only audit;
+- `python3 /Users/jay/apps/codex-coordination-audit.py --repo /Users/jay/Code/Socratic-Trade` - read-only audit;
   reported the canonical live-board filename incorrectly, so no `--apply` was used.
 - `node --version` - host default `v26.5.0`.
 - `/opt/homebrew/opt/node@24/bin/node --version` - supported runtime `v24.18.0`.

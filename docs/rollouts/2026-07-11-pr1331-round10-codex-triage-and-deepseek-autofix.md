@@ -49,7 +49,7 @@ npm run build      # clean
 ## Follow-ups
 
 - **Left open, not guessed at:** "Require shared OCO identity before pairing legs" — see the PR
-  comment on #1331 (https://github.com/jaywedgeworth22/Socratic.Trade/pull/1331#issuecomment-4942042410).
+  comment on #1331 (https://github.com/jaywedgeworth22/Socratic-Trade/pull/1331#issuecomment-4942042410).
   `liveExitOrderCoverage`'s bracket-leg pairing uses `orderClass` (a family string) + exact quantity,
   not a true group/parent id — neither Alpaca transport (REST or MCP) exposes one on individual leg
   orders today. Needs either a broker API change (nested-order fetch + parent correlation) or an

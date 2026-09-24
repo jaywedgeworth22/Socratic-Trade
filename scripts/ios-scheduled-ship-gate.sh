@@ -17,7 +17,7 @@
 # then "archiving..." for sha 39c6acee, which is
 #   fix(alerts): stop RH MCP schema 400s, Pinecone 40960 overflow, ...
 # -- eight files, not one of them under ios/. That build went to testers as a
-# byte-identical app with a new build number. Socratic.Trade has the fleet's
+# byte-identical app with a new build number. Socratic-Trade has the fleet's
 # highest commit volume, so the unguarded '*/30' cron was the fleet's biggest
 # TestFlight-spam source, not an edge case.
 #
@@ -144,7 +144,7 @@ for app in $APPS; do
           since_changed="$(git -C "$REPO_ROOT" log --since="@${last_ts}" --format= --name-only -- "$PATH_PREFIX" 2>/dev/null | sed '/^$/d' | sort -u | head -20)"
           if [[ -n "$since_changed" ]]; then
             log "[${app}] falling back to time: ${PATH_PREFIX} changed after the last ship:"
-            # Line-by-line, NOT `printf ... $var`: Socratic.Trade's iOS path is
+            # Line-by-line, NOT `printf ... $var`: Socratic-Trade's iOS path is
             # "ios/Socratic Trade.xcodeproj/...", and unquoted word-splitting
             # printed that one file as two bogus lines. Decision logic is
             # unaffected; the log was just lying about what changed.

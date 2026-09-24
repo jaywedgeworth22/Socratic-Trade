@@ -62,7 +62,7 @@ event), which is where unbounded-cardinality data belongs.
 
 The `app` tag + fingerprint component are required: fleet-infra is shared
 across repos, and this repo shares workflow names ("CI", "Security",
-"Effort Issues Sync") with Socratic.Trade / Congress.Trade, so without `app`
+"Effort Issues Sync") with Socratic-Trade / Congress.Trade, so without `app`
 a "CI" failure here would dedup into the same Sentry issue as one there.
 Per AGENT-SYNC.md "Observability", every event is tagged with `app:<repo>`.
 

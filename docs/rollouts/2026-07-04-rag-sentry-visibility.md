@@ -6,7 +6,7 @@ Follow-up after PR #351 merged. RAG provider failures, missing keys, Pinecone me
 budget trips, Pinecone Write Unit budget trips, malformed embeddings, retrieval degradations, and
 unexpected RAG catch-block failures now emit Sentry warning/error events when `SENTRY_DSN` is set.
 Docs now explain how Pinecone-hosted NVIDIA/MSFT embedding options fit into the RAG stack.
-Current Infisical runbooks now use the renamed project display name `Socratic.Trade` and slug
+Current Infisical runbooks now use the renamed project display name `Socratic-Trade` and slug
 `socratic-trade`.
 
 ## Why
@@ -27,7 +27,7 @@ not connect or spend that quota until the write fuses and observability paths ar
   Their Starter inference token allowances do not solve Pinecone database Write Unit exhaustion.
 - Do not commit, log, or document the fresh Pinecone key value. Connect it only after this branch lands
   and conservative `RAG_PINECONE_*` fuses are active.
-- Infisical project references should use display name `Socratic.Trade` and slug `socratic-trade`;
+- Infisical project references should use display name `Socratic-Trade` and slug `socratic-trade`;
   the existing project UUID remains the stable identifier unless the project is recreated.
 
 ## Files

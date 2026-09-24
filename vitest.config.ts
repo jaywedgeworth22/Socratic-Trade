@@ -47,6 +47,7 @@ export default defineConfig({
     // read process.env.TMPDIR directly — all three point at the per-run root above so no temp DB can
     // land loose in the shared OS temp dir.
     env: {
+      TZ: "America/New_York",
       AGENTIC_TEST_FORCE_TRADING_DAY: "1",
       OPENROUTER_API_URL: "https://openrouter.ai/api/v1/chat/completions",
       TMPDIR: runTmpRoot,

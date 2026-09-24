@@ -1,7 +1,7 @@
 # 2026-09-01 — Sentry Structured Logs & Next.js Config Tuning (Antigravity, `ag/sentry-logs-and-config-tuning`)
 
 ## Context & Objective
-Enables Sentry Structured Logs across server, edge, and browser runtimes in Socratic.Trade, aligns baseline distributed tracing default to 0.2, tunes Session Replay defaults (100% on error, 1% session sample rate when opted in), and removes irrelevant `automaticVercelMonitors: true` from next.config.mjs.
+Enables Sentry Structured Logs across server, edge, and browser runtimes in Socratic-Trade, aligns baseline distributed tracing default to 0.2, tunes Session Replay defaults (100% on error, 1% session sample rate when opted in), and removes irrelevant `automaticVercelMonitors: true` from next.config.mjs.
 
 ## Changes Made
 - **Enabled Structured Logs**: Added `enableLogs: true` across `sentry.server.config.ts`, `sentry.edge.config.ts`, and `instrumentation-client.ts`.

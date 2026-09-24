@@ -2,7 +2,7 @@
 
 ## Summary
 
-Socratic.Trade now consumes `@jaywedgeworth22/congress-trading-shared` from the
+Socratic-Trade now consumes `@jaywedgeworth22/congress-trading-shared` from the
 immutable `v1.7.1` commit
 `0bc26ab9311a396f3f6b5cba0fb54fa7558a42b4` instead of the former exact
 `v1.6.0` commit `c4fcfb4423a11318bda8486ecf3dd6ab1783e87a`.

@@ -1,7 +1,7 @@
 # 2026-08-03 — OpenRouter classifier enrichment: close vector-db gap
 
 ## Context & Objective
-Every OpenRouter API call from Socratic.Trade should carry classifier trace
+Every OpenRouter API call from Socratic-Trade should carry classifier trace
 metadata (`sourceApp`, `environment`, `service`, `feature`, `keyRef`, `gitSha`)
 so OpenRouter's Custom Classifiers and Activity view can categorize usage.  The
 strategy/chat/search-fusion call sites already did this; the primary RAG embed

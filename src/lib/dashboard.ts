@@ -36,6 +36,7 @@ import { currentMarketSession } from "./market-hours";
 import { isUnusableEmptyMarketScan } from "./scan-singleflight";
 import { normalizeSymbol } from "./money";
 import { isDelayedYahooFallbackQuote } from "./quote-delayed-fallback";
+import { cascadeFreshMaxAgeMs, fetchFreshQuotesCascade, isQuoteFresh, resolveVenueQuoteMode } from "./quotes-cascade";
 import {
   calculatePnl,
   getPerformanceSummary,
@@ -567,6 +568,55 @@ async function computeDashboardSnapshot(userId: string = "local", currentUser?: 
                 timedOutSections
               )
             : {};
+          // Tradier paper (~15m delayed) can return successful two-sided quotes that are
+          // not yet stamped venuePriceAuthoritative. Preserve them as the execution-venue
+          // tape BEFORE the freshness filter / skipActiveBroker cascade so Alpaca/Yahoo
+          // cannot replace prices the paper OMS cannot fill (Codex P2 review).
+          const venueMode = resolveVenueQuoteMode(policy, userId);
+          if (venueMode === "venue_delayed") {
+            const ingestAt = new Date().toISOString();
+            for (const s of priceSymbols) {
+              const q = quotes[s];
+              if (q && typeof q.price === "number" && q.price > 0 && !q.venuePriceAuthoritative) {
+                quotes[s] = {
+                  ...q,
+                  venuePriceAuthoritative: true,
+                  fetchedAt: q.fetchedAt ?? ingestAt
+                };
+              }
+            }
+          }
+          // A stale broker quote (e.g. a positive "session-close" fill) is not a usable
+          // price — fall back to the cascade instead of sizing at yesterday's close.
+          const maxAgeMs = cascadeFreshMaxAgeMs(policy.maxQuoteAgeSec);
+          const nowMs = Date.now();
+          const missingPriceSymbols = priceSymbols.filter((s) => {
+            const q = quotes[s];
+            return !q || typeof q.price !== "number" || q.price <= 0 || !isQuoteFresh(q, nowMs, maxAgeMs);
+          });
+          if (missingPriceSymbols.length > 0) {
+            try {
+              // skipActiveBroker: direct gateway already attempted. Delayed-venue successes
+              // were stamped above and are not in missingPriceSymbols, so this skip cannot
+              // strip the paper OMS tape (Codex P1 + P2).
+              const fallbackQuotes: Record<string, BrokerQuote> = await withDeadline<Record<string, BrokerQuote>>(
+                fetchFreshQuotesCascade(missingPriceSymbols, userId, targetAccountNumber, undefined, {
+                  skipActiveBroker: true
+                }),
+                EQUITY_QUOTES_MS,
+                () => ({}),
+                "fetchFreshQuotesCascade",
+                timedOutSections
+              );
+              for (const s of missingPriceSymbols) {
+                if (fallbackQuotes[s] && typeof fallbackQuotes[s].price === "number" && fallbackQuotes[s].price > 0) {
+                  quotes[s] = fallbackQuotes[s];
+                }
+              }
+            } catch (err) {
+              console.warn("[dashboard] fetchFreshQuotesCascade fallback error:", err);
+            }
+          }
           currentPrices = Object.fromEntries(
             Object.values(quotes)
               .filter((quote) => typeof quote.price === "number" && quote.price > 0)

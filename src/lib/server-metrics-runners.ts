@@ -11,7 +11,7 @@ import type {
  * Congress.Trade, Congress-Trading-Shared and API-Usage-Monitor, which this endpoint has never
  * queried and therefore could neither confirm nor refute.
  */
-export const ACTION_RUNNER_REPO = "jaywedgeworth22/Socratic.Trade";
+export const ACTION_RUNNER_REPO = "jaywedgeworth22/Socratic-Trade";
 
 const RUNNER_REQUEST_TIMEOUT_MS = 5_000;
 
@@ -37,7 +37,7 @@ function readRunnerLabels(value: unknown): string[] {
  *
  * This replaces a hardcoded array of six invented runners that was returned whenever the token
  * was missing, the request failed, the response was not ok, the shape was unexpected, or the
- * live list came back empty. Socratic.Trade production has never had a GitHub token set, so
+ * live list came back empty. Socratic-Trade production has never had a GitHub token set, so
  * that array was served on 100% of production requests, reporting six machines that do not
  * exist — five of them attributed to `ci-cpx32`, a CI box deleted 2026-07-31 — as
  * "running:healthy". The repo forbids fabricated data in anything user-facing: real data, or
@@ -66,7 +66,7 @@ export async function getActionRunners(): Promise<ServerMetricsActionRunners> {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: "application/vnd.github+json",
-          "User-Agent": "Socratic.Trade infrastructure monitor",
+          "User-Agent": "Socratic-Trade infrastructure monitor",
         },
         signal: AbortSignal.timeout(RUNNER_REQUEST_TIMEOUT_MS),
       },

@@ -37,7 +37,7 @@ bash scripts/slack-sync.sh read 20
 Post repo-first per `/Users/jay/apps/AGENT-SYNC.md`'s canonical format, naming exactly what you are picking up:
 
 ```bash
-bash scripts/slack-sync.sh post "repo: Socratic.Trade | [CLAUDE->agent/*] picking up MONET: effort#123,124 + PR#1234,1235; do not double-work"
+bash scripts/slack-sync.sh post "repo: Socratic-Trade | [CLAUDE->agent/*] picking up MONET: effort#123,124 + PR#1234,1235; do not double-work"
 ```
 
 Durability: put the same claim in `docs/EFFORT-LOG.md` (repo mirror), not only the live board

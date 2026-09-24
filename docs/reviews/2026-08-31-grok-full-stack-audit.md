@@ -1,4 +1,4 @@
-# Socratic.Trade top-to-bottom audit — 2026-08-31 (Grok)
+# Socratic-Trade top-to-bottom audit — 2026-08-31 (Grok)
 
 Tree: `~/apps/trading-grok-full-audit` @ `grok/full-stack-audit` tracking `origin/main` `ff7a562d9`.  Board: `52592a4d`.  Report-only.  No product code in this lane.
 

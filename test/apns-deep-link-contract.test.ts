@@ -141,7 +141,7 @@ const testKeyPem = crypto
 const apnsConfig: ApnsConfig = {
   keyId: "KEY123456",
   teamId: "CC8UTF7ATG",
-  bundleId: "trade.socratic.app",
+  bundleId: "com.socratictrade.ios",
   privateKeyPem: testKeyPem
 };
 
@@ -171,7 +171,7 @@ describe("end-to-end: a proposal awaiting approval, from sendNotification to the
       userId,
       token: hexToken("contract-e2e"),
       environment: "production",
-      bundleId: "trade.socratic.app"
+      bundleId: "com.socratictrade.ios"
     });
     setNotifyPrefs(userId, { channels: ["apns"] });
 
@@ -197,7 +197,7 @@ describe("end-to-end: a proposal awaiting approval, from sendNotification to the
     //    (Sending a production token to the sandbox host is answered 400 BadDeviceToken.)
     expect(calls[0].origin).toBe("https://api.push.apple.com");
     expect(calls[0].path).toBe(`/3/device/${listActiveDeviceTokens(userId)[0].token}`);
-    expect(calls[0].headers["apns-topic"]).toBe("trade.socratic.app");
+    expect(calls[0].headers["apns-topic"]).toBe("com.socratictrade.ios");
 
     // 2. The payload carries the link at the root `url` key PushPayload reads first.
     const body = JSON.parse(calls[0].body) as Record<string, unknown>;
@@ -245,7 +245,7 @@ describe("device registration: the iOS request is the request the server validat
     const { POST, DELETE } = await import("../app/api/mobile/push/register/route");
     process.env.APNS_KEY_ID = "KEY123456";
     process.env.APNS_TEAM_ID = "CC8UTF7ATG";
-    process.env.APNS_BUNDLE_ID = "trade.socratic.app";
+    process.env.APNS_BUNDLE_ID = "com.socratictrade.ios";
     process.env.APNS_PRIVATE_KEY_B64 = Buffer.from(testKeyPem).toString("base64");
 
     const email = `contract-${randomUUID()}@example.com`;
@@ -259,12 +259,12 @@ describe("device registration: the iOS request is the request the server validat
     // Exactly what PushRegistrationRequest.jsonBody produces: lowercase hex token, the
     // environment raw value, and the app's own bundle identifier.
     const token = hexToken("contract-register");
-    const ok = await POST(call("POST", { token, environment: "production", bundleId: "trade.socratic.app" }));
+    const ok = await POST(call("POST", { token, environment: "production", bundleId: "com.socratictrade.ios" }));
     expect(ok.status).toBe(200);
 
     // The app can only ever send these two; anything else is a client bug and must not be stored.
     for (const environment of ["sandbox", "production"]) {
-      expect((await POST(call("POST", { token, environment, bundleId: "trade.socratic.app" }))).status).toBe(200);
+      expect((await POST(call("POST", { token, environment, bundleId: "com.socratictrade.ios" }))).status).toBe(200);
     }
     expect((await POST(call("POST", { token, environment: "prod" }))).status).toBe(400);
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backfill sentinel payload fields on the Socratic.Trade Qdrant collection.
+"""Backfill sentinel payload fields on the Socratic-Trade Qdrant collection.
 
 Four fields were added to the payload schema after the initial Pinecone ->
 Qdrant copy (see pinecone-to-qdrant-copy.py) ran, so points copied before the

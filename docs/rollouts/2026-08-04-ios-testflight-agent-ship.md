@@ -1,4 +1,6 @@
-# 2026-08-04 — iOS TestFlight agent ship (Socratic.Trade)
+# 2026-08-04 — iOS TestFlight agent ship (Socratic-Trade)
+
+> **2026-09-22 [MM] archaeology note:** historical references to `trade.socratic.app` and the App Store Connect app `6799238379` are kept verbatim as they were live at rollout time.  The bundle ID was renamed on 2026-09-22 to `com.socratictrade.ios` (PR forthcoming); the appleId `6799238379` is unchanged — only the bundle key moved.  See `docs/rollouts/2026-09-22-bundle-id-migration.md`.
 
 ## Context & Objective
 

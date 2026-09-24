@@ -123,7 +123,7 @@ defects were found and fixed:
    `Nothing to do. No GitHub App found.` for every push. Repo webhooks must
    use the manual handler: `/webhooks/source/github/events/manual`
    (`routes/webhooks.php:16`). Updated via
-   `gh api -X PATCH repos/jaywedgeworth22/Socratic.Trade/hooks/658869484`.
+   `gh api -X PATCH repos/jaywedgeworth22/Socratic-Trade/hooks/658869484`.
 2. **Signature mismatch.** With the right route the handler matched the app
    but returned `Invalid signature.` — the secret stored Coolify-side did not
    survive decrypt/re-encrypt round-trips done during the env repair
@@ -135,7 +135,7 @@ defects were found and fixed:
    after).
 
 Verification: redelivered the `refs/heads/main` push for `13b9afa9` →
-response `[{"application":"Socratic.Trade","status":"success","message":"Deployment queued.", ... "deployment_uuid":"dy3rciku9supsivz0c51l8xn"}]`;
+response `[{"application":"Socratic-Trade","status":"success","message":"Deployment queued.", ... "deployment_uuid":"dy3rciku9supsivz0c51l8xn"}]`;
 queue row shows `is_webhook=t, in_progress` at 06:51:39 UTC. Auto-deploy on
 push to `main` is restored end-to-end (push → GitHub webhook → Coolify
 manual handler → signature OK → queued build).
@@ -178,7 +178,7 @@ Note: a duplicate deployment of the same HEAD (queued by a manual webhook
 redelivery during testing) is harmless — Coolify builds the current branch
 tip, not the redelivered SHA.
 
-Final state: webhook id 658869484 on `jaywedgeworth22/Socratic.Trade` →
+Final state: webhook id 658869484 on `jaywedgeworth22/Socratic-Trade` →
 `/webhooks/source/github/events/manual`, rotated secret stored via Eloquent
 (encrypted cast) and mirrored GitHub-side; two webhook-triggered deploys
 finished green (`o14i7cknz8wp7t9lcbyodjl6` 07:08, `j7my0njjnz4xs1dqy7ckx33f`

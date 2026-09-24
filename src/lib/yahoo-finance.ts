@@ -4,7 +4,9 @@ export interface YahooFinanceQuote {
   price: number;
   bid: number;
   ask: number;
-  prevClose: number;
+  /** Previous regular-session close.  Undefined when Yahoo does not report one — never
+   *  defaulted to the current price (that fabricates a 0% intraday change). */
+  prevClose?: number;
   volume: number;
   /** ISO timestamp of the quote (from meta.regularMarketTime) — the real "as of", not a daily-bar date. */
   asOf?: string;
@@ -30,6 +32,11 @@ export interface YahooFinanceQuote {
   beta?: number;
   fiftyTwoWeekHigh?: number;
   fiftyTwoWeekLow?: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  change?: number;
+  changePct?: number;
 }
 
 function optionalFinite(value: unknown): number | undefined {
@@ -71,7 +78,11 @@ export function yahooQuoteFromChartMeta(
   const companyName = [meta.longName, meta.shortName]
     .find((value): value is string => typeof value === "string" && value.trim().length > 0)
     ?.trim();
-  const prevClose = meta.chartPreviousClose ? Number(meta.chartPreviousClose) : price;
+  // Sentry review: when Yahoo omits chartPreviousClose, fall back to undefined — NOT the
+  // current price.  Falling back to price fabricates intradayChangePct ≈ 0% and hides the
+  // real "previous close unknown" state from the quote route's fallback chain.
+  const prevCloseRaw = meta.chartPreviousClose ? Number(meta.chartPreviousClose) : NaN;
+  const prevClose = Number.isFinite(prevCloseRaw) && prevCloseRaw > 0 ? prevCloseRaw : undefined;
   const volume = Number(meta.regularMarketVolume ?? volumeHint ?? 0);
   const t = Number(meta.regularMarketTime);
   const asOf = Number.isFinite(t) && t > 0 ? new Date(t * 1000).toISOString() : undefined;
@@ -80,7 +91,7 @@ export function yahooQuoteFromChartMeta(
     price,
     bid: price * 0.999,
     ask: price * 1.001,
-    prevClose,
+    ...(prevClose !== undefined ? { prevClose } : {}),
     volume,
     asOf,
     syntheticBid: true,
@@ -160,8 +171,18 @@ async function fetchYahooQuoteChunk(chunk: string[]): Promise<Map<string, YahooF
           bid?: number;
           ask?: number;
           regularMarketPreviousClose?: number;
+          regularMarketOpen?: number;
+          regularMarketDayHigh?: number;
+          regularMarketDayLow?: number;
           regularMarketVolume?: number;
           regularMarketTime?: number;
+          regularMarketChange?: number;
+          regularMarketChangePercent?: number;
+          shortName?: string;
+          longName?: string;
+          trailingPE?: number;
+          fiftyTwoWeekHigh?: number;
+          fiftyTwoWeekLow?: number;
         }>;
       };
     };
@@ -173,7 +194,22 @@ async function fetchYahooQuoteChunk(chunk: string[]): Promise<Map<string, YahooF
       if (!item.symbol) continue;
       const price = Number(item.regularMarketPrice);
       if (!Number.isFinite(price) || price <= 0) continue;
-      const prevClose = item.regularMarketPreviousClose ? Number(item.regularMarketPreviousClose) : price;
+      // Mirror yahooQuoteFromChartMeta: omit prevClose when Yahoo does not supply it.
+      // Substituting `price` fabricates a 0% change and can falsely complete the cascade gate
+      // (Codex P2 review on #3449).
+      const prevClose = optionalPositive(item.regularMarketPreviousClose);
+      const open = optionalPositive(item.regularMarketOpen);
+      const high = optionalPositive(item.regularMarketDayHigh);
+      const low = optionalPositive(item.regularMarketDayLow);
+      const change = optionalFinite(item.regularMarketChange);
+      const changePct = optionalFinite(item.regularMarketChangePercent);
+      const companyName = [item.longName, item.shortName]
+        .find((v): v is string => typeof v === "string" && v.trim().length > 0)
+        ?.trim();
+      const peRatio = optionalPositive(item.trailingPE);
+      const fiftyTwoWeekHigh = optionalPositive(item.fiftyTwoWeekHigh);
+      const fiftyTwoWeekLow = optionalPositive(item.fiftyTwoWeekLow);
+
       // Track each side independently so a one-sided quote keeps its REAL side (a real bid must not
       // be blanket-tagged synthetic just because the ask had to be derived, and vice versa).
       const syntheticBid = !(item.bid && item.bid > 0);
@@ -189,9 +225,18 @@ async function fetchYahooQuoteChunk(chunk: string[]): Promise<Map<string, YahooF
         price,
         bid,
         ask,
-        prevClose,
         volume,
         asOf,
+        ...(prevClose !== undefined ? { prevClose } : {}),
+        ...(open !== undefined ? { open } : {}),
+        ...(high !== undefined ? { high } : {}),
+        ...(low !== undefined ? { low } : {}),
+        ...(change !== undefined ? { change } : {}),
+        ...(changePct !== undefined ? { changePct } : {}),
+        ...(companyName ? { companyName } : {}),
+        ...(peRatio !== undefined ? { peRatio } : {}),
+        ...(fiftyTwoWeekHigh !== undefined ? { fiftyTwoWeekHigh } : {}),
+        ...(fiftyTwoWeekLow !== undefined ? { fiftyTwoWeekLow } : {}),
         // Side-specific synthetic flags set EXPLICITLY (true AND false) so a consumer that falls back
         // to the coarse `syntheticSpread` when a side flag is absent (e.g. market.ts) never mislabels
         // a real side: a one-sided quote's real side now carries an explicit `false`, so the fallback

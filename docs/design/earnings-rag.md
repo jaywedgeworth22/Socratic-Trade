@@ -57,7 +57,7 @@ Provider request attempts now reserve durable request/cost capacity before the n
 dispatch immediately around the actual fetch/SDK call, and settle to succeeded/failed independently of
 the producer lease. Crash-left dispatched calls reconcile to `unknown`; an outbox projects deterministic
 events through `usage-monitor-push.ts` and `usage-monitor-replay.ts`. Generic FMP enrichment and transcript
-calls share this credential-wide ledger inside Socratic.Trade. Activation across multiple apps still
+calls share this credential-wide ledger inside Socratic-Trade. Activation across multiple apps still
 requires one genuinely shared transactional authority; assigning the same authority string to separate
 SQLite databases is not sufficient. New `storeDocument` writes no longer have the content-dedup ghost-
 vector defect; any corpus populated by the older shortcut should still be reconciled for legacy

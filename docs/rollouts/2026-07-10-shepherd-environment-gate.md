@@ -79,9 +79,9 @@
 
 ## GitHub-side state created (via `gh api`, not in this diff - server-side, not repo-tracked)
 
-- `PUT /repos/jaywedgeworth22/Socratic.Trade/environments/merge-shepherd` with
+- `PUT /repos/jaywedgeworth22/Socratic-Trade/environments/merge-shepherd` with
   `deployment_branch_policy: {protected_branches: false, custom_branch_policies: true}`.
-- `POST /repos/jaywedgeworth22/Socratic.Trade/environments/merge-shepherd/deployment-branch-policies`
+- `POST /repos/jaywedgeworth22/Socratic-Trade/environments/merge-shepherd/deployment-branch-policies`
   with `name: main`.
 - Verified via `GET .../environments/merge-shepherd` (protection_rules includes one
   `branch_policy` rule) and `GET .../environments/merge-shepherd/deployment-branch-policies`
@@ -100,7 +100,7 @@
   `yaml.safe_load` check.
 - `grep -nP '[^\x00-\x7F]' .github/workflows/merge-shepherd.yml` - only the
   pre-existing (untouched) line 5 em-dash; no new non-ASCII bytes introduced.
-- `gh api repos/jaywedgeworth22/Socratic.Trade/environments/merge-shepherd` and
+- `gh api repos/jaywedgeworth22/Socratic-Trade/environments/merge-shepherd` and
   `.../deployment-branch-policies` - confirmed server-side state matches intent
   (see above), and re-ran the POST once to confirm no duplicate branch-policy
   entries are created.
@@ -120,7 +120,7 @@
 - **Owner action needed (cannot be done by the API/agent):** if/when
   `SHEPHERD_TOKEN` is ever set, set it as an **environment secret** scoped to
   `merge-shepherd` (`gh secret set SHEPHERD_TOKEN --env merge-shepherd --repo
-  jaywedgeworth22/Socratic.Trade`, or Settings -> Environments ->
+  jaywedgeworth22/Socratic-Trade`, or Settings -> Environments ->
   merge-shepherd -> Environment secrets), not a repo-level secret. An
   environment secret is only readable by workflow runs that reference that
   environment, which layers the same branch-lock onto the secret itself. The

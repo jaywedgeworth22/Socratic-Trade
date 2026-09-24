@@ -2,7 +2,7 @@
 
 ## Context & Objective
 
-The owner asked whether to connect a weekly Perplexity ritual (value + momentum screens) into Socratic.Trade.  Option 3 is the product path: rebuild those screens from ST's own quotes, field store, and daily bars, then show them on Macro/Scan.  Perplexity stays an optional human ritual.  This note records the native implementation.
+The owner asked whether to connect a weekly Perplexity ritual (value + momentum screens) into Socratic-Trade.  Option 3 is the product path: rebuild those screens from ST's own quotes, field store, and daily bars, then show them on Macro/Scan.  Perplexity stays an optional human ritual.  This note records the native implementation.
 
 ## Changes Made
 

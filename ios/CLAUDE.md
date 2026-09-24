@@ -1,6 +1,6 @@
-# Socratic.Trade iOS
+# Socratic-Trade iOS
 
-**Bundle ID:** `trade.socratic.app`
+**Bundle ID:** `com.socratictrade.ios`
 **Project:** `ios/Socratic Trade.xcodeproj` (space in the basename)
 **Scheme / module:** `SocraticTrade`
 **Team:** `CC8UTF7ATG`

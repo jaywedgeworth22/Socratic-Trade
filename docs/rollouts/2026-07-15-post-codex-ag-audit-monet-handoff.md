@@ -2,7 +2,7 @@
 
 ## Summary
 
-Owner-directed evaluation sweep of Socratic.Trade after Codex/Antigravity changes, run from
+Owner-directed evaluation sweep of Socratic-Trade after Codex/Antigravity changes, run from
 isolated worktree branch `claude/adoring-hopper-4ff51e`. No product source changed in this lane;
 the deliverable is a synthesized, adversarially-verified findings + action document handed to
 MONET, plus two side-fixes that landed in adjacent repos/infra.

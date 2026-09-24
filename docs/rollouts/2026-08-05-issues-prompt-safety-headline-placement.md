@@ -6,7 +6,7 @@
 
 ## Context & Objective
 
-Open GitHub issues for Socratic.Trade are almost entirely **effort-board mirrors**
+Open GitHub issues for Socratic-Trade are almost entirely **effort-board mirrors**
 (label `effort-board`; read-only). Many titles already say COMPLETED but stay open
 until the board reconciler advances state. This session:
 

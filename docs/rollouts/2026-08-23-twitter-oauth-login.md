@@ -2,7 +2,7 @@
 
 ## Context & Objective
 
-Added X (Twitter) as an official login provider in Socratic.Trade using Auth.js v5 (NextAuth). Extracted `ST_X_CLIENT_ID` and `ST_X_CLIENT_SECRET` from `~/.secrets/global-api-keys` and saved them securely into Infisical (`AUTH_TWITTER_ID` and `AUTH_TWITTER_SECRET`) for production and local runtimes.
+Added X (Twitter) as an official login provider in Socratic-Trade using Auth.js v5 (NextAuth). Extracted `ST_X_CLIENT_ID` and `ST_X_CLIENT_SECRET` from `~/.secrets/global-api-keys` and saved them securely into Infisical (`AUTH_TWITTER_ID` and `AUTH_TWITTER_SECRET`) for production and local runtimes.
 
 ## Changes Made
 
@@ -17,8 +17,8 @@ Added X (Twitter) as an official login provider in Socratic.Trade using Auth.js 
 
 ## Decisions & Trade-offs
 
-- Mapped variable names: The global file uses `ST_X_CLIENT_ID` and `ST_X_CLIENT_SECRET` to prevent collisions with other apps. Auth.js / NextAuth in Socratic.Trade expects `AUTH_TWITTER_ID` and `AUTH_TWITTER_SECRET`. Infisical stores them under `AUTH_TWITTER_*`.
-- Email requirement: X OAuth 2.0 must have "Request email from users" enabled in the X Developer Portal so NextAuth receives the email address required for Socratic.Trade session management and account matching.
+- Mapped variable names: The global file uses `ST_X_CLIENT_ID` and `ST_X_CLIENT_SECRET` to prevent collisions with other apps. Auth.js / NextAuth in Socratic-Trade expects `AUTH_TWITTER_ID` and `AUTH_TWITTER_SECRET`. Infisical stores them under `AUTH_TWITTER_*`.
+- Email requirement: X OAuth 2.0 must have "Request email from users" enabled in the X Developer Portal so NextAuth receives the email address required for Socratic-Trade session management and account matching.
 
 ## Verification State
 

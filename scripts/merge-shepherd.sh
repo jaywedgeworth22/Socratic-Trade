@@ -23,7 +23,7 @@
 #   strict, no thread-resolution), so `verify == SUCCESS` is our green signal.
 #
 # Env:
-#   GITHUB_REPOSITORY   owner/repo (default: jaywedgeworth22/Socratic.Trade)
+#   GITHUB_REPOSITORY   owner/repo (default: jaywedgeworth22/Socratic-Trade)
 #   SHEPHERD_DRY_RUN=1  report only; attempt nothing
 #   GH_TOKEN/GITHUB_TOKEN  auth. A PAT (repo+workflow scope) is preferred so that
 #                          update-branch re-triggers verify; the default Actions
@@ -35,7 +35,7 @@
 #                          which uses a real user PAT) defaults to "1".
 set -uo pipefail
 
-REPO="${GITHUB_REPOSITORY:-jaywedgeworth22/Socratic.Trade}"
+REPO="${GITHUB_REPOSITORY:-jaywedgeworth22/Socratic-Trade}"
 DRY="${SHEPHERD_DRY_RUN:-0}"
 HAS_PAT="${SHEPHERD_HAS_PAT:-1}"
 ISSUE_TITLE="Merge shepherd status"

@@ -7,13 +7,13 @@ Modified the SEC reindexing admin endpoint and created a command-line tool to cl
 Switching from Voyage to BGE-M3 requires clearing existing RAG SQLite caches and re-ingesting/re-embedding SEC filings. Providing both an API endpoint extension and a dedicated CLI script allows the operator to execute this task securely, either programmatically (in batches) or directly from the terminal without HTTP route timeout limits.
 
 ## Files Touched
-- [`app/api/admin/reindex-10k/route.ts`](file:///Users/jay/Code/Socratic.Trade/app/api/admin/reindex-10k/route.ts)
-- [`scripts/reindex-all.ts`](file:///Users/jay/Code/Socratic.Trade/scripts/reindex-all.ts)
-- [`test/reindex-all.test.ts`](file:///Users/jay/Code/Socratic.Trade/test/reindex-all.test.ts)
-- [`test/securities-import.test.ts`](file:///Users/jay/Code/Socratic.Trade/test/securities-import.test.ts)
-- [`test/token-budget-ceiling.test.ts`](file:///Users/jay/Code/Socratic.Trade/test/token-budget-ceiling.test.ts)
-- [`package.json`](file:///Users/jay/Code/Socratic.Trade/package.json)
-- [`package-lock.json`](file:///Users/jay/Code/Socratic.Trade/package-lock.json)
+- [`app/api/admin/reindex-10k/route.ts`](file:///Users/jay/Code/Socratic-Trade/app/api/admin/reindex-10k/route.ts)
+- [`scripts/reindex-all.ts`](file:///Users/jay/Code/Socratic-Trade/scripts/reindex-all.ts)
+- [`test/reindex-all.test.ts`](file:///Users/jay/Code/Socratic-Trade/test/reindex-all.test.ts)
+- [`test/securities-import.test.ts`](file:///Users/jay/Code/Socratic-Trade/test/securities-import.test.ts)
+- [`test/token-budget-ceiling.test.ts`](file:///Users/jay/Code/Socratic-Trade/test/token-budget-ceiling.test.ts)
+- [`package.json`](file:///Users/jay/Code/Socratic-Trade/package.json)
+- [`package-lock.json`](file:///Users/jay/Code/Socratic-Trade/package-lock.json)
 
 ## Verification
 1. **TypeScript Verification**:

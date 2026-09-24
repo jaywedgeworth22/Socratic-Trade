@@ -1,5 +1,48 @@
 # Current Status
 
+## 2026-09-24 FIXER — PR #3451 tip: retarget to com.socratictrade.ios
+
+**Current state.** Tip of `minimax/bundle-rename` (PR #3451) retargeted from the interim
+wrong ID `trade.socratic.ios` → correct **`com.socratictrade.ios`**, rebased onto
+`origin/main`, and patched for the coexistence window: native SIWA accepts BOTH
+`com.socratictrade.ios` and
+`trade.socratic.app` (hardcoded — do NOT rely on `APPLE_CLIENT_ID`, which is the web Service
+ID); APNs register/send accepts + uses per-device topic for both bundle IDs
+(`resolveAcceptedApnsBundleIds` / `APNS_BUNDLE_IDS`); AASA keeps BOTH
+`CC8UTF7ATG.com.socratictrade.ios` and `CC8UTF7ATG.trade.socratic.app` and adds top-level
+`webcredentials.apps`; `scripts/ios-fleet.sha256` pin refreshed after `apps.json` /
+`asc-api.mjs` drift. Extra-ship no.
+
+**Resolved (Jay / ASC):**
+1. **ASC new app record** — DONE: Jay created the new ASC app for `com.socratictrade.ios`;
+   Apple ID `6815511597` (owner-supplied via iMessage 2026-09-23 ~11:05 PM CT) is now written
+   into `scripts/ios-fleet/apps.json` + `scripts/ios-fleet/ios-app-versions.json`. `6799238379`
+   remains the OLD app's id (immutable bundle on that record). An intermediate revert that
+   called the new ID invented was wrong.
+2. **Apple Developer Portal** — register App ID `com.socratictrade.ios` (+ tests
+   `com.socratictrade.ios.tests`), App Group `group.com.socratictrade`, Associated Domains
+   `socratic.trade` (applinks + webcredentials).
+3. **DNS** — point `socratic.trade` at the same Next.js edge as `socratictrade.com` so AASA
+   + webcredentials resolve.
+4. **Infisical flip timing** — do NOT flip `APNS_BUNDLE_ID` to `com.socratictrade.ios` until a
+   new-bundle TestFlight build is live; dual-topic server support is in place so both can
+   coexist before/after the flip. Same for adding the new native audience on the Apple
+   Service ID list.
+
+Rollout: `docs/rollouts/2026-09-22-bundle-id-migration.md`. PR:
+https://github.com/jaywedgeworth22/Socratic.Trade/pull/3451
+
+## 2026-09-23 INSTINCT — PR #3458 CI fix: email sign-off test assertions
+
+The rename commit (`320f7bf9`) changed `NOTIFY_EMAIL_SENT_BY` to `(sent by Socratic-Trade)`
+but missed three test assertions written as escaped-dot regexes
+(`/\n\(sent by Socratic\.Trade\)$/`). `verify-hosted` failed at `npm test` (run
+35923420885, job 107392707307) on exactly those three; the `verify` gate then failed
+closed in 4s as designed. Assertions updated to the new name. Reproduced locally pre-fix
+(3 failures, same files/lines as the CI annotations); post-fix the three files pass 32/32.
+Rollout: `docs/rollouts/2026-09-23-rename-pr-3458-signoff-test-fix.md`.
+
+
 ## 2026-09-23 INSTINCT — PR #3453 round: B2 LTX restore drill hardening + handoff records (Codex findings)
 
 Codex review of head `48831cf9` raised four findings on `scripts/ops/verify-b2-ltx-restore.mjs`;
@@ -28,7 +71,26 @@ run against real B2 credentials — the first real drill should be watched.  Rep
 `scripts/**/*.test.mjs` and nothing under `src/**` imports this script; the required CI `verify`
 check re-runs on push.  Ops script + docs only.  Extra-ship no.
 Rollout: `docs/rollouts/2026-09-23-b2-ltx-restore-drill-hardening.md`.
+## 2026-09-21 MUSE — Fill-out data cascade review-findings sweep (PR #3449, fleet PR-merge sweep round 2)
 
+Implemented the four remaining #3449-specific Codex P1 review threads on `ag/fill-out-data-cascade` (five sibling threads were already fixed by the merged #3448 round: Yahoo `prevClose` fallback, route Yahoo-floor blocking, watchlist stale `session-close`, crossed-book NBBO, per-task SEC RTH rechecks).  (1) Field-completeness gate: new exported `isCascadeFieldComplete` (price + two-sided book + `prevClose` + OHLC) with `acceptIfComplete` replacing the six bare `isQuoteFresh` accept sites at cascade Levels 1b–7 — fresh-but-incomplete quotes stay in `pendingSymbols` so later providers backfill, and the end-of-cascade fallback still returns the best merged quote (no price lost); Level 1a venue-authoritative keeps its unconditional accept per owner rule; VWAP deliberately excluded (single-provider — requiring it would force all symbols through all seven levels, conflicting with quota protection).  (2) Per-field provenance: new `QuoteFieldProvenance` / `BrokerQuote.fieldProvenance`; `mergeBrokerQuoteFields` stamps every tracked field with the winning quote's provider/asOf/fetchedAt, and `syncQuotesToFieldStore` persists per-field receipts (a Finnhub price merged with an older broker bid no longer masquerades as Finnhub-sourced).  (3) Enrichment wiring: `bidSize`/`askSize`/`prevClose`/`open`/`high`/`low`/`netChange` added to `EnrichmentSourcedField`, `EMPTY_SOURCED`, the cascade `takeScalar` loop, `EnrichmentSources`/`MarketQuote`, and `applyEnrichment`.  (4) Rate guards: Finnhub via `withProviderLimit`, Tiingo via `admitProviderRequests` quota admission keyed by `apiKeyFingerprint` (shared with `history.ts`) plus `retries: 0`.  Merged current `origin/main` and the updated #3448 branch (one `src/lib/types.ts` conflict; kept both sides).  Verification: full four-gate sequence in order on the merged tree; results in the commit message.  Rollout: `docs/rollouts/2026-09-21-fill-out-data-cascade-review-fixes.md`.
+# Current Status
+
+## 2026-09-21 Antigravity — Complete and fill out data cascade with multi-provider feeds
+
+## 2026-09-21 MUSE — Quote cascade review-findings sweep (PR #3448, fleet PR-merge sweep round 2)
+
+Implemented all eleven open Sentry/Codex review threads on `ag/quote-cascade-freshness-performance`.  Freshness model: only verified real-time two-sided broker books may age by `fetchedAt` — crossed books (`bid > ask`) are never a live NBBO, and delayed tapes (Yahoo cascade providers, secondary Tradier-paper books tagged `venueDelayedTape`) age by market `asOf` so a fresh fetch stamp can never promote ~15m-delayed data to live; each provider response is stamped at fetch *completion*, not cascade start.  `GET /api/quote`: the live cascade no longer blocks the bounded Yahoo floor — once the chart resolves, the cascade gets a 1.5s `LIVE_CASCADE_OVERLAY_GRACE_MS` overlay window via `Promise.race`, and overlay candidates are validated with `isQuoteFresh` (not the Yahoo-only `delayedFallback` flag); if Yahoo fails, the route still waits for the cascade.  Cascade abort signal plumbed to broker gateway calls (new optional `{ signal }` on `getEquityQuotes`) and the ROIC fetch.  Dashboard cascade fallback passes `skipActiveBroker` (no duplicate call to a degraded broker); watchlist + dashboard treat stale-but-positive broker quotes as missing (freshness, not positivity).  SEC ingest worker rechecks RTH before each task and immediately before the heavy synchronous `parseFilingHtml` parse.  Yahoo `prevClose` no longer falls back to the current price (undefined when omitted).  Changed approach recorded in `PLAN.md` (Codex P2).  Four-gate verification in order: `npm run lint` 0 errors (4 pre-existing warnings), `npx tsc --noEmit` clean, full `npm test` **8181 passed / 51 skipped / 0 failed** (747 files, EXIT=0 — closes the Codex P2 that the rollout docs claimed a full run without evidence), `npm run build` EXIT=0.  Rollout: `docs/rollouts/2026-09-21-quote-cascade-review-fixes.md`.  Auto-merge (squash) per the standing owner rule once `verify` CI is green on the pushed head.
+
+## 2026-09-21 Antigravity — Quote cascade freshness & event-loop stall performance repair
+## 2026-09-24 Fixer — PR #3450 tip (review threads + rebase)
+
+Rebased `ag/llm-stats-lineage-and-tokens` onto `origin/main`. Addressed unresolved review threads in code: exclude canonical self-IDs from lineage roll-forward; apply `sinceDays` to latency audits; per-metric inheritance flags; ignore stale time-range fetches; combine (not replace) 1–2 direct calls when inheriting cost/tokens; avgTokensPerCall uses `callsWithTokens`; seed catalog models for zero-sample cold start. Local: targeted vitest green, `tsc --noEmit` clean. Extra-ship no; threads left unresolved for humans/Deployer.
+
+## 2026-09-21 Antigravity — LLM stats lineage, token usage, and lifetime retention
+
+Delivered model lineage predecessor roll-forward and token aggregation for LLM usage and picker statistics.  Exempted `llm_call_latency` from audit pruning (`AUDIT_PRUNE_NEVER_PRUNED_KINDS`) to permanently retain latency records in SQLite.  Lifted the default 90-day window to lifetime (`sinceDays=0`), while adding an interactive time-range selector (`All Time`, `90 Days`, `30 Days`) to the Model Stats drawer.  Surfaced average token usage per call with prompt/completion breakdown and explicit predecessor lineage badging when models shift versions.  Added `scripts/ops/backfill-pruned-latency-audits.ts` for safe idempotent restoration of historical latency records from backups.  Local gate passed (`npm run lint`, `npx tsc --noEmit`, vitest target tests, `npm run build`).
+Rollout: `docs/rollouts/2026-09-21-llm-stats-lineage-and-tokens.md`.
 
 ## 2026-09-21 MUSE — claude-code-action 1.0.230 bump, round-3 sweep (restore pin, record verification)
 
@@ -46,6 +108,13 @@ CI `verify` check is **green on the current head** (`50c18910`): `verify` comple
 `check-pin` success.  The commit subject/body name the updated handoff docs.  Action-pin bump
 only, no workflow logic or source change; not Coolify deploy material.  Extra-ship no.
 Rollout: `docs/rollouts/2026-09-21-claude-code-action-1-0-230-bump.md`.
+## 2026-09-21 Antigravity — Complete and fill out data cascade with multi-provider feeds
+
+Completed expansion of quote data contracts across `BrokerQuote`, `MarketQuote`, and `MarketQuoteSummary` in `src/lib/types.ts` with `prevClose`, `open`, `high`, `low`, `vwap`, `change`, `changePct`, and bid/ask sizes. Un-truncated upstream parsers for Tradier, Robinhood, Alpaca Snapshot, and Yahoo Batch. Wired real-time quote providers Finnhub (`/quote`) and Tiingo (`/iex`) into `src/lib/quotes-cascade.ts` ahead of delayed Yahoo fallback. Implemented multi-provider field-level coalescing (`mergeBrokerQuoteFields`) to backfill missing fields without overwriting authoritative execution venue prices. Dynamically recalculate `intradayChangePct` and `netChange` in `mergeQuoteData` and persist resolved fields asynchronously to `symbol_field_latest`. All 4 local gates passed cleanly (lint, tsc, vitest 8184 passed, full build). PR opening. Rollout: `docs/rollouts/2026-09-21-fill-out-data-cascade.md`.
+
+## 2026-09-21 Antigravity — Quote cascade freshness & event-loop stall performance repair
+
+Diagnosed and resolved ST quote staleness root cause where live broker two-sided NBBO quotes lacked `fetchedAt` timestamps across cascade levels and `quoteAgeSecForStalenessGate` penalized non-delayed quotes with older last-trade `asOf` prints.  Wired `fetchFreshQuotesCascade` into `/api/quote`, `src/lib/dashboard.ts`, and `app/api/watchlist/route.ts` as resilient fallback.  Isolated SEC RAG ingestion and managed vector reconciliation during RTH trading hours and added cooperative event loop yields around heavy Cheerio HTML parses to prevent main-thread stalls (26s–362s).  Tests passing across quote cascade and RTH worker suites.  Running verification gate.  Rollout: `docs/rollouts/2026-09-21-quote-cascade-freshness-and-performance.md`.
 
 ## 2026-09-21 codex-autofix — PR #3444 round 3: correct the head attribution for the green CI run
 
@@ -193,7 +262,7 @@ the narrative round label and the cap count are off by one here, and the rollout
 that explicitly.  **5 of 10** against the cap.
 
 Also recorded: Codex cited commit `22efe659` as its fresh evidence for (a).  That SHA resolves
-nowhere (`gh api repos/jaywedgeworth22/Socratic.Trade/commits/22efe659` => HTTP 422 "No commit
+nowhere (`gh api repos/jaywedgeworth22/Socratic-Trade/commits/22efe659` => HTTP 422 "No commit
 found for SHA") and is not one of the PR's six commits.  The finding was still correct on its
 merits, verified independently against the repo's squash settings and the PR's commit subjects,
 so it was fixed rather than disputed.  Documentation only — no source, dependency, or lockfile
@@ -1087,7 +1156,7 @@ after 7761 passing tests.  `#3046`'s `onConsoleLog: () => false` still
 forwards logs over RPC.  Fix: `disableConsoleIntercept: true` plus quiet
 log/info/debug in the existing setup file.  Targeted vitest 3/3 in 6.67s,
 eslint on touched files exit 0.  Branch `grok/vitest-teardown-console`,
-worktree `~/apps/trading-grok-verify-flake`.  PR: https://github.com/jaywedgeworth22/Socratic.Trade/pull/3163
+worktree `~/apps/trading-grok-verify-flake`.  PR: https://github.com/jaywedgeworth22/Socratic-Trade/pull/3163
 SHA `4fba321ff`.  No Coolify.  No extra-ship.  No merge from this lane.
 Remaining gate: GitHub `verify`.  Rollout:
 `docs/rollouts/2026-09-04-vitest-teardown-console.md`.
@@ -1472,7 +1541,7 @@ Independent re-check of `docs/rollouts/2026-08-21-ios-adaptive-tabs-followups.md
 ## 2026-08-22 CURSOR — PR #3028 merged to `main` (iOS wide layout / Admin tab / gear-bell)
 
 Squash `a851a68d` (`a851a68da16b9c7ec722897a3ab4f378e0117111`) at 2026-08-22 01:14:36Z.
-https://github.com/jaywedgeworth22/Socratic.Trade/pull/3028
+https://github.com/jaywedgeworth22/Socratic-Trade/pull/3028
 
 Shipped on `main`: regular-width `.sidebarAdaptable` TabView plus the existing card-column
 scaffold; compact keeps the phone bar; `gearshape` trailing on every tab; bell leading
@@ -3245,7 +3314,7 @@ from #2681).
 
 Branch `monet/real-toggles`, worktree `~/apps/trading-monet-toggles`. Gates (foreground, waited
 on): tsc clean; `npm test` 6573 passed / 51 skipped (568 files); lint 0 errors; build clean. PR
-https://github.com/jaywedgeworth22/Socratic.Trade/pull/2682, opened ready, auto-merge armed
+https://github.com/jaywedgeworth22/Socratic-Trade/pull/2682, opened ready, auto-merge armed
 (squash) — merges on green `verify`. Rollout:
 `docs/rollouts/2026-08-13-remove-force-include-notifications.md`.
 ## Current (2026-08-13 ~2:20pm CT CLAUDE — HOTFIX: adaptive FTS-mirror batching)
@@ -3349,7 +3418,7 @@ accounts -> portfolio/positions/orders -> quotes chain.
 Also: the intro canvas now measures the fixed overlay instead of `window.innerHeight` (they
 disagree by 60-90px on iOS Safari, which pushed the chart down and clipped its low wicks on every
 iPhone), DPR 3 on phones, iOS URL-bar resize absorption, safe-area-aware landing box.  iOS
-`LaunchStateView` (icon + spinner + "Socratic.Trade") is now the candlestick SOCRATIC TRADE wordmark
+`LaunchStateView` (icon + spinner + "Socratic-Trade") is now the candlestick SOCRATIC TRADE wordmark
 at the top that slides away, sized by the web `MobileBrandRow` formula, plus a `LaunchBackground`
 colorset that kills the white cold-launch flash.  Found and fixed a shipped bug along the way:
 `CandleWordmarkView` rendered the wordmark VERTICALLY MIRRORED (S as 2, R as K, A as Y) from a
@@ -4164,7 +4233,7 @@ behavior unchanged; injectable RNG for deterministic tests. Branch `monet/rotati
 ## Current (2026-08-06 MONET full-product review + deploy-freeze repair)
 ## Current (2026-08-07 GROK — iOS login brand parity)
 
-**iOS login restyled to match website** (`app/login/page.tsx`): candlestick "SOCRATIC TRADE" wordmark (`CandleWordmarkView`, port of `candle-ticker.ts`), accent-dot value bullets, plain `--bg` surface, Google/GitHub/Apple button order and styles. PR [#2574](https://github.com/jaywedgeworth22/Socratic.Trade/pull/2574) (branch `grok/ios-login-brand`, auto-merge armed). `xcodebuild` BUILD SUCCEEDED. Rollout: `docs/rollouts/2026-08-07-ios-login-brand.md`.
+**iOS login restyled to match website** (`app/login/page.tsx`): candlestick "SOCRATIC TRADE" wordmark (`CandleWordmarkView`, port of `candle-ticker.ts`), accent-dot value bullets, plain `--bg` surface, Google/GitHub/Apple button order and styles. PR [#2574](https://github.com/jaywedgeworth22/Socratic-Trade/pull/2574) (branch `grok/ios-login-brand`, auto-merge armed). `xcodebuild` BUILD SUCCEEDED. Rollout: `docs/rollouts/2026-08-07-ios-login-brand.md`.
 
 ## Prior (2026-08-06 MONET full-product review + deploy-freeze repair)
 
@@ -4336,7 +4405,7 @@ Thesis→Home, Evidence→Scan, Journal→Activity, Outcomes→Results, Regime�
 tooltips keep metaphor; home CTAs use `destinationLabel`; mobile pins already by href.
 Rollout: `docs/rollouts/2026-08-04-ux-b1-plain-nav-labels.md`.
 **2026-08-04 — GROK: retire direct FMP / QuiverQuant / Unusual Whales.** Owner:
-Socratic.Trade must not call those vendors. Congressional disclosures/analytics from
+Socratic-Trade must not call those vendors. Congressional disclosures/analytics from
 Congress.Trade (default ON); **fundamentals from multi-source cascade** (Yahoo/Finnhub/
 ROIC/SEC/… — App A fundamentals default OFF). Hard ban at registration + request choke
 points. Branch `grok/no-direct-fmp-quiver-uw` (PR #2398).
@@ -4463,7 +4532,7 @@ Root cause: `deriveEvidenceRows` assumed every truthy `latestScan` had array
 `topCandidates`. Fix: `safeTopCandidates` + snapshot normalization in `dashboard.ts`.
 Rollout: `docs/rollouts/2026-08-03-console-topcandidates-slice-crash.md`.
 
-**2026-08-03 — Xcode App Settings & Apple Sign-In Layout Constraint Fix (ANTIGRAVITY).** Configured Xcode App Category (`public.app-category.finance`), Display Name (`Socratic.Trade`), Marketing Version (`1.0.0`), and Build Version (`1`) across `Info.plist` and `project.pbxproj`. Fixed `ASAuthorizationAppleIDButton` layout constraint collision warning (`width == 392` vs `width <= 375`) in `LoginView.swift` by capping `SignInWithAppleButton` width to 375pt. `xcodebuild` succeeded clean. Rollout: `docs/rollouts/2026-08-03-xcode-app-settings-and-apple-signin-constraint-fix.md`.
+**2026-08-03 — Xcode App Settings & Apple Sign-In Layout Constraint Fix (ANTIGRAVITY).** Configured Xcode App Category (`public.app-category.finance`), Display Name (`Socratic-Trade`), Marketing Version (`1.0.0`), and Build Version (`1`) across `Info.plist` and `project.pbxproj`. Fixed `ASAuthorizationAppleIDButton` layout constraint collision warning (`width == 392` vs `width <= 375`) in `LoginView.swift` by capping `SignInWithAppleButton` width to 375pt. `xcodebuild` succeeded clean. Rollout: `docs/rollouts/2026-08-03-xcode-app-settings-and-apple-signin-constraint-fix.md`.
 
 **2026-08-02 — Exit-0 outage root-caused + exit-code hardening (MONET, branch
 `monet/exit0-outage-audit`).** The 15:29Z "clean exit 0, stayed down" outage was an

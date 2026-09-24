@@ -35,6 +35,10 @@ export interface LlmCatalogEntry {
   recommendedRed?: boolean;
   /** Older persisted / OpenRouter / native ids that must resolve to this row. */
   aliases: readonly string[];
+  /** Model family/lineage identifier (e.g. "openai-sol", "anthropic-sonnet", "google-flash"). */
+  lineage?: string;
+  /** Immediate and historical predecessor model slugs whose stats roll forward into this model. */
+  predecessors?: readonly string[];
 }
 
 export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
@@ -49,7 +53,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     // "pro" is a request parameter there, not a distinct SKU — hence openRouterOnly above.
     label: "gpt-6-astra-pro — GPT-6 Astra in pro reasoning mode (more thinking per call)",
     tier: "$$$",
-    aliases: ["openai/gpt-6-astra-pro"]
+    aliases: ["openai/gpt-6-astra-pro"],
+    lineage: "openai-astra",
+    predecessors: ["gpt-6-astra"]
   },
   {
     displaySlug: "gpt-6-astra",
@@ -58,7 +64,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     provider: "openai",
     label: "gpt-6-astra — frontier OpenAI reasoning",
     tier: "$$$",
-    aliases: ["openai/gpt-6-astra"]
+    aliases: ["openai/gpt-6-astra"],
+    lineage: "openai-astra",
+    predecessors: ["gpt-5.6-sol", "gpt-5.6-terra"]
   },
   {
     displaySlug: "gpt-5.6-luna",
@@ -67,7 +75,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     provider: "openai",
     label: "gpt-5.6-luna — current cost-sensitive tier",
     tier: "$$",
-    aliases: ["gpt-luna-latest", "openai/gpt-5.6-luna"]
+    aliases: ["gpt-luna-latest", "openai/gpt-5.6-luna"],
+    lineage: "openai-luna",
+    predecessors: ["gpt-luna-latest", "gpt-5.4", "gpt-4o-mini"]
   },
   {
     displaySlug: "gpt-5.6-sol",
@@ -81,7 +91,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     // docs/rollouts/2026-09-18-model-catalog-cleanup.md.
     recommendedGreen: true,
     recommendedRed: true,
-    aliases: ["gpt-sol-latest", "openai/gpt-5.6-sol", "gpt-5.6"]
+    aliases: ["gpt-sol-latest", "openai/gpt-5.6-sol", "gpt-5.6"],
+    lineage: "openai-sol",
+    predecessors: ["gpt-5.6-terra", "gpt-5.5", "gpt-5.6"]
   },
   {
     displaySlug: "claude-haiku-latest",
@@ -97,7 +109,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
       "claude-haiku",
       "anthropic/claude-haiku-latest",
       "anthropic/claude-haiku-4.5"
-    ]
+    ],
+    lineage: "anthropic-haiku",
+    predecessors: ["claude-haiku-4.5", "claude-haiku-4-5", "claude-haiku"]
   },
   {
     displaySlug: "claude-sonnet-latest",
@@ -114,7 +128,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
       "claude-sonnet",
       "anthropic/claude-sonnet-latest",
       "anthropic/claude-sonnet-5"
-    ]
+    ],
+    lineage: "anthropic-sonnet",
+    predecessors: ["claude-sonnet-5", "claude-sonnet-4-6", "claude-sonnet-4.6", "claude-3-5-sonnet"]
   },
   {
     displaySlug: "claude-opus-latest",
@@ -140,7 +156,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
       "anthropic/claude-opus-latest",
       "anthropic/claude-opus-5",
       "anthropic/claude-opus-5.5"
-    ]
+    ],
+    lineage: "anthropic-opus",
+    predecessors: ["claude-opus-5", "claude-opus-4-8", "claude-opus-4.8"]
   },
   {
     displaySlug: "claude-fable-latest",
@@ -149,7 +167,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     provider: "anthropic",
     label: "claude-fable-latest (5.1) — most capable Claude",
     tier: "$$$",
-    aliases: ["claude-fable-5-1", "claude-fable-5.1", "anthropic/claude-fable-5.1", "claude-fable-5", "claude-fable", "anthropic/claude-fable-latest", "anthropic/claude-fable-5"]
+    aliases: ["claude-fable-5-1", "claude-fable-5.1", "anthropic/claude-fable-5.1", "claude-fable-5", "claude-fable", "anthropic/claude-fable-latest", "anthropic/claude-fable-5"],
+    lineage: "anthropic-fable",
+    predecessors: ["claude-fable-5-1", "claude-fable-5"]
   },
   {
     displaySlug: "grok-latest",
@@ -158,7 +178,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     provider: "xai",
     label: "grok-latest (4.6) — default Grok analysis",
     tier: "$$",
-    aliases: ["grok-4.6", "x-ai/grok-4.6", "grok-4.5", "grok-4.3", "grok", "x-ai/grok-latest", "x-ai/grok-4.5", "xai/grok-latest"]
+    aliases: ["grok-4.6", "x-ai/grok-4.6", "grok-4.5", "grok-4.3", "grok", "x-ai/grok-latest", "x-ai/grok-4.5", "xai/grok-latest"],
+    lineage: "xai-grok",
+    predecessors: ["grok-4.6", "grok-4.5", "grok-4.3", "grok-build-0.1"]
   },
   {
     displaySlug: "gemini-flash-lite-latest",
@@ -173,7 +195,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
       "gemini-2.5-flash-lite",
       "google/gemini-3.5-flash-lite",
       "google/gemini-flash-lite-latest"
-    ]
+    ],
+    lineage: "google-flash-lite",
+    predecessors: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite"]
   },
   {
     displaySlug: "gemini-flash-latest",
@@ -194,7 +218,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
       "google/gemini-flash-latest",
       "google/gemini-3.7-flash",
       "google/gemini-3.6-flash"
-    ]
+    ],
+    lineage: "google-flash",
+    predecessors: ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"]
   },
   {
     displaySlug: "gemini-pro-latest",
@@ -210,7 +236,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
       "gemini-pro",
       "google/gemini-pro-latest",
       "google/gemini-3.1-pro-preview"
-    ]
+    ],
+    lineage: "google-pro",
+    predecessors: ["gemini-3.1-pro-preview", "gemini-2.5-pro", "gemini-pro"]
   },
   {
     displaySlug: "mistral-small-latest",
@@ -224,7 +252,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
       "mistral-small-2506",
       "mistralai/mistral-small-2603",
       "mistralai/mistral-small-latest"
-    ]
+    ],
+    lineage: "mistral-small",
+    predecessors: ["mistral-small-2603", "mistral-small-2506"]
   },
   {
     displaySlug: "mistral-medium-latest",
@@ -242,7 +272,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
       "mistralai/mistral-medium-3.5",
       "mistralai/mistral-medium-3-5",
       "mistralai/mistral-medium-latest"
-    ]
+    ],
+    lineage: "mistral-medium",
+    predecessors: ["mistral-medium-3.5", "mistral-medium-3-5"]
   },
   {
     displaySlug: "mistral-large-latest",
@@ -264,7 +296,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     // Cheapest of the three Mistral rows (0.50/1.50) — below Medium, which is now the
     // priciest. See docs/rollouts/2026-09-18-model-catalog-cleanup.md.
     tier: "$$",
-    aliases: ["mistral-large", "mistral-large-2512", "mistralai/mistral-large", "mistralai/mistral-large-latest"]
+    aliases: ["mistral-large", "mistral-large-2512", "mistralai/mistral-large", "mistralai/mistral-large-latest"],
+    lineage: "mistral-large",
+    predecessors: ["mistral-large-2512", "mistral-large-2407"]
   },
   {
     displaySlug: "kimi-latest",
@@ -273,7 +307,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     provider: "moonshot",
     label: "kimi-latest (k3) — Kimi frontier model",
     tier: "$$",
-    aliases: ["kimi-k3", "kimi", "moonshot", "moonshot-latest", "moonshotai/kimi-latest", "~moonshotai/kimi-latest"]
+    aliases: ["kimi-k3", "kimi", "moonshot", "moonshot-latest", "moonshotai/kimi-latest", "~moonshotai/kimi-latest"],
+    lineage: "moonshot-kimi",
+    predecessors: ["kimi-k3", "moonshot-latest"]
   },
   {
     displaySlug: "deepseek-flash-latest",
@@ -282,7 +318,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     provider: "deepseek",
     label: "deepseek-flash-latest (v4) — fast DeepSeek Flash",
     tier: "$",
-    aliases: ["deepseek-v4-flash-0731", "deepseek/deepseek-v4-flash-0731", "deepseek-v4-flash", "deepseek-chat", "deepseek/deepseek-v4-flash", "deepseek/deepseek-flash-latest"]
+    aliases: ["deepseek-v4-flash-0731", "deepseek/deepseek-v4-flash-0731", "deepseek-v4-flash", "deepseek-chat", "deepseek/deepseek-v4-flash", "deepseek/deepseek-flash-latest"],
+    lineage: "deepseek-flash",
+    predecessors: ["deepseek-v4-flash-0731", "deepseek-chat"]
   },
   {
     displaySlug: "deepseek-pro-latest",
@@ -291,7 +329,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     provider: "deepseek",
     label: "deepseek-pro-latest (v4) — stronger DeepSeek Pro",
     tier: "$$",
-    aliases: ["deepseek-v4-pro-0813", "deepseek/deepseek-v4-pro-0813", "deepseek-v4-pro", "deepseek/deepseek-v4-pro", "deepseek/deepseek-pro-latest"]
+    aliases: ["deepseek-v4-pro-0813", "deepseek/deepseek-v4-pro-0813", "deepseek-v4-pro", "deepseek/deepseek-v4-pro", "deepseek/deepseek-pro-latest"],
+    lineage: "deepseek-pro",
+    predecessors: ["deepseek-v4-pro-0813", "deepseek-r1"]
   },
   {
     displaySlug: "minimax-m3",
@@ -300,7 +340,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     provider: "minimax",
     label: "minimax-m3 — general-purpose reasoning",
     tier: "$",
-    aliases: ["minimax/minimax-m3"]
+    aliases: ["minimax/minimax-m3"],
+    lineage: "minimax",
+    predecessors: ["minimax-m2.7"]
   },
   {
     displaySlug: "muse-spark-1.3",
@@ -309,7 +351,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     provider: "meta",
     label: "muse-spark-1.3 — multimodal reasoning and agents",
     tier: "$$",
-    aliases: ["meta/muse-spark-1.3"]
+    aliases: ["meta/muse-spark-1.3"],
+    lineage: "meta-muse",
+    predecessors: ["llama-4-scout", "llama-3.3-70b-instruct"]
   },
   {
     displaySlug: "muse-glimmer-30b",
@@ -318,7 +362,9 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
     provider: "meta",
     label: "muse-glimmer-30b — efficient agent model",
     tier: "$",
-    aliases: ["meta/muse-glimmer-30b"]
+    aliases: ["meta/muse-glimmer-30b"],
+    lineage: "meta-muse",
+    predecessors: ["llama-4-maverick"]
   }
 ];
 
@@ -395,3 +441,14 @@ export const ROTATION_EXCLUDED_DISPLAY_SLUGS: readonly string[] = [];
 export const CATALOG_ROTATION_POOL: readonly string[] = CATALOG_DISPLAY_SLUGS.filter(
   (id) => !ROTATION_EXCLUDED_DISPLAY_SLUGS.includes(id)
 );
+
+/**
+ * Return all configured predecessor model slugs for a model (or empty array if none).
+ * Enables rolling forward historical cost, latency, token, and performance stats into
+ * newly adopted or bumped model versions before they establish their own sample size.
+ */
+export function getPredecessorModelIds(model: string | null | undefined): string[] {
+  if (!model) return [];
+  const entry = catalogEntryFor(model);
+  return entry?.predecessors ? [...entry.predecessors] : [];
+}

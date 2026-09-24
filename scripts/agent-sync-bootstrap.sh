@@ -59,7 +59,7 @@ cat > "$DEST" <<'SLACK_SYNC_ENGINE_EOF'
 #   SLACK_AGENT_NAME  optional; when set, posted/replied text is prefixed "[name] "
 #                     so the other agents know who is speaking (e.g. Monet / Claude).
 #                     (Older var AGENT_NAME is still honored as a fallback.)
-#   SLACK_TOPIC       optional project tag (e.g. Socratic.Trade, Congress.Trade,
+#   SLACK_TOPIC       optional project tag (e.g. Socratic-Trade, Congress.Trade,
 #                     API-Usage-Monitor, Congress-Trading-Shared). When set:
 #                       - read / thread / hook show ONLY messages tagged "[TOPIC]"
 #                         (plus "[FLEET]" / "[ALL]" broadcasts), so many projects can
@@ -87,7 +87,7 @@ CHANNEL_ID="${SLACK_CHANNEL_ID:-C0BEZDJDNKV}"
 AGENT_NAME="${SLACK_AGENT_NAME:-${AGENT_NAME:-}}"
 # Optional project tag. When set, read/thread/hook show ONLY messages tagged
 # [TOPIC] (plus [FLEET]/[ALL] broadcasts), and post/reply auto-prefix [TOPIC].
-# Canonical tags: Socratic.Trade, Congress.Trade, API-Usage-Monitor,
+# Canonical tags: Socratic-Trade, Congress.Trade, API-Usage-Monitor,
 # Congress-Trading-Shared.
 TOPIC="${SLACK_TOPIC:-}"
 READ_LIMIT_DEFAULT=20

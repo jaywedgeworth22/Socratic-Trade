@@ -136,7 +136,8 @@ describe("pruneAuditEvents", () => {
   // the 14-day observability list) even though getRedTeamEfficacy (src/lib/performance.ts)
   // rebuilds the ENTIRE lifetime Red Team veto scorecard from exactly these rows. Rows already
   // pruned before this fix are gone for good — see docs/rollouts/2026-09-18-stats-veto-retention.md.
-  it("never prunes Red Team veto/override audit kinds, even far past the 90d default", () => {
+  it("never prunes Red Team veto/override audit kinds or llm_call_latency, even far past the 90d default", () => {
+    expect(AUDIT_PRUNE_NEVER_PRUNED_KINDS).toContain("llm_call_latency");
     for (const kind of AUDIT_PRUNE_NEVER_PRUNED_KINDS) {
       insertAudit(kind, daysAgo(400)); // keep — exempt regardless of age
     }

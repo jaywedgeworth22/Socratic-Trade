@@ -25,7 +25,7 @@
  *  stats for this role but is no longer a catalog row — see deriveRetiredModelIds below — so a
  *  catalog cleanup never silently deletes a model's history off this screen. */
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { BarChart2 } from "lucide-react";
 // Pure curated-model DATA (no legacy UI components) — same import the strategy
 // page already uses, so the drawer lists exactly what the dropdowns offer.
@@ -38,7 +38,8 @@ import {
   redTeamSampleGate,
   redTeamSampleTier // encapsulates the 20/50 (MIN/SOLID) matured-veto thresholds
 } from "../lib/red-team-efficacy";
-import { Chip, Dash, IconButton, TONE_VAR } from "../ui/primitives";
+import { SENTENCE_GAP } from "../lib/format";
+import { Chip, Dash, IconButton, Segmented, TONE_VAR } from "../ui/primitives";
 import { Sheet } from "../ui/sheet";
 
 type PickerRole = "proposer" | "red-team" | "strategist";
@@ -68,6 +69,18 @@ interface ModelRoleStats {
   /** Live TOTAL cost (USD) over the window; null when liveCalls === 0. Strategist-section only —
    *  the owner's explicit ask for historical spend on running AI review, per model. */
   totalCostUsd: number | null;
+  totalTokens?: number | null;
+  avgTokensPerCall?: number | null;
+  promptTokens?: number | null;
+  completionTokens?: number | null;
+  inheritedFrom?: string | null;
+  isInherited?: boolean;
+  inheritedClosedTrades?: number;
+  costInheritedFrom?: string | null;
+  latencyInheritedFrom?: string | null;
+  perfInheritedFrom?: string | null;
+  vetoInheritedFrom?: string | null;
+  callsWithTokens?: number;
   p50LatencyMs: number | null;
   latencySamples: number;
   benchmarkCostUsd: number | null;
@@ -102,6 +115,12 @@ function fmtSignedPct(v: number): string {
   return `${v > 0 ? "+" : ""}${v.toFixed(2)}%`;
 }
 
+function fmtTokens(v: number): string {
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `${(v / 1_000).toFixed(1)}k`;
+  return Math.round(v).toLocaleString();
+}
+
 function CostCell({ s }: { s: ModelRoleStats | undefined }) {
   if (s && s.liveCalls >= LIVE_MIN_SAMPLES && s.avgCostUsd !== null) {
     return (
@@ -110,6 +129,11 @@ function CostCell({ s }: { s: ModelRoleStats | undefined }) {
         <Chip tone="accent" title={`Average cost per call over your last ${s.liveCalls} real calls in this role.`}>
           live · n={s.liveCalls}
         </Chip>
+        {s.costInheritedFrom && (
+          <Chip tone="muted" title={`Cost rolled forward from predecessor model ${s.costInheritedFrom}`}>
+            from {s.costInheritedFrom}
+          </Chip>
+        )}
       </span>
     );
   }
@@ -118,6 +142,30 @@ function CostCell({ s }: { s: ModelRoleStats | undefined }) {
       <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
         <span className="con-num">{fmtCost(s.benchmarkCostUsd)}</span>
         <Chip title="Estimated cost per call from a standardized offline benchmark run — not your live traffic.">benchmark</Chip>
+      </span>
+    );
+  }
+  return <Dash />;
+}
+
+function TokensCell({ s }: { s: ModelRoleStats | undefined }) {
+  if (s && s.avgTokensPerCall != null && s.avgTokensPerCall > 0) {
+    const tokenCalls = s.callsWithTokens && s.callsWithTokens > 0 ? s.callsWithTokens : s.liveCalls;
+    const prompt = s.promptTokens != null && tokenCalls > 0 ? Math.round(s.promptTokens / tokenCalls) : null;
+    const comp = s.completionTokens != null && tokenCalls > 0 ? Math.round(s.completionTokens / tokenCalls) : null;
+    const tooltip =
+      prompt !== null && comp !== null
+        ? `Avg ${fmtTokens(s.avgTokensPerCall)} tokens/call (~${fmtTokens(prompt)} in / ~${fmtTokens(comp)} out).${SENTENCE_GAP}Total: ${fmtTokens(s.totalTokens ?? 0)} tokens across ${tokenCalls} calls with reported usage.`
+        : `Avg ${fmtTokens(s.avgTokensPerCall)} tokens/call.${SENTENCE_GAP}Total: ${fmtTokens(s.totalTokens ?? 0)} tokens across ${tokenCalls} calls with reported usage.`;
+
+    return (
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap" title={tooltip}>
+        <span className="con-num">{fmtTokens(s.avgTokensPerCall)}</span>
+        {prompt !== null && comp !== null && (
+          <span className="text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">
+            ({fmtTokens(prompt)}/{fmtTokens(comp)})
+          </span>
+        )}
       </span>
     );
   }
@@ -145,6 +193,11 @@ function LatencyCell({ s }: { s: ModelRoleStats | undefined }) {
         <Chip tone="accent" title={`Median (p50) of your last ${s.latencySamples} successful real calls in this role.`}>
           live · n={s.latencySamples}
         </Chip>
+        {s.latencyInheritedFrom && (
+          <Chip tone="muted" title={`Latency rolled forward from predecessor model ${s.latencyInheritedFrom}`}>
+            from {s.latencyInheritedFrom}
+          </Chip>
+        )}
       </span>
     );
   }
@@ -172,13 +225,18 @@ function ReviewerPerfCell({ s }: { s: ModelRoleStats | undefined }) {
   const { vetoValueAddRate, avgReturnPct } = s.reviewerPerf;
   const avgTone = redTeamReturnTone(avgReturnPct);
   const tier = redTeamSampleTier(n);
+  const vetoFrom = s.vetoInheritedFrom;
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
       <span className="con-num">
         {vetoValueAddRate.toFixed(0)}% good vetoes · avg{" "}
         <span style={avgTone === "muted" ? undefined : { color: TONE_VAR[avgTone] }}>{fmtSignedPct(avgReturnPct)}</span>
       </span>
-      {tier === "caution" ? (
+      {vetoFrom ? (
+        <Chip tone="accent" title={`Veto efficacy rolled forward from predecessor model ${vetoFrom} (${n} matured vetoes).`}>
+          from {vetoFrom} (n={n})
+        </Chip>
+      ) : tier === "caution" ? (
         <Chip tone="warn" title={`Only ${n} matured vetoes — treat this as an early read, not an established edge.`}>
           {redTeamSampleGate(n)}
         </Chip>
@@ -202,12 +260,17 @@ function PerfCell({ s, role }: { s: ModelRoleStats | undefined; role: Exclude<Pi
     );
   }
   const { winRate, avgPnlPct } = s.perf;
+  const perfFrom = s.perfInheritedFrom;
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
       <span className="con-num">
         {winRate.toFixed(0)}% win · avg {fmtSignedPct(avgPnlPct)}
       </span>
-      {n < PERF_SOLID_TRADES ? (
+      {perfFrom && s.inheritedClosedTrades ? (
+        <Chip tone="accent" title={`Realized performance rolled forward from predecessor model ${perfFrom} (${s.inheritedClosedTrades} closed trades) because this model has ${s.closedTrades} closed trades.`}>
+          from {perfFrom} (n={s.inheritedClosedTrades})
+        </Chip>
+      ) : n < PERF_SOLID_TRADES ? (
         <Chip tone="warn" title={`Only ${n} closed trades — treat this as an early read, not an established edge.`}>
           small sample (n={n})
         </Chip>
@@ -243,20 +306,42 @@ export function ModelStatsButton({ role }: { role: PickerRole }) {
   const [data, setData] = useState<ModelStatsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sinceDays, setSinceDays] = useState<number>(0);
+  // Generation counter + AbortController so a slow All-Time response cannot overwrite a newer
+  // 30/90-day result, and an earlier finally cannot clear loading while a newer request is pending.
+  const fetchGenRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const openDrawer = useCallback(() => {
-    setOpen(true);
-    if (data || loading) return;
+  const fetchStats = useCallback((days: number) => {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const gen = ++fetchGenRef.current;
     setLoading(true);
-    fetch("/api/llm-usage/model-stats")
+    const query = days > 0 ? `?sinceDays=${days}` : "";
+    fetch(`/api/llm-usage/model-stats${query}`, { signal: ac.signal })
       .then(async (res) => {
+        if (gen !== fetchGenRef.current) return;
         if (!res.ok) throw new Error(`Stats unavailable (${res.status}).`);
         setData((await res.json()) as ModelStatsResponse);
         setError(null);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
-  }, [data, loading]);
+      .catch((err) => {
+        if (gen !== fetchGenRef.current) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (gen === fetchGenRef.current) setLoading(false);
+      });
+  }, []);
+
+  const openDrawer = useCallback(() => {
+    setOpen(true);
+    if (!data && !loading) {
+      fetchStats(sinceDays);
+    }
+  }, [data, loading, fetchStats, sinceDays]);
 
   const statsRole = role === "proposer" ? "green" : role === "red-team" ? "red" : "strategist";
   const byModel = new Map((data?.stats ?? []).filter((s) => s.role === statsRole).map((s) => [s.model, s]));
@@ -281,21 +366,36 @@ export function ModelStatsButton({ role }: { role: PickerRole }) {
         <BarChart2 size={15} />
       </IconButton>
       <Sheet open={open} onClose={() => setOpen(false)} title={`Model stats — ${roleLabel}`} wide>
-        <p className="mb-3 text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">
-          {isStrategist ? (
-            <>
-              Cost per call, run count, and total spend for every model in this picker, from your own recent AI review
-              runs{data ? ` (last ${data.sinceDays} days)` : ""}. There is no offline benchmark for AI review — a model with
-              no runs in the window shows no data.
-            </>
-          ) : (
-            <>
-              Cost and latency per call for every model in this picker.  Figures marked <strong>live</strong> come from your own
-              recent calls in this role{data ? ` (last ${data.sinceDays} days)` : ""}; models without enough live traffic fall
-              back to a standardized offline <strong>benchmark</strong> run{data ? ` (most recently updated ${new Date(data.benchmark.runAt).toLocaleDateString(undefined, { timeZone: "America/Chicago" })})` : ""}.
-            </>
-          )}
-        </p>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)] flex-1 min-w-[200px]">
+            {isStrategist ? (
+              <>
+                Cost per call, token usage, run count, and total spend for every model in this picker, from your own recent AI review
+                runs{data ? (data.sinceDays > 0 ? ` (last ${data.sinceDays} days)` : " (all time)") : ""}. There is no offline benchmark for AI review — a model with
+                no runs in the window shows no data.
+              </>
+            ) : (
+              <>
+                Cost, latency, token usage, and realized performance per call for every model in this picker.  Figures marked <strong>live</strong> come from your own
+                recent calls in this role{data ? (data.sinceDays > 0 ? ` (last ${data.sinceDays} days)` : " (all time)") : ""}; models without enough live traffic fall
+                back to predecessor lineage or a standardized offline <strong>benchmark</strong> run{data ? ` (most recently updated ${new Date(data.benchmark.runAt).toLocaleDateString(undefined, { timeZone: "America/Chicago" })})` : ""}.
+              </>
+            )}
+          </p>
+          <Segmented
+            value={String(sinceDays)}
+            onChange={(val) => {
+              const days = Number(val);
+              setSinceDays(days);
+              fetchStats(days);
+            }}
+            options={[
+              { value: "0", label: "All Time" },
+              { value: "90", label: "90 Days" },
+              { value: "30", label: "30 Days" }
+            ]}
+          />
+        </div>
         {loading && <p className="py-4 text-center text-[length:var(--con-fs-sm)] text-[color:var(--con-faint)]">Loading model stats…</p>}
         {error && !loading && (
           <p className="rounded-control border border-[color:var(--con-warn-border)] bg-[color:var(--con-warn-soft)] p-2.5 text-[length:var(--con-fs-xs)]">
@@ -312,12 +412,14 @@ export function ModelStatsButton({ role }: { role: PickerRole }) {
                   <th className="text-left">Cost / call</th>
                   {isStrategist ? (
                     <>
+                      <th className="text-left">Tokens / call</th>
                       <th className="text-left">Runs</th>
-                      <th className="text-left">Total cost{data ? ` (${data.sinceDays}d)` : ""}</th>
+                      <th className="text-left">Total cost{data ? (data.sinceDays > 0 ? ` (${data.sinceDays}d)` : " (all time)") : ""}</th>
                     </>
                   ) : (
                     <>
                       <th className="text-left">Latency (p50)</th>
+                      <th className="text-left">Tokens / call</th>
                       <th className="text-left">{role === "proposer" ? "Realized performance" : "Veto value-add"}</th>
                     </>
                   )}
@@ -390,12 +492,22 @@ function ProviderRows({
                 </div>
               </td>
             )}
-            <td className="whitespace-nowrap font-medium">{model}</td>
+            <td className="whitespace-nowrap font-medium">
+              <span>{model}</span>
+              {s?.isInherited && s.inheritedFrom && (
+                <span className="block text-[length:10px] text-[color:var(--con-muted)] font-normal">
+                  lineage: {s.inheritedFrom}
+                </span>
+              )}
+            </td>
             <td>
               <CostCell s={s} />
             </td>
             {role === "strategist" ? (
               <>
+                <td>
+                  <TokensCell s={s} />
+                </td>
                 <td>
                   <RunsCell s={s} />
                 </td>
@@ -407,6 +519,9 @@ function ProviderRows({
               <>
                 <td>
                   <LatencyCell s={s} />
+                </td>
+                <td>
+                  <TokensCell s={s} />
                 </td>
                 <td>
                   <PerfCell s={s} role={role} />

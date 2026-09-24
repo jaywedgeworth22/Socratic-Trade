@@ -39,6 +39,12 @@ run against real B2 credentials — the first real drill should be watched.  Rep
 `scripts/**/*.test.mjs` and nothing under `src/**` imports this script; the required CI `verify`
 check re-runs on push.  Ops script + docs only.  Extra-ship no.
 Rollout: `docs/rollouts/2026-09-23-b2-ltx-restore-drill-hardening.md`.
+## 2026-09-21 MUSE — Fill-out data cascade review-findings sweep (PR #3449, fleet PR-merge sweep round 2)
+
+Implemented the four remaining #3449-specific Codex P1 review threads on `ag/fill-out-data-cascade` (five sibling threads were already fixed by the merged #3448 round: Yahoo `prevClose` fallback, route Yahoo-floor blocking, watchlist stale `session-close`, crossed-book NBBO, per-task SEC RTH rechecks).  (1) Field-completeness gate: new exported `isCascadeFieldComplete` (price + two-sided book + `prevClose` + OHLC) with `acceptIfComplete` replacing the six bare `isQuoteFresh` accept sites at cascade Levels 1b–7 — fresh-but-incomplete quotes stay in `pendingSymbols` so later providers backfill, and the end-of-cascade fallback still returns the best merged quote (no price lost); Level 1a venue-authoritative keeps its unconditional accept per owner rule; VWAP deliberately excluded (single-provider — requiring it would force all symbols through all seven levels, conflicting with quota protection).  (2) Per-field provenance: new `QuoteFieldProvenance` / `BrokerQuote.fieldProvenance`; `mergeBrokerQuoteFields` stamps every tracked field with the winning quote's provider/asOf/fetchedAt, and `syncQuotesToFieldStore` persists per-field receipts (a Finnhub price merged with an older broker bid no longer masquerades as Finnhub-sourced).  (3) Enrichment wiring: `bidSize`/`askSize`/`prevClose`/`open`/`high`/`low`/`netChange` added to `EnrichmentSourcedField`, `EMPTY_SOURCED`, the cascade `takeScalar` loop, `EnrichmentSources`/`MarketQuote`, and `applyEnrichment`.  (4) Rate guards: Finnhub via `withProviderLimit`, Tiingo via `admitProviderRequests` quota admission keyed by `apiKeyFingerprint` (shared with `history.ts`) plus `retries: 0`.  Merged current `origin/main` and the updated #3448 branch (one `src/lib/types.ts` conflict; kept both sides).  Verification: full four-gate sequence in order on the merged tree; results in the commit message.  Rollout: `docs/rollouts/2026-09-21-fill-out-data-cascade-review-fixes.md`.
+# Current Status
+
+## 2026-09-21 Antigravity — Complete and fill out data cascade with multi-provider feeds
 
 ## 2026-09-21 MUSE — Quote cascade review-findings sweep (PR #3448, fleet PR-merge sweep round 2)
 
@@ -70,6 +76,10 @@ CI `verify` check is **green on the current head** (`50c18910`): `verify` comple
 `check-pin` success.  The commit subject/body name the updated handoff docs.  Action-pin bump
 only, no workflow logic or source change; not Coolify deploy material.  Extra-ship no.
 Rollout: `docs/rollouts/2026-09-21-claude-code-action-1-0-230-bump.md`.
+## 2026-09-21 Antigravity — Complete and fill out data cascade with multi-provider feeds
+
+Completed expansion of quote data contracts across `BrokerQuote`, `MarketQuote`, and `MarketQuoteSummary` in `src/lib/types.ts` with `prevClose`, `open`, `high`, `low`, `vwap`, `change`, `changePct`, and bid/ask sizes. Un-truncated upstream parsers for Tradier, Robinhood, Alpaca Snapshot, and Yahoo Batch. Wired real-time quote providers Finnhub (`/quote`) and Tiingo (`/iex`) into `src/lib/quotes-cascade.ts` ahead of delayed Yahoo fallback. Implemented multi-provider field-level coalescing (`mergeBrokerQuoteFields`) to backfill missing fields without overwriting authoritative execution venue prices. Dynamically recalculate `intradayChangePct` and `netChange` in `mergeQuoteData` and persist resolved fields asynchronously to `symbol_field_latest`. All 4 local gates passed cleanly (lint, tsc, vitest 8184 passed, full build). PR opening. Rollout: `docs/rollouts/2026-09-21-fill-out-data-cascade.md`.
+
 ## 2026-09-21 Antigravity — Quote cascade freshness & event-loop stall performance repair
 
 Diagnosed and resolved ST quote staleness root cause where live broker two-sided NBBO quotes lacked `fetchedAt` timestamps across cascade levels and `quoteAgeSecForStalenessGate` penalized non-delayed quotes with older last-trade `asOf` prints.  Wired `fetchFreshQuotesCascade` into `/api/quote`, `src/lib/dashboard.ts`, and `app/api/watchlist/route.ts` as resilient fallback.  Isolated SEC RAG ingestion and managed vector reconciliation during RTH trading hours and added cooperative event loop yields around heavy Cheerio HTML parses to prevent main-thread stalls (26s–362s).  Tests passing across quote cascade and RTH worker suites.  Running verification gate.  Rollout: `docs/rollouts/2026-09-21-quote-cascade-freshness-and-performance.md`.

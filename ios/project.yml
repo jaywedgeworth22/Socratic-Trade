@@ -6,7 +6,7 @@
 name: Socratic Trade
 
 options:
-  bundleIdPrefix: com.socratictrade
+  bundleIdPrefix: com.socratictrade.ios
   deploymentTarget:
     iOS: "18.0"
     macOS: "15.0"

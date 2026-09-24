@@ -999,14 +999,6 @@ export interface BrokerQuote {
   /** Issuer / company name reported by exchange or venue. */
   companyName?: string;
   /**
-   * Secondary delayed-tape book (e.g. a connected Tradier paper account in cascade
-   * Level 1b): ~15m delayed market data that must NEVER be promoted to real-time by
-   * a fresh fetch stamp.  Unlike venuePriceAuthoritative (the ACTIVE execution venue),
-   * this does not stop the cascade — the quote ages by market time and later levels
-   * continue.  (Codex P1 review on the quote cascade.)
-   */
-  venueDelayedTape?: boolean;
-  /**
    * Per-field provenance for merged quotes. `mergeBrokerQuoteFields` records which
    * provider (and which of its timestamps) supplied each coalesced field, so durable
    * persistence (`syncQuotesToFieldStore`) can attribute every field to its true

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "updatedAt": "2026-08-25T04:00:00Z",
   "apps": {
-    "trade.socratic.ios": {
+    "com.socratictrade.ios": {
       "displayName": "Socratic-Trade",
       "marketingVersion": "1.0.68",
       "appleId": 6799238379

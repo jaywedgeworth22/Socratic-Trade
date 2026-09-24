@@ -13,7 +13,7 @@ const FLEET = {
   schemaVersion: 1,
   updatedAt: "2026-08-24T07:44:52Z",
   apps: {
-    "trade.socratic.ios": {
+    "com.socratictrade.ios": {
       displayName: "Socratic-Trade",
       marketingVersion: "1.0.68",
       appleId: 6799238379,
@@ -65,7 +65,7 @@ test("merge onto a multi-app remote keeps every sibling", () => {
   writeFileSync(base, JSON.stringify(FLEET, null, 2) + "\n");
   const res = run([
     "--bundle-id",
-    "trade.socratic.ios",
+    "com.socratictrade.ios",
     "--version",
     "1.0.69",
     "--build",
@@ -84,8 +84,8 @@ test("merge onto a multi-app remote keeps every sibling", () => {
   assert.equal(res.status, 0, res.stderr || res.stdout);
   const merged = JSON.parse(readFileSync(out, "utf8"));
   assert.deepEqual(Object.keys(merged.apps).sort(), Object.keys(FLEET.apps).sort());
-  assert.equal(merged.apps["trade.socratic.ios"].marketingVersion, "1.0.69");
-  assert.equal(merged.apps["trade.socratic.ios"].build, "202608250045");
+  assert.equal(merged.apps["com.socratictrade.ios"].marketingVersion, "1.0.69");
+  assert.equal(merged.apps["com.socratictrade.ios"].build, "202608250045");
   assert.equal(merged.apps["net.dealdex"].marketingVersion, "1.0.2");
   assert.equal(merged.apps["services.jays.usage.client.monitor"].marketingVersion, "1.0.11");
   assert.equal(merged.apps["services.jays.usage.local.monitor"].marketingVersion, "1.0.9");
@@ -100,7 +100,7 @@ test("empty base is refused so a missing local file cannot wipe the fleet", () =
   writeFileSync(base, JSON.stringify({ schemaVersion: 1, apps: {} }, null, 2) + "\n");
   const res = run([
     "--bundle-id",
-    "trade.socratic.ios",
+    "com.socratictrade.ios",
     "--version",
     "1.0.69",
     "--base-json",
@@ -122,7 +122,7 @@ const STALE_SNAPSHOT = {
   schemaVersion: 1,
   updatedAt: "2026-08-21T19:00:00Z",
   apps: {
-    "trade.socratic.ios": {
+    "com.socratictrade.ios": {
       displayName: "Socratic-Trade",
       marketingVersion: "1.0.68",
       appleId: 6799238379,
@@ -161,7 +161,7 @@ test("publishing from a stale snapshot omits later fleet apps", () => {
   writeFileSync(base, JSON.stringify(STALE_SNAPSHOT, null, 2) + "\n");
   const res = run([
     "--bundle-id",
-    "trade.socratic.ios",
+    "com.socratictrade.ios",
     "--version",
     "1.0.69",
     "--base-json",
@@ -177,7 +177,7 @@ test("publishing from a stale snapshot omits later fleet apps", () => {
   assert.equal(merged.apps["services.jays.usage.client.monitor"].marketingVersion, "1.0.8");
   assert.equal(merged.apps["services.jays.usage.local.monitor"].marketingVersion, "1.0.7");
   assert.equal(merged.apps["codes.autorotate"].marketingVersion, "1.0.1");
-  assert.equal(merged.apps["trade.socratic.ios"].marketingVersion, "1.0.69");
+  assert.equal(merged.apps["com.socratictrade.ios"].marketingVersion, "1.0.69");
   rmSync(dir, { recursive: true, force: true });
 });
 

@@ -53,14 +53,14 @@ export type ApnsEnvSource = Record<string, string | undefined>;
 export interface ApnsConfig {
   keyId: string;
   teamId: string;
-  /** Primary APNs topic — usually APNS_BUNDLE_ID (trade.socratic.ios after the rename). */
+  /** Primary APNs topic — usually APNS_BUNDLE_ID (com.socratictrade.ios after the rename). */
   bundleId: string;
   /** PEM text of the .p8 signing key, decoded from APNS_PRIVATE_KEY_B64. */
   privateKeyPem: string;
 }
 
 /** Current iOS app bundle / APNs topic after the 2026-09-22 rename. */
-export const CURRENT_APNS_BUNDLE_ID = "trade.socratic.ios";
+export const CURRENT_APNS_BUNDLE_ID = "com.socratictrade.ios";
 
 /** Legacy iOS app bundle / APNs topic — keep accepting+sending until old TF is retired. */
 export const LEGACY_APNS_BUNDLE_ID = "trade.socratic.app";

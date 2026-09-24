@@ -63,7 +63,7 @@ export async function POST(request: Request) {
   }
 
   // The bundle id doubles as the APNs topic. During the 2026-09-22 rename coexistence
-  // window both trade.socratic.ios and trade.socratic.app are accepted (see
+  // window both com.socratictrade.ios and trade.socratic.app are accepted (see
   // resolveAcceptedApnsBundleIds). Default to the configured primary when omitted;
   // reject anything outside the accepted set rather than storing a token we could
   // never successfully push to.

@@ -102,7 +102,7 @@ Code and collectors are ready. Flip in Infisical/env when desired; watch receipt
 | Dev background workers | `DEV_BACKGROUND_WORKERS=off` | **Keep off** in local UI QA |
 | Robinhood broker-held stops | `policy.robinhoodBrokerStops` default off | Per-account policy |
 | Apple Sign-In (web) | `AUTH_APPLE_ID` / `AUTH_APPLE_SECRET` | **Waiting on secrets.** Code path live. Infisical keys (no values here): `AUTH_APPLE_ID`, `AUTH_APPLE_SECRET` — or mint from `AUTH_APPLE_TEAM_ID` + `AUTH_APPLE_KEY_ID` + `AUTH_APPLE_PRIVATE_KEY` (SIWA .p8 PEM, not ASC/APNs). |
-| Native iOS push (APNs) | `APNS_KEY_ID` + `APNS_TEAM_ID` + `APNS_BUNDLE_ID` + `APNS_P8` (or `APNS_PRIVATE_KEY` / `APNS_PRIVATE_KEY_B64`) | **Waiting on Apple portal secret.** Client + server code live (#2681). Channel reports "not configured" until all four values are in ST prod Infisical. Team `CC8UTF7ATG`, topic `trade.socratic.ios`. Do not invent or commit a `.p8`. |
+| Native iOS push (APNs) | `APNS_KEY_ID` + `APNS_TEAM_ID` + `APNS_BUNDLE_ID` + `APNS_P8` (or `APNS_PRIVATE_KEY` / `APNS_PRIVATE_KEY_B64`) | **Waiting on Apple portal secret.** Client + server code live (#2681). Channel reports "not configured" until all four values are in ST prod Infisical. Team `CC8UTF7ATG`, topic `com.socratictrade.ios`. Do not invent or commit a `.p8`. |
 | Kalshi / options / short-sell capability | dormant per-account double gates | Phase 1 design landed |
 | Kalshi macro prompt context | `KALSHI_CONTEXT` (default on) + `KALSHI_ENV` | Public data; inert without `KALSHI_ENV` |
 | Kalshi live event orders | `KALSHI_LIVE_ORDERS` + `kalshiLiveOrdersEnabled` both off | Dry-run until both on |

@@ -1,6 +1,6 @@
 # 2026-08-19 — iOS Scan keeps last-good on a 503 refresh
 
-> **2026-09-22 [MM] archaeology note:** historical reference to the Socratic.Trade bundle ID `trade.socratic.app` and the App Store Connect app `6799238379` is kept verbatim as they were live at rollout time.  The bundle ID was renamed on 2026-09-22 to `trade.socratic.ios` (PR forthcoming); the appleId is unchanged.  See `docs/rollouts/2026-09-22-bundle-id-migration.md`.
+> **2026-09-22 [MM] archaeology note:** historical reference to the Socratic.Trade bundle ID `trade.socratic.app` and the App Store Connect app `6799238379` is kept verbatim as they were live at rollout time.  The bundle ID was renamed on 2026-09-22 to `com.socratictrade.ios` (PR forthcoming); the appleId is unchanged.  See `docs/rollouts/2026-09-22-bundle-id-migration.md`.
 
 ## Context & Objective
 

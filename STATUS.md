@@ -1,29 +1,31 @@
 # Current Status
 
-## 2026-09-24 FIXER — PR #3451 tip: bundle rename coexistence (NO-SHIP until ASC)
+## 2026-09-24 FIXER — PR #3451 tip: retarget to com.socratictrade.ios (NO-SHIP until ASC)
 
-**Current state.** Tip of `minimax/bundle-rename` (PR #3451) rebased onto `origin/main` and
-patched for the coexistence window: native SIWA accepts BOTH `trade.socratic.ios` and
+**Current state.** Tip of `minimax/bundle-rename` (PR #3451) retargeted from the interim
+wrong ID `trade.socratic.ios` → correct **`com.socratictrade.ios`**, rebased onto
+`origin/main`, and patched for the coexistence window: native SIWA accepts BOTH
+`com.socratictrade.ios` and
 `trade.socratic.app` (hardcoded — do NOT rely on `APPLE_CLIENT_ID`, which is the web Service
 ID); APNs register/send accepts + uses per-device topic for both bundle IDs
 (`resolveAcceptedApnsBundleIds` / `APNS_BUNDLE_IDS`); AASA keeps BOTH
-`CC8UTF7ATG.trade.socratic.ios` and `CC8UTF7ATG.trade.socratic.app` and adds top-level
+`CC8UTF7ATG.com.socratictrade.ios` and `CC8UTF7ATG.trade.socratic.app` and adds top-level
 `webcredentials.apps`; `scripts/ios-fleet.sha256` pin refreshed after `apps.json` /
 `asc-api.mjs` drift. Extra-ship no. Deployer: treat as **no-ship**.
 
 **Blockers (Jay / ASC — not inventable in-repo):**
-1. **ASC new app record** — changing `bundleId` to `trade.socratic.ios` does NOT retarget
+1. **ASC new app record** — changing `bundleId` to `com.socratictrade.ios` does NOT retarget
    existing App Store Connect app `6799238379` (immutable bundle on that record). Ship is
-   blocked until Jay creates a new ASC app for `trade.socratic.ios` and the new Apple ID is
+   blocked until Jay creates a new ASC app for `com.socratictrade.ios` and the new Apple ID is
    written into `scripts/ios-fleet/apps.json` + `scripts/ios-fleet/ios-app-versions.json`.
    Do not invent an Apple ID. Current `appleId: 6799238379` remains the OLD app's id and is
    intentionally left as a documented mismatch.
-2. **Apple Developer Portal** — register App ID `trade.socratic.ios` (+ tests
-   `trade.socratic.ios.tests`), App Group `group.trade.socratic`, Associated Domains
+2. **Apple Developer Portal** — register App ID `com.socratictrade.ios` (+ tests
+   `com.socratictrade.ios.tests`), App Group `group.com.socratictrade`, Associated Domains
    `socratic.trade` (applinks + webcredentials).
 3. **DNS** — point `socratic.trade` at the same Next.js edge as `socratictrade.com` so AASA
    + webcredentials resolve.
-4. **Infisical flip timing** — do NOT flip `APNS_BUNDLE_ID` to `trade.socratic.ios` until a
+4. **Infisical flip timing** — do NOT flip `APNS_BUNDLE_ID` to `com.socratictrade.ios` until a
    new-bundle TestFlight build is live; dual-topic server support is in place so both can
    coexist before/after the flip. Same for adding the new native audience on the Apple
    Service ID list.

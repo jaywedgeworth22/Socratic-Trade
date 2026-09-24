@@ -20,7 +20,7 @@ export const APPLE_APP_SITE_ASSOCIATION = {
         // window so old TestFlight installs (trade.socratic.app) keep opening universal
         // links until they are retired. Drop the legacy ID only after old TF is gone.
         appIDs: [
-          "CC8UTF7ATG.trade.socratic.ios",
+          "CC8UTF7ATG.com.socratictrade.ios",
           "CC8UTF7ATG.trade.socratic.app"
         ],
         components: [
@@ -42,7 +42,7 @@ export const APPLE_APP_SITE_ASSOCIATION = {
   // never authorizes even when the entitlement is present on the binary.
   webcredentials: {
     apps: [
-      "CC8UTF7ATG.trade.socratic.ios",
+      "CC8UTF7ATG.com.socratictrade.ios",
       "CC8UTF7ATG.trade.socratic.app"
     ]
   }

@@ -1,6 +1,6 @@
 # 2026-08-26 — ROIC.ai and EarningsCalls.dev Settings and Admin UI updates
 
-> **2026-09-22 [MM] archaeology note:** historical reference to `NATIVE_APPLE_CLIENT_ID = "trade.socratic.app"` (the SIWA native audience in `src/lib/auth/apple-client-id.ts`) is kept verbatim as the audience that was live at rollout time.  Renamed on 2026-09-22 to `trade.socratic.ios` (PR forthcoming); `src/lib/auth/apple-client-id.ts` line 4 now exports the new ID.  See `docs/rollouts/2026-09-22-bundle-id-migration.md`.
+> **2026-09-22 [MM] archaeology note:** historical reference to `NATIVE_APPLE_CLIENT_ID = "trade.socratic.app"` (the SIWA native audience in `src/lib/auth/apple-client-id.ts`) is kept verbatim as the audience that was live at rollout time.  Renamed on 2026-09-22 to `com.socratictrade.ios` (PR forthcoming); `src/lib/auth/apple-client-id.ts` line 4 now exports the new ID.  See `docs/rollouts/2026-09-22-bundle-id-migration.md`.
 
 ## Context & Objective
 The user noted that they have switched to ROIC.ai, and asked that the EarningsCalls alert be clarified to explicitly say `EarningsCalls.dev` and requested that `ROIC.ai` be added both below it in Settings and in the Admin page to display its request rates and status.

@@ -1,6 +1,6 @@
 # Socratic-Trade — Multi-Expert Full-App Review (GROK4)
 
-> **2026-09-22 [MM] archaeology note:** historical reference to the iOS bundle ID `trade.socratic.app` is preserved verbatim as the ID that was live at review time.  Renamed on 2026-09-22 to `trade.socratic.ios` (PR forthcoming); the SIWA native audience (`NATIVE_APPLE_CLIENT_ID`), APNs topic, and AASA `appIDs` claim all moved with it.  See `docs/rollouts/2026-09-22-bundle-id-migration.md`.
+> **2026-09-22 [MM] archaeology note:** historical reference to the iOS bundle ID `trade.socratic.app` is preserved verbatim as the ID that was live at review time.  Renamed on 2026-09-22 to `com.socratictrade.ios` (PR forthcoming); the SIWA native audience (`NATIVE_APPLE_CLIENT_ID`), APNs topic, and AASA `appIDs` claim all moved with it.  See `docs/rollouts/2026-09-22-bundle-id-migration.md`.
 
 **Date:** 2026-07-20  
 **Branch / worktree:** `agent/ios-phase-5` @ `code-socratictrade/grok`  

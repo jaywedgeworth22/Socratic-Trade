@@ -19,11 +19,11 @@ describe("GET /.well-known/apple-app-site-association", () => {
     const body = await response.json();
     expect(body.applinks.details).toHaveLength(1);
     expect(body.applinks.details[0].appIDs).toEqual([
-      "CC8UTF7ATG.trade.socratic.ios",
+      "CC8UTF7ATG.com.socratictrade.ios",
       "CC8UTF7ATG.trade.socratic.app"
     ]);
     expect(body.webcredentials.apps).toEqual([
-      "CC8UTF7ATG.trade.socratic.ios",
+      "CC8UTF7ATG.com.socratictrade.ios",
       "CC8UTF7ATG.trade.socratic.app"
     ]);
   });
@@ -76,7 +76,7 @@ describe("GET /.well-known/apple-app-site-association", () => {
       "../app/.well-known/apple-app-site-association/route"
     );
     expect(APPLE_APP_SITE_ASSOCIATION.webcredentials.apps).toEqual([
-      "CC8UTF7ATG.trade.socratic.ios",
+      "CC8UTF7ATG.com.socratictrade.ios",
       "CC8UTF7ATG.trade.socratic.app"
     ]);
   });

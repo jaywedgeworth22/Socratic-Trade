@@ -1,5 +1,7 @@
 # 2026-09-22 — Bundle Identifier Migration
 
+> **2026-09-24 retarget:** the interim new ID `trade.socratic.ios` was wrong. Jay corrected the new bundle to **`com.socratictrade.ios`** (tests `com.socratictrade.ios.tests`, App Group `group.com.socratictrade`). Old ASC app `6799238379` stays on `trade.socratic.app`. **NO-SHIP** until Jay creates an ASC app for `com.socratictrade.ios` and writes the new Apple ID into `scripts/ios-fleet/apps.json` + `ios-app-versions.json`.
+
 Issue raised on the macOS signing-cert change window, where the owner approved a fleet-wide bundle rename so every app uses a domain Jay owns as its base.  This document covers **Socratic.Trade only**; the rest of the fleet (BotFleet, Autorotate, ContactLogo, DealDex, HogHunter, Congress.Trade, Usage-Monitor, the MiniMax-ios companion) is on separate lanes owned by other seats.  The fleet-wide context lives in `/Users/jay/.minimax/sessions/mvs_0bdfe8c73c1046a986df888aa99dcb2e/workspace/fleet-bundle-id-plan.md`.
 
 Socratic.Trade is the most cross-layered of the fleet migrations: a single-track iOS app target, an iOS unit-test target, a Sign in with Apple audience that MUST equal the bundle ID, an APNs topic that IS the bundle ID, a Next.js route that serves the AASA, four Vitest files that pin both sides of the APNs contract, the published-version manifest under `scripts/ios-fleet/`, and an owner-side Apple Developer Portal App ID + App Group registration on the new bundle ID.  Two renames (app + tests), one new App Group, one new Associated Domain (paired with `applinks` and `webcredentials`), and one App Site Association update so the existing `socratictrade.com` zone keeps its universal-link surface.
@@ -8,16 +10,16 @@ Socratic.Trade is the most cross-layered of the fleet migrations: a single-track
 
 | Surface | Previous | New |
 |---|---|---|
-| iOS app (`SocraticTrade` target) | `trade.socratic.app` | `trade.socratic.ios` |
-| iOS unit tests (`SocraticTradeTests`) | `trade.socratic.app.tests` | `trade.socratic.ios.tests` |
-| Sign in with Apple native audience (`NATIVE_APPLE_CLIENT_ID`) | `trade.socratic.app` | `trade.socratic.ios` |
-| APNs topic (`apns-topic` header + `APNS_BUNDLE_ID`) | `trade.socratic.app` | `trade.socratic.ios` |
-| Server-side AASA `appIDs` claim | `CC8UTF7ATG.trade.socratic.app` | `CC8UTF7ATG.trade.socratic.ios` |
-| App Group (new) | — | `group.trade.socratic` |
+| iOS app (`SocraticTrade` target) | `trade.socratic.app` | `com.socratictrade.ios` |
+| iOS unit tests (`SocraticTradeTests`) | `trade.socratic.app.tests` | `com.socratictrade.ios.tests` |
+| Sign in with Apple native audience (`NATIVE_APPLE_CLIENT_ID`) | `trade.socratic.app` | `com.socratictrade.ios` |
+| APNs topic (`apns-topic` header + `APNS_BUNDLE_ID`) | `trade.socratic.app` | `com.socratictrade.ios` |
+| Server-side AASA `appIDs` claim | `CC8UTF7ATG.trade.socratic.app` | `CC8UTF7ATG.com.socratictrade.ios` |
+| App Group (new) | — | `group.com.socratictrade` |
 | Associated Domain — applinks (new) | — | `applinks:socratic.trade` |
 | Associated Domain — webcredentials (new) | — | `webcredentials:socratic.trade` |
 | Associated Domain — applinks (existing, preserved) | `applinks:socratictrade.com` | `applinks:socratictrade.com` |
-| `bundleIdPrefix` (XcodeGen base) | `trade.socratic` | `trade.socratic.ios` (cosmetic; both targets set `PRODUCT_BUNDLE_IDENTIFIER` explicitly) |
+| `bundleIdPrefix` (XcodeGen base) | `trade.socratic` | `com.socratictrade` (cosmetic; both targets set `PRODUCT_BUNDLE_IDENTIFIER` explicitly) |
 | URL scheme (`socratictrade://`) | `socratictrade` | `socratictrade` (keep — internal scheme, not a bundle ID) |
 | `src/lib/auth/apple-client-id.ts` deployment-override knob | `APPLE_CLIENT_ID` env | `APPLE_CLIENT_ID` env (unchanged) |
 | `src/lib/apns.ts` `.p8` / `.p8-b64` env-var fallback | unchanged | unchanged (key material paths, not bundle IDs) |
@@ -28,35 +30,35 @@ Socratic.Trade is the most cross-layered of the fleet migrations: a single-track
 ### iOS side
 
 - `ios/project.yml`:
-  - Top-of-file callout `2026-09-22 bundle-ID migration` added inside the entitlements block, with the AASA `appIDs` updated to `CC8UTF7ATG.trade.socratic.ios` and a note that the same `app/.well-known/apple-app-site-association` route serves both domains once `socratic.trade` DNS is in place.
-  - `options.bundleIdPrefix`: `trade.socratic` → `trade.socratic.ios` (cosmetic; both targets set `PRODUCT_BUNDLE_IDENTIFIER` explicitly so this is the only place the base leaks into a derived ID today).
-  - `SocraticTrade` app target `PRODUCT_BUNDLE_IDENTIFIER`: `trade.socratic.app` → `trade.socratic.ios`.
-  - `SocraticTradeTests` target `PRODUCT_BUNDLE_IDENTIFIER`: `trade.socratic.app.tests` → `trade.socratic.ios.tests`.
-  - `CFBundleURLTypes[0].CFBundleURLName`: `trade.socratic.app` → `trade.socratic.ios` (the `socratictrade://` URL scheme is unchanged).
+  - Top-of-file callout `2026-09-22 bundle-ID migration` added inside the entitlements block, with the AASA `appIDs` updated to `CC8UTF7ATG.com.socratictrade.ios` and a note that the same `app/.well-known/apple-app-site-association` route serves both domains once `socratic.trade` DNS is in place.
+  - `options.bundleIdPrefix`: `trade.socratic` → `com.socratictrade` (cosmetic; both targets set `PRODUCT_BUNDLE_IDENTIFIER` explicitly so this is the only place the base leaks into a derived ID today).
+  - `SocraticTrade` app target `PRODUCT_BUNDLE_IDENTIFIER`: `trade.socratic.app` → `com.socratictrade.ios`.
+  - `SocraticTradeTests` target `PRODUCT_BUNDLE_IDENTIFIER`: `trade.socratic.app.tests` → `com.socratictrade.ios.tests`.
+  - `CFBundleURLTypes[0].CFBundleURLName`: `trade.socratic.app` → `com.socratictrade.ios` (the `socratictrade://` URL scheme is unchanged).
   - `entitlements.properties.com.apple.developer.associated-domains`: existing `applinks:socratictrade.com` PRESERVED, plus added `applinks:socratic.trade` + `webcredentials:socratic.trade`.
-  - `entitlements.properties.com.apple.security.application-groups`: added `group.trade.socratic` (App Group — must be registered per App ID in the Apple Developer Portal before any shared-container `UserDefaults` writes work).
+  - `entitlements.properties.com.apple.security.application-groups`: added `group.com.socratictrade` (App Group — must be registered per App ID in the Apple Developer Portal before any shared-container `UserDefaults` writes work).
   - The existing `# xcodegen REWRITES SocraticTrade.entitlements from this block` comment still applies — both files must stay in lockstep.
 - `ios/Socratic Trade.xcodeproj/project.pbxproj`:
-  - `SocraticTrade` Debug + Release `PRODUCT_BUNDLE_IDENTIFIER`: `trade.socratic.app` → `trade.socratic.ios` (×2).
-  - `SocraticTradeTests` Debug + Release `PRODUCT_BUNDLE_IDENTIFIER`: `trade.socratic.app.tests` → `trade.socratic.ios.tests` (×2).
+  - `SocraticTrade` Debug + Release `PRODUCT_BUNDLE_IDENTIFIER`: `trade.socratic.app` → `com.socratictrade.ios` (×2).
+  - `SocraticTradeTests` Debug + Release `PRODUCT_BUNDLE_IDENTIFIER`: `trade.socratic.app.tests` → `com.socratictrade.ios.tests` (×2).
   - Verified post-`xcodegen generate` to match `ios/project.yml` exactly (the host-side mac build would re-emit the same values; both were edited in lockstep so the regeneration is a no-op on these four lines).
 - `ios/SocraticTrade/Info.plist`:
-  - `CFBundleURLTypes[0].CFBundleURLName`: `trade.socratic.app` → `trade.socratic.ios`.
+  - `CFBundleURLTypes[0].CFBundleURLName`: `trade.socratic.app` → `com.socratictrade.ios`.
 - `ios/SocraticTrade/SocraticTrade.entitlements`:
   - Existing `aps-environment: production` + `com.apple.developer.applesignin: [Default]` PRESERVED.
   - `com.apple.developer.associated-domains`: existing `applinks:socratictrade.com` PRESERVED, plus added `applinks:socratic.trade` + `webcredentials:socratic.trade`.
-  - `com.apple.security.application-groups`: added `group.trade.socratic`.
-- `ios/SocraticTrade/README.md`: `The canonical application bundle identifier is `trade.socratic.app`` → ``trade.socratic.ios``.
-- `ios/CLAUDE.md`: `**Bundle ID:** `trade.socratic.app`` → ``trade.socratic.ios`` (matches the project.yml source of truth).
+  - `com.apple.security.application-groups`: added `group.com.socratictrade`.
+- `ios/SocraticTrade/README.md`: `The canonical application bundle identifier is `trade.socratic.app`` → ``com.socratictrade.ios``.
+- `ios/CLAUDE.md`: `**Bundle ID:** `trade.socratic.app`` → ``com.socratictrade.ios`` (matches the project.yml source of truth).
 - `ios/SocraticTradeTests/PushNotificationTests.swift`:
-  - Fake provisioning-profile fixture's `application-identifier`: `CC8UTF7ATG.trade.socratic.app` → `CC8UTF7ATG.trade.socratic.ios`.
+  - Fake provisioning-profile fixture's `application-identifier`: `CC8UTF7ATG.trade.socratic.app` → `CC8UTF7ATG.com.socratictrade.ios`.
   - Four `PushRegistrationRequest(... bundleId: "trade.socratic.app")` test fixtures + the matching `["bundleId": "trade.socratic.app"]` jsonBody assertion → all `.ios`.
 
 ### Server / web side
 
-- `src/lib/apns.ts`: `ApnsConfig.bundleId` JSDoc comment updated from `(trade.socratic.app)` to `(trade.socratic.ios)` — the runtime `bundleId` is read from `APNS_BUNDLE_ID` in prod Infisical (owner action item), but the comment now matches the iOS target.
-- `src/lib/auth/apple-client-id.ts`: `NATIVE_APPLE_CLIENT_ID = "trade.socratic.app"` → `"trade.socratic.ios"` (the Sign in with Apple native audience MUST equal the iOS bundle ID; mismatch produces a generic `Invalid callback URL`).
-- `app/.well-known/apple-app-site-association/route.ts`: `appIDs: ["CC8UTF7ATG.trade.socratic.app"]` → `["CC8UTF7ATG.trade.socratic.ios"]`.  The `components` (URL paths) are unchanged — the iOS router still claims `/console/{approvals,orders,watchlist,activity,assistant,scan,guardrails,results}`.  Once `socratic.trade` DNS points at the same Next.js app, the same handler serves the AASA at `socratic.trade/.well-known/apple-app-site-association` with the same `appIDs` — both associated-domains will validate against the same claim.
+- `src/lib/apns.ts`: `ApnsConfig.bundleId` JSDoc comment updated from `(trade.socratic.app)` to `(com.socratictrade.ios)` — the runtime `bundleId` is read from `APNS_BUNDLE_ID` in prod Infisical (owner action item), but the comment now matches the iOS target.
+- `src/lib/auth/apple-client-id.ts`: `NATIVE_APPLE_CLIENT_ID = "trade.socratic.app"` → `"com.socratictrade.ios"` (the Sign in with Apple native audience MUST equal the iOS bundle ID; mismatch produces a generic `Invalid callback URL`).
+- `app/.well-known/apple-app-site-association/route.ts`: `appIDs: ["CC8UTF7ATG.trade.socratic.app"]` → `["CC8UTF7ATG.com.socratictrade.ios"]`.  The `components` (URL paths) are unchanged — the iOS router still claims `/console/{approvals,orders,watchlist,activity,assistant,scan,guardrails,results}`.  Once `socratic.trade` DNS points at the same Next.js app, the same handler serves the AASA at `socratic.trade/.well-known/apple-app-site-association` with the same `appIDs` — both associated-domains will validate against the same claim.
 
 ### Tests
 
@@ -68,18 +70,18 @@ Socratic.Trade is the most cross-layered of the fleet migrations: a single-track
 ### Ship scripts (vendored `scripts/ios-fleet/`)
 
 - `scripts/ios-fleet/apps.json`: Socratic entry `bundleId` updated.  The `worktreeHint`, `appleId`, `scheme`, and `projectRel` are unchanged; the lane keeps shipping from the same `~/apps/trading-grok-ios-tf` worktree the previous bundle ID used.
-- `scripts/ios-fleet/ios-app-versions.json`: object key `trade.socratic.app` → `trade.socratic.ios` (the manifest is keyed by bundle ID, so this changes the lookup key for every future publish call).
-- `scripts/ios-fleet/publish-ios-versions.sh`: usage comment `--bundle-id trade.socratic.app` → `--bundle-id trade.socratic.ios`.  The Python merge logic is bundle-ID-agnostic so no logic change.
-- `scripts/ios-fleet/asc-api.mjs`: usage comment `filter[bundleId]=trade.socratic.app` → `filter[bundleId]=trade.socratic.ios`.  The API client takes the bundle ID as an argument so no logic change.
+- `scripts/ios-fleet/ios-app-versions.json`: object key `trade.socratic.app` → `com.socratictrade.ios` (the manifest is keyed by bundle ID, so this changes the lookup key for every future publish call).
+- `scripts/ios-fleet/publish-ios-versions.sh`: usage comment `--bundle-id trade.socratic.app` → `--bundle-id com.socratictrade.ios`.  The Python merge logic is bundle-ID-agnostic so no logic change.
+- `scripts/ios-fleet/asc-api.mjs`: usage comment `filter[bundleId]=trade.socratic.app` → `filter[bundleId]=com.socratictrade.ios`.  The API client takes the bundle ID as an argument so no logic change.
 - `scripts/ios-fleet/publish-ios-versions.test.mjs` (8 hits): the Socratic keys in the test's `FLEET` and `STALE_SNAPSHOT` fixtures, the `--bundle-id` argument in three `run()` calls, and the four `merged.apps["trade.socratic.app"]` assertions — all `.ios`.
 
 ### Docs (active)
 
 - `AGENTS.md`:
   - New top-of-file `> [!IMPORTANT]` callout dated 2026-09-22 pointing to this rollout doc and listing every renamed surface.
-  - `Bundle ID` line in the iOS TestFlight section now reads `trade.socratic.ios` and cross-references this rollout.
+  - `Bundle ID` line in the iOS TestFlight section now reads `com.socratictrade.ios` and cross-references this rollout.
   - New `Bundle identifiers (canonical table — 2026-09-22)` section listing every renamed surface (iOS app + tests targets, SIWA audience, APNs topic, App Group, Associated Domain values, AASA claim, URL scheme) and the `Internal namespaces (NOT bundle IDs — do not rename)` section listing the surfaces that look bundle-shaped but aren't.
-- `docs/FEATURE-ENABLEMENT-BACKLOG.md`: `Native iOS push (APNs)` row's `topic` updated to `trade.socratic.ios` so the next agent looking up the APNs topic sees the new ID without grep archaeology.
+- `docs/FEATURE-ENABLEMENT-BACKLOG.md`: `Native iOS push (APNs)` row's `topic` updated to `com.socratictrade.ios` so the next agent looking up the APNs topic sees the new ID without grep archaeology.
 - `docs/EFFORT-LOG.md`: new `Tue, Sep 22, 2026 — MM — IN PR — [ST][MM]` row at the top describing this rollout (branch, worktree, touched files, archaeology carve-out, owner action items, rollout doc pointer).  Pre-rename rows are preserved as historical record (none of them referenced the bundle ID in the `Work` column anyway — they describe PR-shaped work).
 
 ### Archaeology carve-out (pre-rename files, untouched content + new top-of-file dated note)
@@ -114,12 +116,12 @@ Each file below gets a one-line `> **2026-09-22 [MM] archaeology note:**` at the
 
 ## Owner action items
 
-1. **Apple Developer Portal** — register the new explicit App ID `trade.socratic.ios` and the test-bundle App ID `trade.socratic.ios.tests`.  Add the App Group capability `group.trade.socratic` on `trade.socratic.ios` (it must be registered per-App-ID for `UserDefaults` sharing + shared-container participation; do NOT add it on the test App ID — tests run as a separate process and do not share a container with the app).  Add the Associated Domain capability `socratic.trade` (`applinks` + `webcredentials`) on `trade.socratic.ios`.  This PR does not have the credentials to do so.
+1. **Apple Developer Portal** — register the new explicit App ID `com.socratictrade.ios` and the test-bundle App ID `com.socratictrade.ios.tests`.  Add the App Group capability `group.com.socratictrade` on `com.socratictrade.ios` (it must be registered per-App-ID for `UserDefaults` sharing + shared-container participation; do NOT add it on the test App ID — tests run as a separate process and do not share a container with the app).  Add the Associated Domain capability `socratic.trade` (`applinks` + `webcredentials`) on `com.socratictrade.ios`.  This PR does not have the credentials to do so.
 2. **`socratic.trade` DNS + AASA** — Jay already owns `socratic.trade` and `socratictrade.com`.  Point `socratic.trade` (and the bare `www.socratic.trade` if it resolves) at the same Next.js app that hosts `socratictrade.com`; the same `app/.well-known/apple-app-site-association` route handler serves the AASA on both domains with the same `appIDs` claim, so no Next.js change is needed.  Once `socratic.trade` resolves to the production edge, the `applinks:socratic.trade` entitlement will validate against `https://socratic.trade/.well-known/apple-app-site-association` without a fresh cert, code-signing, or build cycle.  The `socratictrade.com` AASA claim continues to work unchanged.
 3. **Code-signing** — vendor-driven (the ship workflow imports the distribution cert on `macos-latest`; `scripts/ios-fleet/` doesn't touch certs).  After the cert swap, the build picks up the new bundle ID via `xcodegen generate` → `ios/Socratic Trade.xcodeproj` without any further source change.  The four PRODUCT_BUNDLE_IDENTIFIER entries and the entitlements block in `project.yml` flow into the regenerated pbxproj automatically.
-4. **TestFlight re-upload** — vendor (hosted `ios-ship.yml` + `scripts/ios-fleet/ship-testflight.sh`).  No source change beyond this PR.  The ship script reads the new bundle ID from `scripts/ios-fleet/apps.json` so the next upload lands on `trade.socratic.ios`.
-5. **`APNS_BUNDLE_ID` in prod Infisical** — flip from `trade.socratic.app` to `trade.socratic.ios` AFTER the new App ID is registered and a TestFlight build under the new ID is live (until then, the OLD topic will keep the OLD bundle's tokens working and the NEW topic has no tokens yet).  The simplest staging order: deploy this PR → owner registers the new App ID → vendor ships a TestFlight build under `trade.socratic.ios` → owner flips `APNS_BUNDLE_ID` in Infisical → existing devices unregister their old tokens on the first push failure (Apple returns `410 Unregistered`) and re-register under the new bundle on next app launch (the app reads `Bundle.main.bundleIdentifier` for the new topic).
-6. **Apple Sign-In** — the `NATIVE_APPLE_CLIENT_ID` change in `src/lib/auth/apple-client-id.ts` is automatic on deploy (no portal-side knob to flip), BUT the Apple Developer Portal Service ID list now needs `trade.socratic.ios` as an allowed audience for native SIWA callbacks.  Add it on the same Service ID that handles `trade.socratic.app` today; the old audience can stay live for the rollout window (existing users on `trade.socratic.app` TestFlight builds still authenticate via the old audience) and be removed after the next production submission.
+4. **TestFlight re-upload** — vendor (hosted `ios-ship.yml` + `scripts/ios-fleet/ship-testflight.sh`).  No source change beyond this PR.  The ship script reads the new bundle ID from `scripts/ios-fleet/apps.json` so the next upload lands on `com.socratictrade.ios`.
+5. **`APNS_BUNDLE_ID` in prod Infisical** — flip from `trade.socratic.app` to `com.socratictrade.ios` AFTER the new App ID is registered and a TestFlight build under the new ID is live (until then, the OLD topic will keep the OLD bundle's tokens working and the NEW topic has no tokens yet).  The simplest staging order: deploy this PR → owner registers the new App ID → vendor ships a TestFlight build under `com.socratictrade.ios` → owner flips `APNS_BUNDLE_ID` in Infisical → existing devices unregister their old tokens on the first push failure (Apple returns `410 Unregistered`) and re-register under the new bundle on next app launch (the app reads `Bundle.main.bundleIdentifier` for the new topic).
+6. **Apple Sign-In** — the `NATIVE_APPLE_CLIENT_ID` change in `src/lib/auth/apple-client-id.ts` is automatic on deploy (no portal-side knob to flip), BUT the Apple Developer Portal Service ID list now needs `com.socratictrade.ios` as an allowed audience for native SIWA callbacks.  Add it on the same Service ID that handles `trade.socratic.app` today; the old audience can stay live for the rollout window (existing users on `trade.socratic.app` TestFlight builds still authenticate via the old audience) and be removed after the next production submission.
 7. **No data migration needed** — user data lives under `~/Library/Containers/Group/...` only if the App Group is in use, and the App Group is brand new in this PR.  Older `trade.socratic.app` sandbox containers under `~/Library/Containers/Data/Application/<UUID>/` are owned by the OS, not the bundle ID, so they persist regardless.
 
 ## Verification
@@ -151,15 +153,15 @@ Each file below gets a one-line `> **2026-09-22 [MM] archaeology note:**` at the
   - `aps-environment: production` (preserved)
   - `com.apple.developer.applesignin: [Default]` (preserved)
   - `com.apple.developer.associated-domains: [applinks:socratictrade.com, applinks:socratic.trade, webcredentials:socratic.trade]`
-  - `com.apple.security.application-groups: [group.trade.socratic]`
+  - `com.apple.security.application-groups: [group.com.socratictrade]`
 - `ios/project.yml` entitlements block (which `xcodegen` rewrites the file from) carries the same four keys — verified by reading the regenerated `.entitlements` file.
 - `AGENTS.md` gains the `Bundle identifiers (canonical table — 2026-09-22)` section and the top-of-file `> [!IMPORTANT]` callout pointing to this rollout doc.
 - `docs/EFFORT-LOG.md` gains the new `Tue, Sep 22, 2026 — MM — IN PR — [ST][MM]` row at the top of the table; prior rows are preserved as historical record.
-- `app/.well-known/apple-app-site-association/route.ts` `appIDs` claim is now `CC8UTF7ATG.trade.socratic.ios`, matching the new iOS bundle ID + team prefix.  The `components` array (URL paths the app claims) is unchanged.
+- `app/.well-known/apple-app-site-association/route.ts` `appIDs` claim is now `CC8UTF7ATG.com.socratictrade.ios`, matching the new iOS bundle ID + team prefix.  The `components` array (URL paths the app claims) is unchanged.
 
 ## Out of scope
 
-- Apple Developer Portal App ID + App Group + Associated Domain registration on `trade.socratic.ios` (owner).
+- Apple Developer Portal App ID + App Group + Associated Domain registration on `com.socratictrade.ios` (owner).
 - `socratic.trade` DNS + AASA hosting (owner — the same AASA route handler serves both domains once DNS is in place).
 - Code-signing cert refresh (vendor).
 - TestFlight re-upload (vendor).

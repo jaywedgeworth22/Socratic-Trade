@@ -27,7 +27,7 @@ describe("APNs dual-topic coexistence (bundle rename)", () => {
       CURRENT_APNS_BUNDLE_ID,
       LEGACY_APNS_BUNDLE_ID
     ]);
-    expect(isAcceptedApnsBundleId("trade.socratic.ios")).toBe(true);
+    expect(isAcceptedApnsBundleId("com.socratictrade.ios")).toBe(true);
     expect(isAcceptedApnsBundleId("trade.socratic.app")).toBe(true);
     expect(isAcceptedApnsBundleId("com.someone.else")).toBe(false);
   });
@@ -35,11 +35,11 @@ describe("APNs dual-topic coexistence (bundle rename)", () => {
   it("honors APNS_BUNDLE_IDS extras without dropping the natives", () => {
     expect(
       resolveAcceptedApnsBundleIds({
-        APNS_BUNDLE_ID: "trade.socratic.ios",
+        APNS_BUNDLE_ID: "com.socratictrade.ios",
         APNS_BUNDLE_IDS: "trade.extra.one, trade.extra.two"
       })
     ).toEqual([
-      "trade.socratic.ios",
+      "com.socratictrade.ios",
       "trade.socratic.app",
       "trade.extra.one",
       "trade.extra.two"
@@ -89,6 +89,6 @@ describe("APNs dual-topic coexistence (bundle rename)", () => {
         }
       }
     );
-    expect(seen[0].headers["apns-topic"]).toBe("trade.socratic.ios");
+    expect(seen[0].headers["apns-topic"]).toBe("com.socratictrade.ios");
   });
 });

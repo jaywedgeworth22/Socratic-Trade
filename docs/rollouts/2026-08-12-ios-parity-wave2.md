@@ -1,6 +1,6 @@
 # 2026-08-12 — iOS parity wave 2: guardrail tightening, control catalog, universal links
 
-> **2026-09-22 [MM] archaeology note:** historical reference to the AASA `appIDs` claim `CC8UTF7ATG.trade.socratic.app` is kept verbatim as it was live at rollout time.  Renamed on 2026-09-22 to `CC8UTF7ATG.trade.socratic.ios` (PR forthcoming); the URL `components` (paths the iOS app claims) are unchanged.  See `docs/rollouts/2026-09-22-bundle-id-migration.md`.
+> **2026-09-22 [MM] archaeology note:** historical reference to the AASA `appIDs` claim `CC8UTF7ATG.trade.socratic.app` is kept verbatim as it was live at rollout time.  Renamed on 2026-09-22 to `CC8UTF7ATG.com.socratictrade.ios` (PR forthcoming); the URL `components` (paths the iOS app claims) are unchanged.  See `docs/rollouts/2026-09-22-bundle-id-migration.md`.
 
 ## 1. Context & Objective
 

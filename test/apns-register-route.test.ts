@@ -11,7 +11,7 @@ beforeAll(() => {
   process.env.DATABASE_URL = `file:${join(tmpdir(), `agentic-apns-route-${randomUUID()}.db`)}`;
   process.env.APNS_KEY_ID = "KEY123456";
   process.env.APNS_TEAM_ID = "CC8UTF7ATG";
-  process.env.APNS_BUNDLE_ID = "trade.socratic.ios";
+  process.env.APNS_BUNDLE_ID = "com.socratictrade.ios";
   process.env.APNS_PRIVATE_KEY_B64 = Buffer.from(
     crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey.export({ type: "pkcs8", format: "pem" }).toString()
   ).toString("base64");
@@ -123,7 +123,7 @@ describe("POST /api/mobile/push/register", () => {
     expect((await POST(request(email, "POST", { token, environment: "production", bundleId: "com.someone.else" }))).status).toBe(400);
 
     // Coexistence window: both current and legacy native topics must register.
-    expect((await POST(request(email, "POST", { token, environment: "production", bundleId: "trade.socratic.ios" }))).status).toBe(200);
+    expect((await POST(request(email, "POST", { token, environment: "production", bundleId: "com.socratictrade.ios" }))).status).toBe(200);
     const legacyToken = hexToken("route-legacy");
     const legacyRes = await POST(request(email, "POST", { token: legacyToken, environment: "production", bundleId: "trade.socratic.app" }));
     expect(legacyRes.status).toBe(200);

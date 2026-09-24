@@ -38,6 +38,7 @@ function accountSettingMatchesSubject(key: unknown, subjectToken: unknown): numb
     "providerTier:status:",
     "providerTier:lastCheckAt:",
     "risk:hwm:",
+    "risk:hwm-obs:",
     "risk:sod:",
     "learning_review:lastRunDate:",
     "learning_review:lastFingerprint:",

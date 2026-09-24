@@ -38,6 +38,7 @@ import {
   redTeamSampleGate,
   redTeamSampleTier // encapsulates the 20/50 (MIN/SOLID) matured-veto thresholds
 } from "../lib/red-team-efficacy";
+import { SENTENCE_GAP } from "../lib/format";
 import { Chip, Dash, IconButton, Segmented, TONE_VAR } from "../ui/primitives";
 import { Sheet } from "../ui/sheet";
 
@@ -154,8 +155,8 @@ function TokensCell({ s }: { s: ModelRoleStats | undefined }) {
     const comp = s.completionTokens != null && tokenCalls > 0 ? Math.round(s.completionTokens / tokenCalls) : null;
     const tooltip =
       prompt !== null && comp !== null
-        ? `Avg ${fmtTokens(s.avgTokensPerCall)} tokens/call (~${fmtTokens(prompt)} in / ~${fmtTokens(comp)} out). Total: ${fmtTokens(s.totalTokens ?? 0)} tokens across ${tokenCalls} calls with reported usage.`
-        : `Avg ${fmtTokens(s.avgTokensPerCall)} tokens/call. Total: ${fmtTokens(s.totalTokens ?? 0)} tokens across ${tokenCalls} calls with reported usage.`;
+        ? `Avg ${fmtTokens(s.avgTokensPerCall)} tokens/call (~${fmtTokens(prompt)} in / ~${fmtTokens(comp)} out).${SENTENCE_GAP}Total: ${fmtTokens(s.totalTokens ?? 0)} tokens across ${tokenCalls} calls with reported usage.`
+        : `Avg ${fmtTokens(s.avgTokensPerCall)} tokens/call.${SENTENCE_GAP}Total: ${fmtTokens(s.totalTokens ?? 0)} tokens across ${tokenCalls} calls with reported usage.`;
 
     return (
       <span className="inline-flex items-center gap-1.5 whitespace-nowrap" title={tooltip}>

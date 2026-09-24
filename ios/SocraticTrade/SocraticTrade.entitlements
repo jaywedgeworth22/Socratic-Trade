@@ -16,7 +16,7 @@
 	</array>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.trade.socratic</string>
+		<string>group.com.socratictrade</string>
 	</array>
 </dict>
 </plist>

@@ -36,7 +36,7 @@ import { currentMarketSession } from "./market-hours";
 import { isUnusableEmptyMarketScan } from "./scan-singleflight";
 import { normalizeSymbol } from "./money";
 import { isDelayedYahooFallbackQuote } from "./quote-delayed-fallback";
-import { fetchFreshQuotesCascade, isQuoteFresh, resolveVenueQuoteMode } from "./quotes-cascade";
+import { cascadeFreshMaxAgeMs, fetchFreshQuotesCascade, isQuoteFresh, resolveVenueQuoteMode } from "./quotes-cascade";
 import {
   calculatePnl,
   getPerformanceSummary,
@@ -588,9 +588,11 @@ async function computeDashboardSnapshot(userId: string = "local", currentUser?: 
           }
           // A stale broker quote (e.g. a positive "session-close" fill) is not a usable
           // price — fall back to the cascade instead of sizing at yesterday's close.
+          const maxAgeMs = cascadeFreshMaxAgeMs(policy.maxQuoteAgeSec);
+          const nowMs = Date.now();
           const missingPriceSymbols = priceSymbols.filter((s) => {
             const q = quotes[s];
-            return !q || typeof q.price !== "number" || q.price <= 0 || !isQuoteFresh(q, Date.now());
+            return !q || typeof q.price !== "number" || q.price <= 0 || !isQuoteFresh(q, nowMs, maxAgeMs);
           });
           if (missingPriceSymbols.length > 0) {
             try {

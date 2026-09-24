@@ -59,11 +59,33 @@ const PROVENANCE_TRACKED_FIELDS = [
 ] as const;
 
 /**
- * Builds the merged quote's `fieldProvenance`: for each tracked field, the quote
- * that supplied the winning value (`primary.field ?? secondary.field`) stamps its
- * own provider/asOf/fetchedAt.  Prior receipts for fields this merge does not
- * decide ride along (secondary first, then primary) so no provenance is lost.
+ * Positive-valued fields (price, book, size, volume, OHLC, vwap): treat 0 as missing
+ * so a secondary provider can backfill. Change metrics may legitimately be 0.
+ * Strings (companyName) use nullish presence.
  */
+function fieldHasUsableValue(field: (typeof PROVENANCE_TRACKED_FIELDS)[number], quote: BrokerQuote): boolean {
+  const v = quote[field];
+  if (v == null) return false;
+  if (field === "companyName") return typeof v === "string" && v.length > 0;
+  if (field === "change" || field === "changePct" || field === "netChange") {
+    return typeof v === "number" && Number.isFinite(v);
+  }
+  return typeof v === "number" && Number.isFinite(v) && v > 0;
+}
+
+/** Coalesce numeric quote fields: prefer a positive primary, else positive secondary; change metrics allow 0. */
+function coalesceQuoteNumber(
+  primary: number | undefined,
+  secondary: number | undefined,
+  opts: { allowZero?: boolean } = {}
+): number | undefined {
+  const ok = (v: number | undefined): v is number =>
+    typeof v === "number" && Number.isFinite(v) && (opts.allowZero ? true : v > 0);
+  if (ok(primary)) return primary;
+  if (ok(secondary)) return secondary;
+  return undefined;
+}
+
 function stampFieldProvenance(
   primary: BrokerQuote,
   secondary: BrokerQuote
@@ -73,9 +95,19 @@ function stampFieldProvenance(
     ...(primary.fieldProvenance ?? {})
   };
   for (const field of PROVENANCE_TRACKED_FIELDS) {
-    const winner =
-      primary[field] != null ? primary : secondary[field] != null ? secondary : undefined;
-    if (winner) {
+    const winner = fieldHasUsableValue(field, primary)
+      ? primary
+      : fieldHasUsableValue(field, secondary)
+        ? secondary
+        : undefined;
+    if (!winner) continue;
+    // Retain an existing per-field receipt when the winner is itself a previously
+    // coalesced quote — do not overwrite with the quote-level provider/timestamps
+    // (Codex P1 review on #3449: repeated merges must keep each field's supplier).
+    const existing = winner.fieldProvenance?.[field];
+    if (existing) {
+      prov[field] = existing;
+    } else {
       prov[field] = {
         provider: winner.provider,
         asOf: winner.asOf,
@@ -140,21 +172,21 @@ export function mergeBrokerQuoteFields(
       provider: target.provider,
       fetchedAt: target.fetchedAt ?? incoming.fetchedAt,
       venuePriceAuthoritative: true,
-      bid: target.bid ?? incoming.bid,
-      ask: target.ask ?? incoming.ask,
-      volume: target.volume ?? incoming.volume,
-      prevClose: target.prevClose ?? incoming.prevClose,
-      open: target.open ?? incoming.open,
-      high: target.high ?? incoming.high,
-      low: target.low ?? incoming.low,
-      close: target.close ?? incoming.close,
-      vwap: target.vwap ?? incoming.vwap,
-      change: target.change ?? incoming.change,
-      changePct: target.changePct ?? incoming.changePct,
-      bidSize: target.bidSize ?? incoming.bidSize,
-      askSize: target.askSize ?? incoming.askSize,
+      bid: coalesceQuoteNumber(target.bid, incoming.bid),
+      ask: coalesceQuoteNumber(target.ask, incoming.ask),
+      volume: coalesceQuoteNumber(target.volume, incoming.volume),
+      prevClose: coalesceQuoteNumber(target.prevClose, incoming.prevClose),
+      open: coalesceQuoteNumber(target.open, incoming.open),
+      high: coalesceQuoteNumber(target.high, incoming.high),
+      low: coalesceQuoteNumber(target.low, incoming.low),
+      close: coalesceQuoteNumber(target.close, incoming.close),
+      vwap: coalesceQuoteNumber(target.vwap, incoming.vwap),
+      change: coalesceQuoteNumber(target.change, incoming.change, { allowZero: true }),
+      changePct: coalesceQuoteNumber(target.changePct, incoming.changePct, { allowZero: true }),
+      bidSize: coalesceQuoteNumber(target.bidSize, incoming.bidSize),
+      askSize: coalesceQuoteNumber(target.askSize, incoming.askSize),
       companyName: target.companyName ?? incoming.companyName,
-      netChange: target.netChange ?? incoming.netChange,
+      netChange: coalesceQuoteNumber(target.netChange, incoming.netChange, { allowZero: true }),
       fieldProvenance: stampFieldProvenance(target, incoming)
     };
   }
@@ -169,21 +201,21 @@ export function mergeBrokerQuoteFields(
       provider: incoming.provider,
       fetchedAt: incoming.fetchedAt ?? target.fetchedAt,
       venuePriceAuthoritative: true,
-      bid: incoming.bid ?? target.bid,
-      ask: incoming.ask ?? target.ask,
-      volume: incoming.volume ?? target.volume,
-      prevClose: incoming.prevClose ?? target.prevClose,
-      open: incoming.open ?? target.open,
-      high: incoming.high ?? target.high,
-      low: incoming.low ?? target.low,
-      close: incoming.close ?? target.close,
-      vwap: incoming.vwap ?? target.vwap,
-      change: incoming.change ?? target.change,
-      changePct: incoming.changePct ?? target.changePct,
-      bidSize: incoming.bidSize ?? target.bidSize,
-      askSize: incoming.askSize ?? target.askSize,
+      bid: coalesceQuoteNumber(incoming.bid, target.bid),
+      ask: coalesceQuoteNumber(incoming.ask, target.ask),
+      volume: coalesceQuoteNumber(incoming.volume, target.volume),
+      prevClose: coalesceQuoteNumber(incoming.prevClose, target.prevClose),
+      open: coalesceQuoteNumber(incoming.open, target.open),
+      high: coalesceQuoteNumber(incoming.high, target.high),
+      low: coalesceQuoteNumber(incoming.low, target.low),
+      close: coalesceQuoteNumber(incoming.close, target.close),
+      vwap: coalesceQuoteNumber(incoming.vwap, target.vwap),
+      change: coalesceQuoteNumber(incoming.change, target.change, { allowZero: true }),
+      changePct: coalesceQuoteNumber(incoming.changePct, target.changePct, { allowZero: true }),
+      bidSize: coalesceQuoteNumber(incoming.bidSize, target.bidSize),
+      askSize: coalesceQuoteNumber(incoming.askSize, target.askSize),
       companyName: incoming.companyName ?? target.companyName,
-      netChange: incoming.netChange ?? target.netChange,
+      netChange: coalesceQuoteNumber(incoming.netChange, target.netChange, { allowZero: true }),
       fieldProvenance: stampFieldProvenance(incoming, target)
     };
   }
@@ -201,27 +233,27 @@ export function mergeBrokerQuoteFields(
   const primary = preferIncoming ? incoming : target;
   const secondary = preferIncoming ? target : incoming;
 
-  const hasBid = primary.bid !== undefined;
-  const hasAsk = primary.ask !== undefined;
+  const hasBid = typeof primary.bid === "number" && primary.bid > 0;
+  const hasAsk = typeof primary.ask === "number" && primary.ask > 0;
 
   return {
     ...secondary,
     ...primary,
-    bid: primary.bid ?? secondary.bid,
-    ask: primary.ask ?? secondary.ask,
-    volume: primary.volume ?? secondary.volume,
-    prevClose: primary.prevClose ?? secondary.prevClose,
-    open: primary.open ?? secondary.open,
-    high: primary.high ?? secondary.high,
-    low: primary.low ?? secondary.low,
-    close: primary.close ?? secondary.close,
-    vwap: primary.vwap ?? secondary.vwap,
-    change: primary.change ?? secondary.change,
-    changePct: primary.changePct ?? secondary.changePct,
-    bidSize: primary.bidSize ?? secondary.bidSize,
-    askSize: primary.askSize ?? secondary.askSize,
+    bid: coalesceQuoteNumber(primary.bid, secondary.bid),
+    ask: coalesceQuoteNumber(primary.ask, secondary.ask),
+    volume: coalesceQuoteNumber(primary.volume, secondary.volume),
+    prevClose: coalesceQuoteNumber(primary.prevClose, secondary.prevClose),
+    open: coalesceQuoteNumber(primary.open, secondary.open),
+    high: coalesceQuoteNumber(primary.high, secondary.high),
+    low: coalesceQuoteNumber(primary.low, secondary.low),
+    close: coalesceQuoteNumber(primary.close, secondary.close),
+    vwap: coalesceQuoteNumber(primary.vwap, secondary.vwap),
+    change: coalesceQuoteNumber(primary.change, secondary.change, { allowZero: true }),
+    changePct: coalesceQuoteNumber(primary.changePct, secondary.changePct, { allowZero: true }),
+    bidSize: coalesceQuoteNumber(primary.bidSize, secondary.bidSize),
+    askSize: coalesceQuoteNumber(primary.askSize, secondary.askSize),
     companyName: primary.companyName ?? secondary.companyName,
-    netChange: primary.netChange ?? secondary.netChange,
+    netChange: coalesceQuoteNumber(primary.netChange, secondary.netChange, { allowZero: true }),
     syntheticBid: hasBid ? primary.syntheticBid : secondary.syntheticBid,
     syntheticAsk: hasAsk ? primary.syntheticAsk : secondary.syntheticAsk,
     syntheticSpread:

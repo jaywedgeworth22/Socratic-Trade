@@ -194,7 +194,10 @@ async function fetchYahooQuoteChunk(chunk: string[]): Promise<Map<string, YahooF
       if (!item.symbol) continue;
       const price = Number(item.regularMarketPrice);
       if (!Number.isFinite(price) || price <= 0) continue;
-      const prevClose = item.regularMarketPreviousClose ? Number(item.regularMarketPreviousClose) : price;
+      // Mirror yahooQuoteFromChartMeta: omit prevClose when Yahoo does not supply it.
+      // Substituting `price` fabricates a 0% change and can falsely complete the cascade gate
+      // (Codex P2 review on #3449).
+      const prevClose = optionalPositive(item.regularMarketPreviousClose);
       const open = optionalPositive(item.regularMarketOpen);
       const high = optionalPositive(item.regularMarketDayHigh);
       const low = optionalPositive(item.regularMarketDayLow);
@@ -222,9 +225,9 @@ async function fetchYahooQuoteChunk(chunk: string[]): Promise<Map<string, YahooF
         price,
         bid,
         ask,
-        prevClose,
         volume,
         asOf,
+        ...(prevClose !== undefined ? { prevClose } : {}),
         ...(open !== undefined ? { open } : {}),
         ...(high !== undefined ? { high } : {}),
         ...(low !== undefined ? { low } : {}),

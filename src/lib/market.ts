@@ -1110,44 +1110,92 @@ export function mergeQuoteData(
   const stampQuoteMergeObservations = (
     prior: EnrichmentFieldObservations | undefined,
     extra: Partial<BrokerQuote>,
-    resolved: { bid?: number; ask?: number; price?: number; volume?: number; prevClose?: number; vwap?: number }
+    resolved: {
+      bid?: number;
+      ask?: number;
+      price?: number;
+      volume?: number;
+      prevClose?: number;
+      vwap?: number;
+      bidSize?: number;
+      askSize?: number;
+    }
   ): EnrichmentFieldObservations | undefined => {
-    if (!extra.provider) return prior;
+    if (!extra.provider && !extra.fieldProvenance) return prior;
     const usedBid = positiveNumber(extra.bid) !== undefined;
     const usedAsk = positiveNumber(extra.ask) !== undefined;
     const usedPrice = positiveNumber(extra.price) !== undefined;
     const usedVol = !!(extra.volume && extra.volume > 0);
     const usedPrevClose = positiveNumber(extra.prevClose) !== undefined;
     const usedVwap = positiveNumber(extra.vwap) !== undefined;
-    if (!usedBid && !usedAsk && !usedPrice && !usedVol && !usedPrevClose && !usedVwap) return prior;
-    const provider = extra.provider;
-    const asOf = extra.asOf;
-    const fetchedAt = extra.fetchedAt ?? extra.asOf ?? new Date().toISOString();
+    const usedBidSize = positiveNumber(extra.bidSize) !== undefined;
+    const usedAskSize = positiveNumber(extra.askSize) !== undefined;
+    if (
+      !usedBid &&
+      !usedAsk &&
+      !usedPrice &&
+      !usedVol &&
+      !usedPrevClose &&
+      !usedVwap &&
+      !usedBidSize &&
+      !usedAskSize
+    ) {
+      return prior;
+    }
+    // Prefer cascade per-field receipts when present so a coalesced BrokerQuote does not
+    // attribute every observation to the quote-level price provider (Codex P1 on #3449).
+    const receiptFor = (field: string) => {
+      const receipt = extra.fieldProvenance?.[field];
+      const provider =
+        receipt?.provider ??
+        extra.provider ??
+        "unknown";
+      const asOf = receipt?.asOf ?? extra.asOf;
+      const fetchedAt = receipt?.fetchedAt ?? extra.fetchedAt ?? extra.asOf ?? new Date().toISOString();
+      return { provider, asOf, fetchedAt };
+    };
     const next: EnrichmentFieldObservations = { ...(prior ?? {}) };
     if (usedPrice && resolved.price !== undefined) {
+      const { provider, asOf, fetchedAt } = receiptFor("price");
       next.price = stampFieldObservation(resolved.price, provider, { asOf, fetchedAt });
     }
     if (usedBid && resolved.bid !== undefined) {
+      const { provider, asOf, fetchedAt } = receiptFor("bid");
       const bidSrc =
         (extra.syntheticBid ?? extra.syntheticSpread) ? `${provider}-synthetic` : provider;
       next.bid = stampFieldObservation(resolved.bid, bidSrc, { asOf, fetchedAt });
     }
     if (usedAsk && resolved.ask !== undefined) {
+      const { provider, asOf, fetchedAt } = receiptFor("ask");
       const askSrc =
         (extra.syntheticAsk ?? extra.syntheticSpread) ? `${provider}-synthetic` : provider;
       next.ask = stampFieldObservation(resolved.ask, askSrc, { asOf, fetchedAt });
     }
     if (usedVol && resolved.volume !== undefined) {
+      const { provider, asOf, fetchedAt } = receiptFor("volume");
       next.volume = stampFieldObservation(resolved.volume, provider, { asOf, fetchedAt });
     }
     if (usedPrevClose && resolved.prevClose !== undefined) {
+      const { provider, asOf, fetchedAt } = receiptFor("prevClose");
       next.prevClose = stampFieldObservation(resolved.prevClose, provider, { asOf, fetchedAt });
     }
     if (usedVwap && resolved.vwap !== undefined) {
+      const { provider, asOf, fetchedAt } = receiptFor("vwap");
       next.vwap = stampFieldObservation(resolved.vwap, provider, { asOf, fetchedAt });
     }
-    if (asOf) {
-      next.asOf = stampFieldObservation(asOf, provider, { asOf, fetchedAt });
+    if (usedBidSize && resolved.bidSize !== undefined) {
+      const { provider, asOf, fetchedAt } = receiptFor("bidSize");
+      next.bidSize = stampFieldObservation(resolved.bidSize, provider, { asOf, fetchedAt });
+    }
+    if (usedAskSize && resolved.askSize !== undefined) {
+      const { provider, asOf, fetchedAt } = receiptFor("askSize");
+      next.askSize = stampFieldObservation(resolved.askSize, provider, { asOf, fetchedAt });
+    }
+    const quoteAsOf = extra.asOf;
+    if (quoteAsOf) {
+      const provider = extra.provider ?? "unknown";
+      const fetchedAt = extra.fetchedAt ?? quoteAsOf;
+      next.asOf = stampFieldObservation(quoteAsOf, provider, { asOf: quoteAsOf, fetchedAt });
     }
     return next;
   };
@@ -1179,6 +1227,8 @@ export function mergeQuoteData(
       ...quote,
       bid: usedBid ?? quote.bid,
       ask: usedAsk ?? quote.ask,
+      bidSize: positiveNumber(extra.bidSize) ?? quote.bidSize,
+      askSize: positiveNumber(extra.askSize) ?? quote.askSize,
       price: effectivePrice,
       prevClose: effectivePrevClose ?? quote.prevClose,
       open: positiveNumber(extra.open) ?? quote.open,
@@ -1206,6 +1256,8 @@ export function mergeQuoteData(
       fieldObservations: stampQuoteMergeObservations(quote.fieldObservations, extra, {
         bid: usedBid ?? quote.bid,
         ask: usedAsk ?? quote.ask,
+        bidSize: positiveNumber(extra.bidSize) ?? quote.bidSize,
+        askSize: positiveNumber(extra.askSize) ?? quote.askSize,
         price: effectivePrice,
         volume,
         prevClose: effectivePrevClose,
@@ -1241,6 +1293,8 @@ export function mergeQuoteData(
         ...quote,
         bid: usedBid ?? quote.bid,
         ask: usedAsk ?? quote.ask,
+        bidSize: positiveNumber(extra?.bidSize) ?? quote.bidSize,
+        askSize: positiveNumber(extra?.askSize) ?? quote.askSize,
         price: effectivePrice,
         prevClose: effectivePrevClose ?? quote.prevClose,
         open: positiveNumber(extra?.open) ?? quote.open,
@@ -1263,6 +1317,8 @@ export function mergeQuoteData(
           ? stampQuoteMergeObservations(quote.fieldObservations, extra, {
               bid: usedBid ?? quote.bid,
               ask: usedAsk ?? quote.ask,
+              bidSize: positiveNumber(extra.bidSize) ?? quote.bidSize,
+              askSize: positiveNumber(extra.askSize) ?? quote.askSize,
               price: effectivePrice,
               volume: volume ?? quote.volume,
               prevClose: effectivePrevClose,
@@ -1283,6 +1339,8 @@ export function mergeQuoteData(
       price,
       bid: positiveNumber(quote.bid),
       ask: positiveNumber(quote.ask),
+      bidSize: positiveNumber(quote.bidSize),
+      askSize: positiveNumber(quote.askSize),
       prevClose: positiveNumber(quote.prevClose),
       open: positiveNumber(quote.open),
       high: positiveNumber(quote.high),

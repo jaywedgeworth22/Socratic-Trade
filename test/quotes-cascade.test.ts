@@ -914,6 +914,78 @@ describe("mergeBrokerQuoteFields", () => {
     expect(merged?.provider).toBe("tradier");
     expect(merged?.venuePriceAuthoritative).toBe(true);
   });
+
+  it("retains existing fieldProvenance receipts across a third-provider merge", () => {
+    // Codex P1 on #3449: when a coalesced quote is merged again, keep each field's
+    // original supplier receipt instead of restamping with the quote-level provider.
+    const coalesced: BrokerQuote = {
+      symbol: "AAPL",
+      price: 152,
+      bid: 149.9,
+      ask: 150.1,
+      asOf: "2026-09-21T10:05:00.000Z",
+      fetchedAt: "2026-09-21T10:05:05.000Z",
+      provider: "finnhub",
+      fieldProvenance: {
+        price: { provider: "finnhub", asOf: "2026-09-21T10:05:00.000Z", fetchedAt: "2026-09-21T10:05:05.000Z" },
+        bid: { provider: "alpaca", asOf: "2026-09-21T10:00:00.000Z", fetchedAt: "2026-09-21T10:00:05.000Z" },
+        ask: { provider: "alpaca", asOf: "2026-09-21T10:00:00.000Z", fetchedAt: "2026-09-21T10:00:05.000Z" }
+      }
+    };
+    const third: BrokerQuote = {
+      symbol: "AAPL",
+      price: 152.5,
+      prevClose: 148,
+      open: 149,
+      high: 153,
+      low: 148.5,
+      asOf: "2026-09-21T10:06:00.000Z",
+      fetchedAt: "2026-09-21T10:06:05.000Z",
+      provider: "tiingo"
+    };
+    const merged = mergeBrokerQuoteFields(coalesced, third);
+    expect(merged?.price).toBe(152.5);
+    expect(merged?.fieldProvenance?.price?.provider).toBe("tiingo");
+    // Alpaca book receipts must survive the third merge — not become tiingo/finnhub.
+    expect(merged?.bid).toBe(149.9);
+    expect(merged?.fieldProvenance?.bid?.provider).toBe("alpaca");
+    expect(merged?.fieldProvenance?.bid?.asOf).toBe("2026-09-21T10:00:00.000Z");
+    expect(merged?.fieldProvenance?.ask?.provider).toBe("alpaca");
+    expect(merged?.fieldProvenance?.prevClose?.provider).toBe("tiingo");
+  });
+
+  it("treats zero-valued bid/ask/volume as missing so a secondary can backfill positives", () => {
+    // Codex P1 on #3449: empty books reported as 0 must not block secondary backfill.
+    const primary: BrokerQuote = {
+      symbol: "MSFT",
+      price: 400,
+      bid: 0,
+      ask: 0,
+      volume: 0,
+      asOf: "2026-09-21T10:05:00.000Z",
+      provider: "broker"
+    };
+    const secondary: BrokerQuote = {
+      symbol: "MSFT",
+      price: 399,
+      bid: 399.5,
+      ask: 400.5,
+      volume: 1_000_000,
+      change: 0,
+      changePct: 0,
+      asOf: "2026-09-21T10:04:00.000Z",
+      provider: "alpaca"
+    };
+    const merged = mergeBrokerQuoteFields(primary, secondary);
+    expect(merged?.price).toBe(400);
+    expect(merged?.bid).toBe(399.5);
+    expect(merged?.ask).toBe(400.5);
+    expect(merged?.volume).toBe(1_000_000);
+    // Legitimate zero change metrics must still be keepable.
+    expect(merged?.change).toBe(0);
+    expect(merged?.changePct).toBe(0);
+    expect(merged?.fieldProvenance?.bid?.provider).toBe("alpaca");
+  });
 });
 
 describe("syncQuotesToFieldStore field provenance", () => {

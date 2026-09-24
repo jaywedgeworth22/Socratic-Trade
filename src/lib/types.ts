@@ -2321,6 +2321,10 @@ export interface MarketQuoteSummary {
   vwap?: number;
   bid?: number;
   ask?: number;
+  /** Quoted bid size (shares or lots, venue-specific). Source-provided only. */
+  bidSize?: number;
+  /** Quoted ask size (shares or lots, venue-specific). Source-provided only. */
+  askSize?: number;
   sector?: string;
   industry?: string;
   score: number;

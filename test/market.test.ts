@@ -492,6 +492,60 @@ describe("mergeQuoteData", () => {
     expect(msft.intradayChangePct).toBe(1.69);
     expect(msft.netChange).toBe(5);
   });
+
+  it("carries bidSize/askSize and uses cascade fieldProvenance receipts for observations", () => {
+    const base = quote({
+      symbol: "AAPL",
+      price: 100,
+      bid: 99.9,
+      ask: 100.1,
+      sources: { price: "screener" }
+    });
+    const scan: MarketScan = {
+      source: "nasdaq-delayed-screener",
+      generatedAt: "2026-06-19T00:00:00.000Z",
+      scannedSymbols: 1,
+      returnedQuotes: 1,
+      topCandidates: [base],
+      sectorBySymbol: {},
+      quotesBySymbol: { AAPL: base },
+      cacheTtlMs: 300_000,
+      cached: false,
+      warnings: []
+    };
+    const merged = mergeQuoteData(scan, {
+      AAPL: {
+        price: 105,
+        bid: 104.9,
+        ask: 105.1,
+        bidSize: 200,
+        askSize: 300,
+        prevClose: 100,
+        vwap: 103,
+        provider: "finnhub",
+        asOf: "2026-09-21T10:05:00.000Z",
+        fetchedAt: "2026-09-21T10:05:05.000Z",
+        fieldProvenance: {
+          price: { provider: "finnhub", asOf: "2026-09-21T10:05:00.000Z", fetchedAt: "2026-09-21T10:05:05.000Z" },
+          prevClose: { provider: "alpaca", asOf: "2026-09-21T10:00:00.000Z", fetchedAt: "2026-09-21T10:00:05.000Z" },
+          vwap: { provider: "alpaca", asOf: "2026-09-21T10:00:00.000Z", fetchedAt: "2026-09-21T10:00:05.000Z" },
+          bidSize: { provider: "alpaca", asOf: "2026-09-21T10:00:00.000Z", fetchedAt: "2026-09-21T10:00:05.000Z" },
+          askSize: { provider: "alpaca", asOf: "2026-09-21T10:00:00.000Z", fetchedAt: "2026-09-21T10:00:05.000Z" }
+        }
+      }
+    });
+    const cand = merged.topCandidates[0]!;
+    expect(cand.bidSize).toBe(200);
+    expect(cand.askSize).toBe(300);
+    expect(cand.fieldObservations?.prevClose?.source).toBe("alpaca");
+    expect(cand.fieldObservations?.vwap?.source).toBe("alpaca");
+    expect(cand.fieldObservations?.price?.source).toBe("finnhub");
+    expect(cand.fieldObservations?.bidSize?.source).toBe("alpaca");
+    const summary = merged.quotesBySymbol.AAPL!;
+    expect(summary.bidSize).toBe(200);
+    expect(summary.askSize).toBe(300);
+    expect(summary.fieldObservations?.prevClose?.source).toBe("alpaca");
+  });
 });
 
 describe("mergeGroupedBarData", () => {

@@ -3,6 +3,7 @@ import {
   cascadeFreshMaxAgeMs,
   fetchFreshQuotesCascade,
   isQuoteFresh,
+  isTwoSidedLiveNbbo,
   isUsableBrokerQuote,
   quoteAgeSecForStalenessGate,
   resolveVenueQuoteMode
@@ -105,6 +106,45 @@ describe("isQuoteFresh / cascadeFreshMaxAgeMs", () => {
   it("never treats missing asOf as fresh (unless venue-authoritative)", () => {
     expect(isQuoteFresh({}, Date.now(), cascadeFreshMaxAgeMs(120))).toBe(false);
   });
+
+  it("ages delayed tapes by market time — a fresh fetch stamp cannot promote Yahoo delay to live", () => {
+    const now = Date.now();
+    const delayedYahoo = {
+      bid: 10.1,
+      ask: 10.2,
+      asOf: new Date(now - 15 * 60 * 1000).toISOString(),
+      fetchedAt: new Date(now - 5_000).toISOString(),
+      provider: "yahoo-finance"
+    };
+    // Before the fix this returned true: the fresh local fetchedAt masked the stale
+    // market timestamp and the delayed Yahoo quote was treated as live.
+    expect(isQuoteFresh(delayedYahoo, now, cascadeFreshMaxAgeMs(120))).toBe(false);
+  });
+
+  it("ages secondary delayed-tape books (Tradier paper) by market time", () => {
+    const now = Date.now();
+    const tradierPaper = {
+      bid: 10.1,
+      ask: 10.2,
+      asOf: new Date(now - 15 * 60 * 1000).toISOString(),
+      fetchedAt: new Date(now - 5_000).toISOString(),
+      provider: "tradier-connected",
+      venueDelayedTape: true as const
+    };
+    expect(isQuoteFresh(tradierPaper, now, cascadeFreshMaxAgeMs(120))).toBe(false);
+  });
+
+  it("still ages verified real-time broker books by fetch time", () => {
+    const now = Date.now();
+    const alpaca = {
+      bid: 10.1,
+      ask: 10.2,
+      asOf: new Date(now - 30 * 60 * 1000).toISOString(),
+      fetchedAt: new Date(now - 5_000).toISOString(),
+      provider: "alpaca-snapshot"
+    };
+    expect(isQuoteFresh(alpaca, now, cascadeFreshMaxAgeMs(120))).toBe(true);
+  });
 });
 
 describe("quoteAgeSecForStalenessGate", () => {
@@ -146,6 +186,66 @@ describe("quoteAgeSecForStalenessGate", () => {
     expect(r.delayedFallback).toBe(true);
     expect(r.venueDelayed).toBe(false);
     expect(r.ageSec).toBe(12);
+  });
+
+  it("ages realtime two-sided live NBBO broker quotes by fetchedAt (not trade-time delay)", () => {
+    const now = Date.now();
+    const tradeAsOf = new Date(now - 180_000).toISOString(); // trade was 3m ago (>120s)
+    const fetchedAt = new Date(now - 5_000).toISOString(); // NBBO book was fetched 5s ago
+    const r = quoteAgeSecForStalenessGate(
+      {
+        asOf: tradeAsOf,
+        fetchedAt,
+        bid: 150.1,
+        ask: 150.2,
+        provider: "alpaca"
+      },
+      now
+    );
+    expect(r.missing).toBe(false);
+    expect(r.venueDelayed).toBe(false);
+    expect(r.ageSec).toBe(5);
+  });
+
+  it("does not age synthetic bid/ask quotes by fetchedAt", () => {
+    const now = Date.now();
+    const tradeAsOf = new Date(now - 180_000).toISOString();
+    const fetchedAt = new Date(now - 5_000).toISOString();
+    const r = quoteAgeSecForStalenessGate(
+      {
+        asOf: tradeAsOf,
+        fetchedAt,
+        bid: 150.1,
+        ask: 150.2,
+        syntheticSpread: true,
+        provider: "custom"
+      },
+      now
+    );
+    expect(r.ageSec).toBe(180);
+  });
+});
+
+describe("isTwoSidedLiveNbbo", () => {
+  it("returns true when positive numeric bid and ask exist and no synthetic flags", () => {
+    expect(isTwoSidedLiveNbbo({ bid: 100, ask: 100.05 })).toBe(true);
+  });
+
+  it("returns false when syntheticSpread, syntheticBid, or syntheticAsk is set", () => {
+    expect(isTwoSidedLiveNbbo({ bid: 100, ask: 100.05, syntheticSpread: true })).toBe(false);
+    expect(isTwoSidedLiveNbbo({ bid: 100, ask: 100.05, syntheticBid: true })).toBe(false);
+    expect(isTwoSidedLiveNbbo({ bid: 100, ask: 100.05, syntheticAsk: true })).toBe(false);
+  });
+
+  it("returns false when bid or ask is zero, negative, or undefined", () => {
+    expect(isTwoSidedLiveNbbo({ bid: 0, ask: 100 })).toBe(false);
+    expect(isTwoSidedLiveNbbo({ bid: 100, ask: 0 })).toBe(false);
+    expect(isTwoSidedLiveNbbo({ bid: 100 })).toBe(false);
+    expect(isTwoSidedLiveNbbo({ ask: 100 })).toBe(false);
+  });
+
+  it("returns false for a crossed book (bid > ask) — malformed NBBO is never live", () => {
+    expect(isTwoSidedLiveNbbo({ bid: 100.05, ask: 100 })).toBe(false);
   });
 });
 
@@ -231,12 +331,32 @@ describe("fetchFreshQuotesCascade", () => {
 
     const result = await fetchFreshQuotesCascade(["AAPL"], "local", "ACC123");
 
-    expect(mockGetEquityQuotes).toHaveBeenCalledWith("ACC123", ["AAPL"]);
+    expect(mockGetEquityQuotes).toHaveBeenCalledWith("ACC123", ["AAPL"], { signal: undefined });
     expect(mockEnrich).not.toHaveBeenCalled();
     expect(mockFetchYahooFinanceQuotesBatch).not.toHaveBeenCalled();
     expect(mockFetchYahooFinanceQuote).not.toHaveBeenCalled();
 
-    expect(result.AAPL).toEqual(brokerQuotes.AAPL);
+    expect(result.AAPL).toMatchObject(brokerQuotes.AAPL);
+    expect(result.AAPL?.fetchedAt).toBeDefined();
+  });
+
+  it("resolves broker quote with older asOf (>120s) as fresh when two-sided live NBBO is fetched", async () => {
+    const now = Date.now();
+    const olderTradeIso = new Date(now - 150 * 1000).toISOString(); // 150s old trade print
+
+    mockGetEquityQuotes.mockResolvedValue({
+      MSFT: { symbol: "MSFT", price: 300, bid: 299.95, ask: 300.05, asOf: olderTradeIso, provider: "alpaca" }
+    });
+
+    const result = await fetchFreshQuotesCascade(["MSFT"], "local", "ACC123");
+
+    expect(mockGetEquityQuotes).toHaveBeenCalledWith("ACC123", ["MSFT"], { signal: undefined });
+    expect(mockEnrich).not.toHaveBeenCalled();
+    expect(mockFetchYahooFinanceQuotesBatch).not.toHaveBeenCalled();
+    expect(result.MSFT?.symbol).toBe("MSFT");
+    expect(result.MSFT?.price).toBe(300);
+    expect(result.MSFT?.fetchedAt).toBeDefined();
+    expect(result.MSFT?.delayedFallback).toBeUndefined();
   });
 
   it("on realtime venues, does NOT stop on a session-close IEX fill — continues to Alpaca snapshot", async () => {
@@ -313,7 +433,7 @@ describe("fetchFreshQuotesCascade", () => {
 
     const result = await fetchFreshQuotesCascade(["MSFT"], "local", "VA00000000", "tr-sand");
 
-    expect(mockGetEquityQuotes).toHaveBeenCalledWith("VA00000000", ["MSFT"]);
+    expect(mockGetEquityQuotes).toHaveBeenCalledWith("VA00000000", ["MSFT"], { signal: undefined });
     // Must not chase a fresher external print — sandbox fills against delayed tape.
     expect(mockEnrich).not.toHaveBeenCalled();
     expect(mockFetchYahooFinanceQuotesBatch).not.toHaveBeenCalled();
@@ -342,7 +462,7 @@ describe("fetchFreshQuotesCascade", () => {
 
     const result = await fetchFreshQuotesCascade(["MSFT"], "local", "ACC123");
 
-    expect(mockGetEquityQuotes).toHaveBeenCalledWith("ACC123", ["MSFT"]);
+    expect(mockGetEquityQuotes).toHaveBeenCalledWith("ACC123", ["MSFT"], { signal: undefined });
     expect(mockEnrich).toHaveBeenCalledWith(["MSFT"]);
     expect(mockFetchYahooFinanceQuotesBatch).not.toHaveBeenCalled();
 

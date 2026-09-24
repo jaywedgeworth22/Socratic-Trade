@@ -53,13 +53,51 @@ export function cascadeFreshMaxAgeMs(maxQuoteAgeSec?: number | null): number {
  * Missing/unparseable asOf is NEVER treated as fresh — continue the cascade.
  * Venue-authoritative quotes are handled separately (always acceptable when priced).
  */
-function isTwoSidedLiveNbbo(quote: { bid?: number; ask?: number }): boolean {
+export function isTwoSidedLiveNbbo(quote: {
+  bid?: number;
+  ask?: number;
+  syntheticSpread?: boolean;
+  syntheticBid?: boolean;
+  syntheticAsk?: boolean;
+}): boolean {
+  if (quote.syntheticSpread || quote.syntheticBid || quote.syntheticAsk) {
+    return false;
+  }
+  // A crossed book (bid > ask) is malformed — never treat it as a live NBBO,
+  // even though both sides are positive (Codex P2 review).
+  if (
+    typeof quote.bid === "number" &&
+    typeof quote.ask === "number" &&
+    quote.ask < quote.bid
+  ) {
+    return false;
+  }
   return (
     typeof quote.bid === "number" &&
     quote.bid > 0 &&
     typeof quote.ask === "number" &&
     quote.ask > 0
   );
+}
+
+/**
+ * A two-sided book that may age by FETCH time rather than last-print time.
+ * Restricted to verified real-time venues: delayed tapes (Yahoo cascade feeds,
+ * secondary Tradier-paper books) age by market time instead, so a delayed quote
+ * can never masquerade as live via a fresh fetch stamp (Codex P1 reviews).
+ */
+function isVerifiedRealtimeBook(quote: {
+  bid?: number;
+  ask?: number;
+  syntheticSpread?: boolean;
+  syntheticBid?: boolean;
+  syntheticAsk?: boolean;
+  venueDelayedTape?: boolean;
+  provider?: string;
+}): boolean {
+  if (quote.venueDelayedTape) return false;
+  if (isYahooFallbackProvider(quote.provider)) return false;
+  return isTwoSidedLiveNbbo(quote);
 }
 
 export function isQuoteFresh(
@@ -70,6 +108,10 @@ export function isQuoteFresh(
     ask?: number;
     fetchedAt?: string;
     provider?: string;
+    venueDelayedTape?: boolean;
+    syntheticSpread?: boolean;
+    syntheticBid?: boolean;
+    syntheticAsk?: boolean;
   },
   nowMs: number,
   maxAgeMs: number = cascadeFreshMaxAgeMs()
@@ -77,7 +119,9 @@ export function isQuoteFresh(
   if (quote.venuePriceAuthoritative) return true;
   // Two-sided broker NBBO fetched just now is live even when last-print `asOf` is old
   // (quiet names / IEX last trade sitting still).  Age the fetch, not the last print.
-  if (isTwoSidedLiveNbbo(quote) && quote.fetchedAt) {
+  // Delayed tapes (Yahoo, secondary Tradier paper) and crossed books are excluded:
+  // they age by market time so delay never masquerades as freshness.
+  if (isVerifiedRealtimeBook(quote) && quote.fetchedAt) {
     const fetchedMs = new Date(quote.fetchedAt).getTime();
     if (!Number.isNaN(fetchedMs)) {
       const fetchAgeMs = nowMs - fetchedMs;
@@ -108,6 +152,9 @@ export function isUsableBrokerQuote(
     fetchedAt?: string;
     provider?: string;
     price?: number;
+    syntheticSpread?: boolean;
+    syntheticBid?: boolean;
+    syntheticAsk?: boolean;
   },
   nowMs: number,
   maxAgeMs: number = cascadeFreshMaxAgeMs()
@@ -119,6 +166,7 @@ export function isUsableBrokerQuote(
  * Age (seconds) used by the policy staleness gate.
  *
  * - Real-time quotes: age of trade-time `asOf` (true market freshness).
+ * - Live two-sided NBBO broker quotes: age of `fetchedAt` if recent (active book).
  * - Venue-authoritative delayed feeds (Tradier sandbox): age of `fetchedAt` (snapshot
  *   freshness). The ~15m trade-time delay is the venue, not a broken cascade.
  */
@@ -129,15 +177,28 @@ export function quoteAgeSecForStalenessGate(
     fetchedAt?: string;
     delayedFallback?: boolean;
     provider?: string;
+    bid?: number;
+    ask?: number;
+    syntheticSpread?: boolean;
+    syntheticBid?: boolean;
+    syntheticAsk?: boolean;
+  venueDelayedTape?: boolean;
   } | undefined,
   nowMs: number
 ): { ageSec?: number; missing: boolean; venueDelayed: boolean; delayedFallback: boolean } {
   if (!quote) return { missing: true, venueDelayed: false, delayedFallback: false };
   const venueDelayed = quote.venuePriceAuthoritative === true;
   const delayedFallback = isDelayedYahooFallbackQuote(quote, nowMs);
+  const liveNbbo = isVerifiedRealtimeBook(quote);
   // Venue-delayed tape and delayed Yahoo fallback: age the FETCH snapshot, not the
   // expected ~15m print.  A just-fetched delayed Yahoo quote is not a broken cascade.
-  const stamp = venueDelayed || delayedFallback ? quote.fetchedAt ?? quote.asOf : quote.asOf;
+  // Real-time two-sided NBBO broker quotes: also age fetchedAt if available and valid.
+  // Delayed tapes (Yahoo cascade feeds, secondary Tradier paper) age by market time.
+  const useFetchedAt =
+    venueDelayed ||
+    delayedFallback ||
+    (liveNbbo && typeof quote.fetchedAt === "string" && !Number.isNaN(new Date(quote.fetchedAt).getTime()));
+  const stamp = useFetchedAt ? quote.fetchedAt ?? quote.asOf : quote.asOf;
   if (!stamp) return { missing: true, venueDelayed, delayedFallback };
   const asOfMs = new Date(stamp).getTime();
   if (Number.isNaN(asOfMs)) return { missing: true, venueDelayed, delayedFallback };
@@ -219,12 +280,16 @@ export async function fetchFreshQuotesCascade(
   userId: string,
   accountNumber?: string,
   connectedAccountId?: string,
-  options?: { signal?: AbortSignal }
+  options?: { signal?: AbortSignal; skipActiveBroker?: boolean }
 ): Promise<Record<string, BrokerQuote>> {
   const signal = options?.signal;
   throwIfCascadeAborted(signal);
   const nowMs = Date.now();
   const fetchedAtIso = new Date(nowMs).toISOString();
+  // Stamp each quote when its fetch COMPLETES, not when the cascade started: a
+  // quote obtained after a slow broker wait must not arrive already aged by that
+  // wait (Codex P2 review).  fetchedAtIso remains as a last-resort fallback.
+  const stampIngest = (): string => new Date().toISOString();
   const normalizedSymbols = Array.from(new Set(symbols.map(normalizeSymbol).filter(Boolean)));
   const result: Record<string, BrokerQuote> = {};
 
@@ -261,20 +326,25 @@ export async function fetchFreshQuotesCascade(
 
   const ingestBrokerQuotes = (
     brokerQuotes: Record<string, BrokerQuote>,
-    opts: { venueDelayed: boolean; providerTag: string }
+    opts: { venueDelayed: boolean; delayedTape?: boolean; providerTag: string }
   ) => {
     for (const symbol of [...pendingSymbols]) {
       const quote = brokerQuotes[symbol] ?? brokerQuotes[normalizeSymbol(symbol)];
       if (!quote) continue;
       const resolvedPrice = quote.price ?? (quote.bid && quote.ask ? (quote.bid + quote.ask) / 2 : undefined);
       if (!(typeof resolvedPrice === "number" && resolvedPrice > 0)) continue;
+      const ingestAt = stampIngest();
       let normalizedQuote: BrokerQuote = {
         ...quote,
         price: resolvedPrice,
-        provider: quote.provider ?? opts.providerTag
+        provider: quote.provider ?? opts.providerTag,
+        fetchedAt: quote.fetchedAt ?? ingestAt,
+        // Secondary delayed-tape books (Tradier paper) are kept for fallback but must
+        // never be promoted to real-time by a fresh fetch stamp (Codex P1 review).
+        ...(opts.delayedTape ? { venueDelayedTape: true as const } : {})
       };
       if (opts.venueDelayed) {
-        normalizedQuote = stampVenueAuthoritative(normalizedQuote, fetchedAtIso);
+        normalizedQuote = stampVenueAuthoritative(normalizedQuote, ingestAt);
         updateBestQuote(symbol, normalizedQuote);
         result[symbol] = normalizedQuote;
       } else {
@@ -297,9 +367,12 @@ export async function fetchFreshQuotesCascade(
     venueMode = resolveVenueQuoteMode(policy, userId);
     activeConnectedId = policy.connectedAccountId;
     const activeAccountNum = accountNumber ?? policy.accountNumber;
-    if (activeAccountNum && policy.activeBroker) {
+    // skipActiveBroker: the caller already hit this broker directly (e.g. the dashboard
+    // fallback after its own gateway call timed out) — do not issue a duplicate call to
+    // the same broker while it is degraded (Codex P1 review).
+    if (activeAccountNum && policy.activeBroker && !options?.skipActiveBroker) {
       const gateway = getBrokerGateway(policy, userId);
-      const brokerQuotes = await gateway.getEquityQuotes(activeAccountNum, pendingSymbols);
+      const brokerQuotes = await gateway.getEquityQuotes(activeAccountNum, pendingSymbols, { signal });
       ingestBrokerQuotes(brokerQuotes, {
         venueDelayed: venueMode === "venue_delayed",
         providerTag: String(policy.activeBroker)
@@ -322,9 +395,14 @@ export async function fetchFreshQuotesCascade(
           throwIfCascadeAborted(signal);
           const stub = policyStubForConnectedAccount(account);
           const gateway = getBrokerGateway(stub, userId);
-          const brokerQuotes = await gateway.getEquityQuotes(account.accountNumber, pendingSymbols);
+          const brokerQuotes = await gateway.getEquityQuotes(account.accountNumber, pendingSymbols, { signal });
+          // A secondary Tradier paper/sandbox book is ~15m delayed tape: keep it for
+          // fallback but never let a fresh fetch stamp promote it to real-time and stop
+          // the cascade ahead of Alpaca/Yahoo (Codex P1 review).
+          const delayedTape = account.broker === "tradier" && account.environment === "paper";
           ingestBrokerQuotes(brokerQuotes, {
             venueDelayed: false,
+            delayedTape,
             providerTag: `${account.broker}-connected`
           });
         } catch (err) {
@@ -362,7 +440,8 @@ export async function fetchFreshQuotesCascade(
                 ask: data.ask,
                 volume: data.volume,
                 asOf: data.asOf,
-                provider: "alpaca-snapshot"
+                provider: "alpaca-snapshot",
+                fetchedAt: stampIngest()
               };
               updateBestQuote(symbol, q);
               if (isQuoteFresh(q, nowMs, maxAgeMs)) {
@@ -398,7 +477,8 @@ export async function fetchFreshQuotesCascade(
               provider: "yahoo-finance-batch",
               syntheticBid: data.syntheticBid,
               syntheticAsk: data.syntheticAsk,
-              syntheticSpread: data.syntheticSpread
+              syntheticSpread: data.syntheticSpread,
+              fetchedAt: stampIngest()
             };
             updateBestQuote(symbol, q);
             if (isQuoteFresh(q, nowMs, maxAgeMs)) {
@@ -434,7 +514,8 @@ export async function fetchFreshQuotesCascade(
               provider: "yahoo-finance-single",
               syntheticBid: quote.syntheticBid,
               syntheticAsk: quote.syntheticAsk,
-              syntheticSpread: quote.syntheticSpread
+              syntheticSpread: quote.syntheticSpread,
+              fetchedAt: stampIngest()
             };
             updateBestQuote(symbol, q);
             if (isQuoteFresh(q, nowMs, maxAgeMs)) {
@@ -460,7 +541,7 @@ export async function fetchFreshQuotesCascade(
             try {
               const res = await fetchWithRetry(
                 `https://api.roic.ai/v2/company/profile/${encodeURIComponent(symbol)}?apikey=${encodeURIComponent(roic.key!)}`,
-                {},
+                { signal },
                 { service: "roic", keySource: roic.source, userId }
               );
               if (res.ok) {
@@ -473,7 +554,8 @@ export async function fetchFreshQuotesCascade(
                       symbol,
                       price,
                       asOf: new Date().toISOString(),
-                      provider: "roic"
+                      provider: "roic",
+                      fetchedAt: stampIngest()
                     };
                     updateBestQuote(symbol, q);
                     if (isQuoteFresh(q, nowMs, maxAgeMs)) {

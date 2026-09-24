@@ -34,6 +34,13 @@ describe("yahooQuoteFromChartMeta", () => {
     expect(quote?.fiftyTwoWeekLow).toBeUndefined();
     expect(quote?.peRatio).toBeUndefined();
   });
+
+  it("leaves prevClose undefined when Yahoo omits chartPreviousClose — never the current price", () => {
+    const quote = yahooQuoteFromChartMeta({ regularMarketPrice: 100 });
+    expect(quote?.price).toBe(100);
+    // Falling back to the price here fabricates a 0% intraday change.
+    expect(quote?.prevClose).toBeUndefined();
+  });
 });
 
 describe("yahooFundamentalsFromRecord", () => {

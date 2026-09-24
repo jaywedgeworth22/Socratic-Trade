@@ -966,6 +966,14 @@ export interface BrokerQuote {
   syntheticBid?: boolean;
   /** True when only the ASK was derived from price (the bid may be real). */
   syntheticAsk?: boolean;
+  /**
+   * Secondary delayed-tape book (e.g. a connected Tradier paper account in cascade
+   * Level 1b): ~15m delayed market data that must NEVER be promoted to real-time by
+   * a fresh fetch stamp.  Unlike venuePriceAuthoritative (the ACTIVE execution venue),
+   * this does not stop the cascade — the quote ages by market time and later levels
+   * continue.  (Codex P1 review on the quote cascade.)
+   */
+  venueDelayedTape?: boolean;
 }
 
 /**
@@ -2571,7 +2579,7 @@ export interface BrokerGateway {
   getEquityPositions(accountNumber: string): Promise<EquityPosition[]>;
   getOptionPositions?(accountNumber: string): Promise<OptionPosition[]>;
   getEquityOrders(accountNumber: string, options?: GetEquityOrdersOptions): Promise<EquityOrder[]>;
-  getEquityQuotes(accountNumber: string, symbols: string[]): Promise<Record<string, BrokerQuote>>;
+  getEquityQuotes(accountNumber: string, symbols: string[], options?: { signal?: AbortSignal }): Promise<Record<string, BrokerQuote>>;
   getEquityTradability(accountNumber: string, symbols: string[]): Promise<Record<string, { tradable: boolean; fractional: boolean; reason?: string }>>;
   reviewEquityOrder(input: EquityOrderInput): Promise<ReviewedOrder>;
   placeEquityOrder(input: EquityOrderInput & { refId: string }): Promise<ExecutedOrder>;

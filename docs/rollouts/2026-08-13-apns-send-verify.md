@@ -1,5 +1,7 @@
 # Socratic-Trade APNs send verify
 
+> **2026-09-22 [MM] archaeology note:** historical reference to `APNS_BUNDLE_ID = trade.socratic.app` is kept verbatim as the topic that was live at rollout time.  Renamed on 2026-09-22 to `com.socratictrade.ios` (PR forthcoming).  See `docs/rollouts/2026-09-22-bundle-id-migration.md`.
+
 #2681 already landed the HTTP/2 sender, register route, and notify channel.  This pass does not steal `monet/apns-push`.
 
 ## What changed

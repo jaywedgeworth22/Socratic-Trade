@@ -9,7 +9,7 @@
  *
  * Usage:
  *   node asc-api.mjs GET /v1/apps
- *   node asc-api.mjs GET "/v1/apps?filter[bundleId]=trade.socratic.app"
+ *   node asc-api.mjs GET "/v1/apps?filter[bundleId]=com.socratictrade.ios"
  *   node asc-api.mjs PATCH /v1/betaAppReviewDetails/<id> '{"data":{...}}'
  *   node asc-api.mjs latest-build-seq <bundleId> <prefix>   # e.g. ... trade.congress.ios 1.0
  *

@@ -11,6 +11,12 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:socratictrade.com</string>
+		<string>applinks:socratic.trade</string>
+		<string>webcredentials:socratic.trade</string>
+	</array>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.socratictrade</string>
 	</array>
 </dict>
 </plist>

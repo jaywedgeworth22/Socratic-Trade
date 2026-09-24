@@ -1,5 +1,37 @@
 # Current Status
 
+## 2026-09-24 FIXER — PR #3451 tip: retarget to com.socratictrade.ios
+
+**Current state.** Tip of `minimax/bundle-rename` (PR #3451) retargeted from the interim
+wrong ID `trade.socratic.ios` → correct **`com.socratictrade.ios`**, rebased onto
+`origin/main`, and patched for the coexistence window: native SIWA accepts BOTH
+`com.socratictrade.ios` and
+`trade.socratic.app` (hardcoded — do NOT rely on `APPLE_CLIENT_ID`, which is the web Service
+ID); APNs register/send accepts + uses per-device topic for both bundle IDs
+(`resolveAcceptedApnsBundleIds` / `APNS_BUNDLE_IDS`); AASA keeps BOTH
+`CC8UTF7ATG.com.socratictrade.ios` and `CC8UTF7ATG.trade.socratic.app` and adds top-level
+`webcredentials.apps`; `scripts/ios-fleet.sha256` pin refreshed after `apps.json` /
+`asc-api.mjs` drift. Extra-ship no.
+
+**Resolved (Jay / ASC):**
+1. **ASC new app record** — DONE: Jay created the new ASC app for `com.socratictrade.ios`;
+   Apple ID `6815511597` (owner-supplied via iMessage 2026-09-23 ~11:05 PM CT) is now written
+   into `scripts/ios-fleet/apps.json` + `scripts/ios-fleet/ios-app-versions.json`. `6799238379`
+   remains the OLD app's id (immutable bundle on that record). An intermediate revert that
+   called the new ID invented was wrong.
+2. **Apple Developer Portal** — register App ID `com.socratictrade.ios` (+ tests
+   `com.socratictrade.ios.tests`), App Group `group.com.socratictrade`, Associated Domains
+   `socratic.trade` (applinks + webcredentials).
+3. **DNS** — point `socratic.trade` at the same Next.js edge as `socratictrade.com` so AASA
+   + webcredentials resolve.
+4. **Infisical flip timing** — do NOT flip `APNS_BUNDLE_ID` to `com.socratictrade.ios` until a
+   new-bundle TestFlight build is live; dual-topic server support is in place so both can
+   coexist before/after the flip. Same for adding the new native audience on the Apple
+   Service ID list.
+
+Rollout: `docs/rollouts/2026-09-22-bundle-id-migration.md`. PR:
+https://github.com/jaywedgeworth22/Socratic.Trade/pull/3451
+
 ## 2026-09-23 INSTINCT — PR #3458 CI fix: email sign-off test assertions
 
 The rename commit (`320f7bf9`) changed `NOTIFY_EMAIL_SENT_BY` to `(sent by Socratic-Trade)`

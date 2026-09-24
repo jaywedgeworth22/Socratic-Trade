@@ -1,5 +1,7 @@
 # Unified Authentication Rollout
 
+> **2026-09-22 [MM] archaeology note:** historical references to `trade.socratic.app` and the `socratictrade://` URL scheme are kept verbatim as they were live at rollout time.  The bundle ID was renamed on 2026-09-22 to `com.socratictrade.ios` (PR forthcoming); `CFBundleURLName` in `ios/SocraticTrade/Info.plist` carries the new ID, and the `socratictrade://` URL scheme is unchanged.  See `docs/rollouts/2026-09-22-bundle-id-migration.md`.
+
 - **Summary**: Implemented Unified Authentication across iOS and Web, bridging Google, GitHub, and Apple Sign-In seamlessly. Corrected iOS bundle identifier to `trade.socratic.app`, added Apple Sign-In entitlements, and fixed Next.js `metadataBase` fallback logic.
 - **Why**: The iOS app previously only supported Apple Sign-In natively. To support Google and GitHub, we used `ASWebAuthenticationSession` to initiate an OAuth flow on the web backend, capturing and injecting the resulting stateless JWT back into the iOS native cookie jar. The bundle ID mismatch and missing entitlements previously caused `AKAuthenticationError Code=-7026`.
 - **Files Touched**:

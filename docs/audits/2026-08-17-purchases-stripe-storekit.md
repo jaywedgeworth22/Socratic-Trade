@@ -1,5 +1,7 @@
 # Socratic-Trade purchases audit — Stripe + StoreKit (2026-08-17)
 
+> **2026-09-22 [MM] archaeology note:** historical references to the Socratic.Trade bundle ID `trade.socratic.app` are kept verbatim as the ID that was live at audit time.  Renamed on 2026-09-22 to `com.socratictrade.ios` (PR forthcoming); the App Store Connect app `6799238379` and the AASA appIDs claim are now keyed on `CC8UTF7ATG.com.socratictrade.ios`.  See `docs/rollouts/2026-09-22-bundle-id-migration.md`.
+
 **Status:** report only.  No code, Stripe sessions, StoreKit purchases, or card charges.
 
 **Auditor:** Cursor Cloud.  Base: `origin/main` at `87a91a8f` (this branch adds docs only).

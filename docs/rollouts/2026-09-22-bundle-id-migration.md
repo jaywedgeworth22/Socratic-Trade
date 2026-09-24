@@ -1,6 +1,6 @@
 # 2026-09-22 — Bundle Identifier Migration
 
-> **2026-09-24 retarget:** the interim new ID `trade.socratic.ios` was wrong. Jay corrected the new bundle to **`com.socratictrade.ios`** (tests `com.socratictrade.ios.tests`, App Group `group.com.socratictrade`). Old ASC app `6799238379` stays on `trade.socratic.app`. **NO-SHIP** until Jay creates an ASC app for `com.socratictrade.ios` and writes the new Apple ID into `scripts/ios-fleet/apps.json` + `ios-app-versions.json`.
+> **2026-09-24 retarget:** the interim new ID `com.socratictrade.ios` was wrong. Jay corrected the new bundle to **`com.socratictrade.ios`** (tests `com.socratictrade.ios.tests`, App Group `group.com.socratictrade`). Old ASC app `6799238379` stays on `trade.socratic.app`. **NO-SHIP** until Jay creates an ASC app for `com.socratictrade.ios` and writes the new Apple ID into `scripts/ios-fleet/apps.json` + `ios-app-versions.json`.
 
 Issue raised on the macOS signing-cert change window, where the owner approved a fleet-wide bundle rename so every app uses a domain Jay owns as its base.  This document covers **Socratic.Trade only**; the rest of the fleet (BotFleet, Autorotate, ContactLogo, DealDex, HogHunter, Congress.Trade, Usage-Monitor, the MiniMax-ios companion) is on separate lanes owned by other seats.  The fleet-wide context lives in `/Users/jay/.minimax/sessions/mvs_0bdfe8c73c1046a986df888aa99dcb2e/workspace/fleet-bundle-id-plan.md`.
 

@@ -66,8 +66,11 @@ const ALIAS_PATTERNS: ReadonlyArray<readonly [AliasFamily, RegExp]> = [
   ["gpt-mini", /\bgpt[-_ ]?(?:4o-mini|4\.1-mini|mini)\b/i],
   ["gpt-nano", /\bgpt[-_ 0-9.]*nano\b/i],
   ["gpt-4o", /\bgpt[-_ ]?4o\b/i],
-  // The whole gpt-5 family: bare "gpt-5", gpt-5.5, gpt-5.6-sol, gpt-5.6-luna, gpt-5.6-terra, …
-  ["gpt-5", /\bgpt-5(?:[.\d][^\s-]*)?(?:-sol|-terra|-luna)?$/i],
+  // The whole gpt-5 family: bare "gpt-5", gpt-5.5, gpt-5.6-sol, gpt-5.6-luna, gpt-5.6-terra,
+  // and any future gpt-5 variant suffix (dated builds, new codenames, …).  nano/mini
+  // variants are still routed by the earlier gpt-nano / gpt-mini patterns, which win on
+  // order.
+  ["gpt-5", /\bgpt-5(?:[.\d-][^\s]*)?$/i],
   ["gemini-flash-lite", /gemini[-_ ]?flash[-_ ]?lite/i],
   ["gemini-flash", /gemini[-_ ]?flash/i],
   ["gemini-pro", /gemini[-_ ]?pro/i],
@@ -130,13 +133,14 @@ export interface AliasStatsOptions {
 /** Aggregate llm_usage rows into per-alias stat rows.  Two windows are produced by calling this
  *  once with no `sinceIso` (all-time) and once with `sinceIso = now - 90d` (rolling quarter).
  *
- *  Implementation note: we load the rows once into JS and aggregate there.  SQLite GROUP BY
- *  would be cleaner for huge tables but loses the cross-alias merge we need (a single row
- *  contributes to one alias, but counting distinct source-models per alias requires a window
- *  that SQLite doesn't express as concisely).  With the prune path capped at 5_000 rows per
- *  pass and the all-time window typically < 1M rows this stays well under Node's per-thread
- *  heap budget.  If the table grows past ~10M rows, swap the inner loop for a SQLite virtual
- *  table or a dedicated materialized view. */
+ *  Implementation note: the sums aggregate per model in SQL (GROUP BY model, provider,
+ *  cost_source) so the unbounded all-time window materializes O(distinct models) grouped rows
+ *  instead of O(all LLM calls) raw rows — the ledger is kept forever, so raw-row
+ *  materialization would grow without bound.  Alias buckets still merge in JS because
+ *  `aliasForModel` is deterministic per model id; the merge is exact (sums, status counts,
+ *  distinct source-model/provider sets).  Latency percentiles come from a second narrow
+ *  query that only touches rows with a recorded latency, so the merged distributions are
+ *  identical to a full-row scan. */
 export function aggregateLlmStats(opts: AliasStatsOptions = {}): AliasStatRow[] {
   const db = getDb();
 
@@ -150,28 +154,40 @@ export function aggregateLlmStats(opts: AliasStatsOptions = {}): AliasStatRow[] 
     where.push("user_id = ?");
     params.push(opts.userId);
   }
+  const filter = where.join(" AND ");
 
-  interface RawRow {
+  interface GroupRow {
     model: string | null;
-    provider: string;
-    prompt_tokens: number | null;
-    completion_tokens: number | null;
-    total_tokens: number | null;
-    cost_usd: number | null;
+    provider: string | null;
     cost_source: string | null;
-    latency_ms: number | null;
-    status: string | null;
+    calls: number;
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    cost_usd: number;
+    error_calls: number;
+    timeout_calls: number;
+    canceled_calls: number;
   }
-  const rows = db
-    .prepare(`SELECT model, provider, prompt_tokens, completion_tokens, total_tokens, cost_usd, cost_source, latency_ms, status FROM llm_usage WHERE ${where.join(" AND ")}`)
-    .all(...params) as RawRow[];
+  const groups = db
+    .prepare(
+      `SELECT model, provider, cost_source,
+              COUNT(*) AS calls,
+              COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
+              COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
+              COALESCE(SUM(total_tokens), 0) AS total_tokens,
+              COALESCE(SUM(cost_usd), 0) AS cost_usd,
+              SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_calls,
+              SUM(CASE WHEN status = 'timeout' THEN 1 ELSE 0 END) AS timeout_calls,
+              SUM(CASE WHEN status = 'canceled' THEN 1 ELSE 0 END) AS canceled_calls
+       FROM llm_usage WHERE ${filter}
+       GROUP BY model, provider, cost_source`
+    )
+    .all(...params) as GroupRow[];
 
   const buckets = new Map<string, AliasStatRow>();
-  // Latency samples per alias, sorted at the end to compute percentiles.
-  const latencies = new Map<string, number[]>();
-
-  for (const row of rows) {
-    const { family, label } = aliasForModel(row.model);
+  const bucketFor = (model: string | null): AliasStatRow => {
+    const { family, label } = aliasForModel(model);
     const key = label || "(unknown)";
     let bucket = buckets.get(key);
     if (!bucket) {
@@ -196,31 +212,47 @@ export function aggregateLlmStats(opts: AliasStatsOptions = {}): AliasStatRow[] 
       };
       buckets.set(key, bucket);
     }
-    bucket.calls += 1;
-    bucket.promptTokens += row.prompt_tokens ?? 0;
-    bucket.completionTokens += row.completion_tokens ?? 0;
-    bucket.totalTokens += row.total_tokens ?? 0;
-    if (row.cost_source === "billed") {
-      bucket.billedCostUsd += row.cost_usd ?? 0;
-    } else if (row.cost_source === "estimated") {
-      bucket.estimatedCostUsd += row.cost_usd ?? 0;
-    } else if (row.cost_usd !== null && row.cost_usd !== undefined) {
-      // Legacy row without cost_source — treat as estimated (matches the legacy default).
-      bucket.estimatedCostUsd += row.cost_usd;
+    return bucket;
+  };
+
+  for (const g of groups) {
+    const bucket = bucketFor(g.model);
+    bucket.calls += g.calls;
+    bucket.promptTokens += g.prompt_tokens;
+    bucket.completionTokens += g.completion_tokens;
+    bucket.totalTokens += g.total_tokens;
+    if (g.cost_source === "billed") {
+      bucket.billedCostUsd += g.cost_usd;
+    } else {
+      // "estimated" or a legacy row without cost_source — estimated by default
+      // (matches the legacy treatment of rows that predate cost provenance).
+      bucket.estimatedCostUsd += g.cost_usd;
     }
-    if (row.status === "error") bucket.errorCalls += 1;
-    else if (row.status === "timeout") bucket.timeoutCalls += 1;
-    else if (row.status === "canceled") bucket.canceledCalls += 1;
-    if (row.model && !bucket.sourceModels.includes(row.model)) bucket.sourceModels.push(row.model);
-    if (row.provider && !bucket.providers.includes(row.provider)) bucket.providers.push(row.provider);
-    if (row.latency_ms !== null && row.latency_ms !== undefined) {
-      let list = latencies.get(key);
-      if (!list) {
-        list = [];
-        latencies.set(key, list);
-      }
-      list.push(row.latency_ms);
+    bucket.errorCalls += g.error_calls;
+    bucket.timeoutCalls += g.timeout_calls;
+    bucket.canceledCalls += g.canceled_calls;
+    if (g.model && !bucket.sourceModels.includes(g.model)) bucket.sourceModels.push(g.model);
+    if (g.provider && !bucket.providers.includes(g.provider)) bucket.providers.push(g.provider);
+  }
+
+  // Latency percentiles: only rows that actually recorded a latency participate.  Merging
+  // the per-row samples in JS yields the exact same order statistics as a full scan.
+  interface LatRow {
+    model: string | null;
+    latency_ms: number;
+  }
+  const latRows = db
+    .prepare(`SELECT model, latency_ms FROM llm_usage WHERE ${filter} AND latency_ms IS NOT NULL`)
+    .all(...params) as LatRow[];
+  const latencies = new Map<string, number[]>();
+  for (const r of latRows) {
+    const key = aliasForModel(r.model).label || "(unknown)";
+    let list = latencies.get(key);
+    if (!list) {
+      list = [];
+      latencies.set(key, list);
     }
+    list.push(r.latency_ms);
   }
 
   // Compute percentiles per bucket.

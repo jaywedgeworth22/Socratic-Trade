@@ -24,7 +24,8 @@ import {
   Sun,
   UserRound,
   Menu,
-  X
+  X,
+  Gauge
 } from "lucide-react";
 import "../console/console.css";
 import { useConsoleTheme, type ConsoleTheme } from "../console/lib/useConsoleTheme";
@@ -60,6 +61,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "LLM Usage & Cost",
     desc: "Per-key, per-model, per-context LLM spend across all accounts.",
     icon: Brain
+  },
+  {
+    href: "/admin/llm-stats",
+    label: "LLM Stats",
+    desc: "Alias-aggregated LLM call stats: all-time and last-90d windows side by side.",
+    icon: Gauge
   },
   {
     href: "/admin/rag-coverage",

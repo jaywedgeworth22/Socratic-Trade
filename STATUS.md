@@ -1,5 +1,17 @@
 # Current Status
 
+## 2026-09-24 MUSE — LLM stats console review-findings sweep (PR #3452)
+
+**Current state.** Branch `minimax/llm-stats-and-held-20260923` rebased past `origin/main` (one
+`src/lib/llm-model-catalog.ts` conflict, resolved keeping both sides).  All open Sentry/Codex
+review threads addressed in code: OpenAILLM latency/status wiring + tests, side-by-side
+all-time/last-90d console, admin nav item, future-proof gpt-5 alias regex, SQL per-model
+aggregation.  Local gate: tsc clean, lint 0 errors, targeted vitest 18/18; full suite + build
+results in the fix commit message.  Next: push, let `verify` CI re-run, squash-merge per the
+standing owner auto-merge rule, then resolve the review threads.  Watch item: the MM commit's
+Opus 5.5 price pin ($4/$20) vs PR #3705's $4.50/$22.50 — whichever merges second reconciles.
+Rollout: `docs/rollouts/2026-09-24-llm-stats-console.md`.
+
 ## 2026-09-24 FIXER — PR #3451 tip: retarget to com.socratictrade.ios
 
 **Current state.** Tip of `minimax/bundle-rename` (PR #3451) retargeted from the interim

@@ -569,6 +569,12 @@ export class OpenAILLM implements ChatLLM {
 
   async run(args: LlmRunArgs): Promise<LlmResult> {
     const { system, message, tools, executeTool, history } = args;
+    // 2026-09-23 MM (llm-stats feature): capture total wall-clock latency for this chat run
+    // (covers the entire multi-step tool loop, not just the last provider request) so the
+    // LLM stats console can render p50/p95/p99 per model alias.  status reflects whether the
+    // run returned a usable assistant message vs. threw / was canceled / timed out.
+    const startedAt = performance.now();
+    let chatStatus: "success" | "error" | "timeout" | "canceled" = "success";
     // Build OpenAI messages array. Prior user/assistant turns first, then the current message.
     const messages: any[] = [];
     let promptTokens = 0;
@@ -603,6 +609,7 @@ export class OpenAILLM implements ChatLLM {
     for (let step = 0; step < MAX_STEPS; step++) {
       if (args.abortSignal?.aborted) {
         args.onStage?.({ stage: "error", reason: "cancelled" });
+        chatStatus = "canceled";
         break;
       }
       if (typeof args.deadlineMs === "number") {
@@ -618,6 +625,8 @@ export class OpenAILLM implements ChatLLM {
             remainingMs: budget.remainingMs,
             minStageMs: budget.minStageMs
           });
+          // Deadline budget ran out before this step could start, so the reply was cut short.
+          chatStatus = "timeout";
           break;
         }
       }
@@ -651,11 +660,30 @@ export class OpenAILLM implements ChatLLM {
           })
         : { ...baseBody, max_tokens: 1024 };
       if (this.provider === "openrouter") applyOpenRouterProviderRouting(requestBody);
-      const resp = await this.transport(
-        requestBody,
-        this.apiKey,
-        args.abortSignal
-      );
+      let resp: any;
+      try {
+        resp = await this.transport(
+          requestBody,
+          this.apiKey,
+          args.abortSignal
+        );
+      } catch (e) {
+        // Record the failed run (tokens billed on earlier steps + wall-clock latency) so
+        // error / timeout / canceled rows reach the LLM stats console, then rethrow unchanged.
+        chatStatus = args.abortSignal?.aborted ? "canceled" : isAbortOrTimeoutError(e) ? "timeout" : "error";
+        recordChatUsage(
+          this.usage,
+          this.provider,
+          this.model,
+          promptTokens,
+          completionTokens,
+          sawUsage,
+          generationIds.length === 1 ? generationIds[0] : undefined,
+          performance.now() - startedAt,
+          chatStatus
+        );
+        throw e;
+      }
 
       const genId = providerRequestIdFromPayload(this.provider, resp);
       if (genId) generationIds.push(genId);
@@ -716,7 +744,9 @@ export class OpenAILLM implements ChatLLM {
       promptTokens,
       completionTokens,
       sawUsage,
-      generationIds.length === 1 ? generationIds[0] : undefined
+      generationIds.length === 1 ? generationIds[0] : undefined,
+      performance.now() - startedAt,
+      chatStatus
     );
     return { text: text || DISCLAIMER, toolCalls, citations };
   }

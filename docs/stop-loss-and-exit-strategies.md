@@ -178,9 +178,13 @@ fill arbitrarily far. Protective *exits* stay market for fill certainty.
 ## C. Account-level circuit breakers (flip `systemState`)
 
 ### Max drawdown — `riskRules.maxDrawdownPct`
-Trailing drawdown from the equity high-water mark ≥ cap → `systemState` →
-`close_only` + kill-switch notification. `risk-breaker.ts:39`, evaluated at run
-start (`strategy.ts:~190`). Default off.
+Trailing drawdown from the cash-flow-aware equity high-water mark ≥ cap →
+advisory (default) or `systemState` → `close_only`/`halt` when opted in.
+`risk-breaker.ts` evaluates at run start. Deposits raise HWM by the dollars
+added; withdrawals scale HWM by remaining/prior equity so a cash-out is not a
+false drawdown. Persisted at `risk:hwm:${userId}:${accountNumber}:${source}`.
+Stuck marks (historical deposits/withdrawals before this recorder) are healed
+by ops `POST /api/ops/hwm/recompute`. Default off.
 
 ### Daily-loss — `riskRules.maxDailyLossNotional`
 Single-day equity loss from the day's start ≥ cap → `close_only`. Same module.

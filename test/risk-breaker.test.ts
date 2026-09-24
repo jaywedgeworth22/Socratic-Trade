@@ -2,7 +2,14 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
-import { accountEquity, evaluateDrawdownBreaker } from "../src/lib/risk-breaker";
+import {
+  accountEquity,
+  adjustHighWaterMarkForExternalFlow,
+  applyExternalFlowsToHighWaterMark,
+  evaluateDrawdownBreaker,
+  impliedDrawdownPct,
+  recomputeHighWaterMarkFromTransferFlows
+} from "../src/lib/risk-breaker";
 import type { RiskRules } from "../src/lib/types";
 
 beforeAll(() => {
@@ -43,6 +50,87 @@ describe("evaluateDrawdownBreaker (pure)", () => {
 
   it("a profitable day with no peak drawdown never breaches", () => {
     expect(evaluateDrawdownBreaker({ equity: 11000, highWaterMark: 11000, startOfDayEquity: 10000, maxDrawdownPct: 15, maxDailyLossNotional: 1000 }).breached).toBe(false);
+  });
+});
+
+describe("adjustHighWaterMarkForExternalFlow (pure)", () => {
+  it("raises HWM by a deposit (new capital is not a trading peak, but it must not erase a hole)", () => {
+    expect(adjustHighWaterMarkForExternalFlow({ highWaterMark: 100, equityBeforeFlow: 80, flow: 20 })).toBe(120);
+    expect(adjustHighWaterMarkForExternalFlow({ highWaterMark: 100, equityBeforeFlow: 100, flow: 50 })).toBe(150);
+  });
+
+  it("lowers HWM proportionally on withdrawal so a cash-out at the peak is 0% drawdown", () => {
+    // Peak $101.62, withdraw down to $28 — the Roth false-drawdown case.
+    const hwm = adjustHighWaterMarkForExternalFlow({
+      highWaterMark: 101.62,
+      equityBeforeFlow: 101.62,
+      flow: -73.62
+    });
+    expect(hwm).toBeCloseTo(28, 2);
+    expect(impliedDrawdownPct(28, hwm)).toBeCloseTo(0, 2);
+  });
+
+  it("preserves drawdown percentage when withdrawing from a hole", () => {
+    // 20% DD ($100 HWM, $80 equity), withdraw $40 → remaining $40, HWM scales to $50 → still 20%.
+    const hwm = adjustHighWaterMarkForExternalFlow({
+      highWaterMark: 100,
+      equityBeforeFlow: 80,
+      flow: -40
+    });
+    expect(hwm).toBeCloseTo(50, 2);
+    expect(impliedDrawdownPct(40, hwm)).toBeCloseTo(20, 2);
+  });
+
+  it("is a no-op when flow is 0 or not finite", () => {
+    expect(adjustHighWaterMarkForExternalFlow({ highWaterMark: 100, equityBeforeFlow: 90, flow: 0 })).toBe(100);
+    expect(adjustHighWaterMarkForExternalFlow({ highWaterMark: 100, equityBeforeFlow: 90, flow: Number.NaN })).toBe(100);
+  });
+});
+
+describe("applyExternalFlowsToHighWaterMark / recomputeHighWaterMarkFromTransferFlows (pure)", () => {
+  it("applies deposit then withdrawal in order against a synthetic book", () => {
+    const hwm = applyExternalFlowsToHighWaterMark({
+      highWaterMark: 100,
+      equityBeforeFlows: 100,
+      flows: [50, -30]
+    });
+    // $100 + $50 deposit → HWM $150; withdraw $30 → HWM $150 * (120/150) = $120.
+    expect(hwm).toBeCloseTo(120, 2);
+  });
+
+  it("rebuilds HWM from a transfer ledger + current equity (Roth-shaped cash-out)", () => {
+    const result = recomputeHighWaterMarkFromTransferFlows({
+      flows: [101.62, -73.62],
+      currentEquity: 28
+    });
+    expect(result.netTransfers).toBeCloseTo(28, 2);
+    expect(result.highWaterMark).toBeCloseTo(28, 2);
+    expect(result.reconstructedEquity).toBeCloseTo(28, 2);
+    expect(impliedDrawdownPct(28, result.highWaterMark)).toBeCloseTo(0, 2);
+  });
+
+  it("ratchets to current equity when leftover market P&L is a new peak", () => {
+    const result = recomputeHighWaterMarkFromTransferFlows({
+      flows: [100],
+      currentEquity: 130
+    });
+    expect(result.highWaterMark).toBeCloseTo(130, 2);
+    expect(result.netTransfers).toBeCloseTo(100, 2);
+  });
+
+  it("keeps a trading hole after deposits when current equity is below flow-adjusted HWM", () => {
+    const result = recomputeHighWaterMarkFromTransferFlows({
+      flows: [100],
+      currentEquity: 80
+    });
+    expect(result.highWaterMark).toBeCloseTo(100, 2);
+    expect(impliedDrawdownPct(80, result.highWaterMark)).toBeCloseTo(20, 2);
+  });
+
+  it("treats an empty ledger as a rebaseline to current equity", () => {
+    const result = recomputeHighWaterMarkFromTransferFlows({ flows: [], currentEquity: 28.35 });
+    expect(result.highWaterMark).toBeCloseTo(28.35, 2);
+    expect(result.netTransfers).toBe(0);
   });
 });
 
@@ -110,5 +198,52 @@ describe("recordAndEvaluateDrawdownBreaker (stateful HWM + start-of-day persiste
     const { recordAndEvaluateDrawdownBreaker } = await import("../src/lib/risk-breaker");
     const r = recordAndEvaluateDrawdownBreaker({ accountNumber: "ACCT-NOLIMIT", source: "paper", equity: 100, riskRules: {}, userId: "local", now: new Date("2026-06-26T14:00:00Z") });
     expect(r.breached).toBe(false); // huge drop from no prior HWM, but no limits configured
+  });
+
+  it("does not replay historical flows on the first observation (ops recompute is the heal)", async () => {
+    const { recordAndEvaluateDrawdownBreaker } = await import("../src/lib/risk-breaker");
+    const acct = { ...base, accountNumber: "ACCT-FIRST-OBS" };
+    const first = recordAndEvaluateDrawdownBreaker({
+      ...acct,
+      equity: 28,
+      now: new Date("2026-09-17T14:00:00Z"),
+      externalFlows: [{ amount: 101.62, day: "2026-08-01" }, { amount: -73.62, day: "2026-09-01" }]
+    });
+    expect(first.highWaterMark).toBe(28);
+    expect(first.breached).toBe(false);
+  });
+
+  it("lowers HWM on a later withdrawal so a cash-out is not a trailing-drawdown breach", async () => {
+    const { recordAndEvaluateDrawdownBreaker } = await import("../src/lib/risk-breaker");
+    const acct = { ...base, accountNumber: "ACCT-CASH-OUT", riskRules: { maxDrawdownPct: 15 } };
+    const seed = recordAndEvaluateDrawdownBreaker({
+      ...acct,
+      equity: 101.62,
+      now: new Date("2026-09-16T14:00:00Z")
+    });
+    expect(seed.highWaterMark).toBeCloseTo(101.62, 2);
+    const afterWithdraw = recordAndEvaluateDrawdownBreaker({
+      ...acct,
+      equity: 28,
+      now: new Date("2026-09-17T14:00:00Z"),
+      externalFlows: [{ amount: -73.62, day: "2026-09-17" }]
+    });
+    expect(afterWithdraw.highWaterMark).toBeCloseTo(28, 2);
+    expect(afterWithdraw.breached).toBe(false);
+  });
+
+  it("raises HWM by a later deposit and does not treat the deposit as recovered drawdown", async () => {
+    const { recordAndEvaluateDrawdownBreaker } = await import("../src/lib/risk-breaker");
+    const acct = { ...base, accountNumber: "ACCT-DEPOSIT-HOLE", riskRules: { maxDrawdownPct: 15 } };
+    recordAndEvaluateDrawdownBreaker({ ...acct, equity: 100, now: new Date("2026-09-16T14:00:00Z") });
+    recordAndEvaluateDrawdownBreaker({ ...acct, equity: 80, now: new Date("2026-09-16T18:00:00Z") });
+    const afterDeposit = recordAndEvaluateDrawdownBreaker({
+      ...acct,
+      equity: 100,
+      now: new Date("2026-09-17T14:00:00Z"),
+      externalFlows: [{ amount: 20, day: "2026-09-17" }]
+    });
+    expect(afterDeposit.highWaterMark).toBeCloseTo(120, 2);
+    expect(afterDeposit.breached).toBe(true);
   });
 });

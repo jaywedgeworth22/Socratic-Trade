@@ -50,19 +50,35 @@ function rankAlpacaAccounts(accounts: ConnectedAccount[]): ConnectedAccount[] {
   });
 }
 
-function resolvePrivateAlpacaAccount(
-  userId: string
+function isAlpacaBroker(broker: ConnectedAccount["broker"] | undefined): boolean {
+  return broker === "alpaca" || broker === "alpaca-mcp";
+}
+
+function credsFromConnectedAccount(
+  account: ConnectedAccount | undefined
 ): { apiKey: string; secretKey?: string; environment: "paper" | "live"; source: ApiKeySource } | undefined {
-  const accounts = rankAlpacaAccounts(listConnectedAccounts(userId).filter((account) => account.broker === "alpaca"));
+  if (!account || !isAlpacaBroker(account.broker) || !account.apiKey) return undefined;
+  return {
+    apiKey: account.apiKey,
+    secretKey: account.apiSecret,
+    environment: account.environment === "live" ? "live" : "paper",
+    source: "user"
+  };
+}
+
+function resolvePrivateAlpacaAccount(
+  userId: string,
+  connectedAccountId?: string
+): { apiKey: string; secretKey?: string; environment: "paper" | "live"; source: ApiKeySource } | undefined {
+  if (connectedAccountId) {
+    return credsFromConnectedAccount(getConnectedAccount(connectedAccountId, userId));
+  }
+  const accounts = rankAlpacaAccounts(
+    listConnectedAccounts(userId).filter((account) => isAlpacaBroker(account.broker))
+  );
   for (const account of accounts) {
-    const detailed = getConnectedAccount(account.id, userId);
-    if (!detailed?.apiKey) continue;
-    return {
-      apiKey: detailed.apiKey,
-      secretKey: detailed.apiSecret,
-      environment: detailed.environment === "live" ? "live" : "paper",
-      source: "user"
-    };
+    const creds = credsFromConnectedAccount(getConnectedAccount(account.id, userId));
+    if (creds) return creds;
   }
   return undefined;
 }
@@ -204,9 +220,9 @@ export interface AlpacaAccountActivity {
 // Alpaca credential is available or the request fails.
 export async function fetchAlpacaPortfolioHistory(
   userId: string,
-  opts: { period?: string; timeframe?: string } = {}
+  opts: { period?: string; timeframe?: string; connectedAccountId?: string } = {}
 ): Promise<AlpacaPortfolioHistory | undefined> {
-  const creds = resolvePrivateAlpacaAccount(userId);
+  const creds = resolvePrivateAlpacaAccount(userId, opts.connectedAccountId);
   if (!creds) return undefined;
 
   const params = new URLSearchParams();
@@ -246,9 +262,16 @@ export async function fetchAlpacaMarketClock(): Promise<AlpacaMarketClock | unde
 // Returns an empty array when no Alpaca credential is available or the request fails.
 export async function fetchAlpacaAccountActivities(
   userId: string,
-  opts: { activityTypes?: string[]; pageSize?: number; maxPages?: number } = {}
+  opts: {
+    activityTypes?: string[];
+    pageSize?: number;
+    maxPages?: number;
+    connectedAccountId?: string;
+    after?: string;
+    until?: string;
+  } = {}
 ): Promise<AlpacaAccountActivity[]> {
-  const creds = resolvePrivateAlpacaAccount(userId);
+  const creds = resolvePrivateAlpacaAccount(userId, opts.connectedAccountId);
   if (!creds) return [];
 
   const types = (opts.activityTypes ?? [])
@@ -263,6 +286,8 @@ export async function fetchAlpacaAccountActivities(
     const params = new URLSearchParams();
     if (types.length > 0) params.set("activity_types", types.join(","));
     params.set("page_size", String(pageSize));
+    if (opts.after) params.set("after", opts.after);
+    if (opts.until) params.set("until", opts.until);
     if (pageToken) params.set("page_token", pageToken);
     const path = `/v2/account/activities?${params.toString()}`;
     const activities = await getJson<AlpacaAccountActivity[]>(tradingBase(creds.environment), path, SERVICE, creds.apiKey, creds.secretKey, creds.source);
@@ -275,4 +300,33 @@ export async function fetchAlpacaAccountActivities(
   }
 
   return all;
+}
+
+export interface AlpacaAccountEquitySnapshot {
+  equity: number;
+  portfolioValue: number;
+  accountNumber?: string;
+}
+
+/** GET /v2/account equity fields. Returns undefined when credentials are missing or the call fails. */
+export async function fetchAlpacaAccountEquity(
+  userId: string,
+  opts: { connectedAccountId?: string } = {}
+): Promise<AlpacaAccountEquitySnapshot | undefined> {
+  const creds = resolvePrivateAlpacaAccount(userId, opts.connectedAccountId);
+  if (!creds) return undefined;
+  const account = await getJson<{
+    equity?: string | number;
+    portfolio_value?: string | number;
+    account_number?: string;
+  }>(tradingBase(creds.environment), "/v2/account", SERVICE, creds.apiKey, creds.secretKey, creds.source);
+  if (!account) return undefined;
+  const equity = Number(account.equity ?? account.portfolio_value);
+  const portfolioValue = Number(account.portfolio_value ?? account.equity);
+  if (!Number.isFinite(equity) && !Number.isFinite(portfolioValue)) return undefined;
+  return {
+    equity: Number.isFinite(equity) ? equity : portfolioValue,
+    portfolioValue: Number.isFinite(portfolioValue) ? portfolioValue : equity,
+    accountNumber: account.account_number != null ? String(account.account_number) : undefined
+  };
 }

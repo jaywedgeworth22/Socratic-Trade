@@ -404,6 +404,7 @@ describe("account deletion", () => {
       `providerTier:status:${userId}`,
       `providerTier:lastCheckAt:${userId}`,
       `risk:hwm:${userId}:ACCOUNT:broker`,
+      `risk:hwm-obs:${userId}:ACCOUNT:broker`,
       `risk:sod:${userId}:ACCOUNT:broker:2026-07-14`,
       `learning_review:lastFingerprint:${userId}`,
       `learning_review:legacySeedDone:${userId}`,

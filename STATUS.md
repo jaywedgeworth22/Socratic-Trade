@@ -12,6 +12,14 @@ standing owner auto-merge rule, then resolve the review threads.  Watch item: th
 Opus 5.5 price pin ($4/$20) vs PR #3705's $4.50/$22.50 — whichever merges second reconciles.
 Rollout: `docs/rollouts/2026-09-24-llm-stats-console.md`.
 
+## 2026-09-17 GROK — Cash-flow-aware drawdown HWM (PR only)
+
+Roth IRA breaker was stuck at HWM ~$101.62 vs equity ~$28 because HWM ratcheted on raw
+equity and ignored CSD/CSW.  Deposits now raise HWM by flow dollars; withdrawals scale
+HWM by remaining/prior equity.  Ops `POST /api/ops/hwm/recompute` rebuilds from the
+Alpaca transfer ledger + current equity.  Extra-ship no.  Do not merge.  No Coolify
+Deploy.  Worktree `~/apps/trading-grok-hwm`, branch `grok/cashflow-hwm`.
+Rollout: `docs/rollouts/2026-09-17-cashflow-hwm.md`.
 ## 2026-09-24 AG — Claude Opus 5.5 transition across Socratic.Trade
 
 Transitioned Socratic.Trade across all surfaces to exclusively offer and use Claude Opus 5.5 (`claude-opus-5-5` / `claude-opus-latest`) instead of older Opus versions.

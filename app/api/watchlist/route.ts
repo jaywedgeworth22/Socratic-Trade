@@ -38,7 +38,12 @@ export async function GET(request: Request) {
   });
   if (missing.length > 0) {
     try {
-      const fallback = await fetchFreshQuotesCascade(missing, userId, accountNumber ?? undefined);
+      // skipActiveBroker: the direct gateway call above already queried (or failed
+      // slowly against) this broker — do not re-hit Level 1a on the same degraded
+      // broker (Alpaca 16s budget) before Alpaca snapshots / Yahoo (Codex P1).
+      const fallback = await fetchFreshQuotesCascade(missing, userId, accountNumber ?? undefined, undefined, {
+        skipActiveBroker: true
+      });
       for (const s of missing) {
         if (fallback[s] && typeof fallback[s].price === "number" && fallback[s].price > 0) {
           quotes[s] = fallback[s];

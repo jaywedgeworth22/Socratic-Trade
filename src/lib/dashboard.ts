@@ -49,7 +49,7 @@ import {
   type PrefetchedPnl
 } from "./performance";
 import { computeSpyBenchmarkDetailed, type SpyBenchmarkResult } from "./benchmark";
-import { brokerFlowOnDay } from "./broker-cash-flows";
+import { BROKER_TRANSFER_ACTIVITY_TYPE_LIST, brokerFlowOnDay } from "./broker-cash-flows";
 import { fetchAlpacaAccountActivities } from "./alpaca-account-insights";
 import { centralTradingDayKey } from "./trading-day";
 import { getTaxSummary, overlayAccountTaxationType } from "./tax";
@@ -819,7 +819,8 @@ async function computeDashboardSnapshot(userId: string = "local", currentUser?: 
       activeAccount?.broker === "alpaca"
         ? await withDeadline(
             fetchAlpacaAccountActivities(userId, {
-              activityTypes: ["CSD", "CSW", "ACATS", "JNLC", "INT", "DIV", "DIVNRA", "DIVTX", "FEE"]
+              activityTypes: [...BROKER_TRANSFER_ACTIVITY_TYPE_LIST],
+              connectedAccountId: activeAccount?.id
             }),
             4000,
             () => [],

@@ -43,6 +43,7 @@ import {
   updateFillEvent
 } from "./db";
 import { accountEquity, recordAndEvaluateDrawdownBreaker } from "./risk-breaker";
+import { loadCashFlowsForDrawdownBreaker } from "./risk-hwm";
 import { clearAccuracyDegradedMarker, evaluateAccuracyBreaker, getAccuracyDegradedMarker, setAccuracyDegradedMarker } from "./accuracy-breaker";
 import { refreshTradeLocksForRun } from "./apply-trade-locks";
 import { loadActiveOverlays } from "./apply-overlays";
@@ -865,12 +866,19 @@ export async function runStrategyOnce(
     // explicitly opts in via `riskRules.drawdownBreakerAction`.
     if (!manualRun && policy.systemState === "active") {
       const equity = accountEquity(workingPortfolio);
+      const cashFlows = await loadCashFlowsForDrawdownBreaker({
+        userId,
+        accountNumber: policy.accountNumber,
+        source: learningSource,
+        connectedAccountId
+      });
       const breaker = recordAndEvaluateDrawdownBreaker({
         accountNumber: policy.accountNumber,
         source: learningSource,
         equity,
         riskRules: policy.riskRules,
-        userId
+        userId,
+        ...(cashFlows ?? {})
       });
       if (breaker.breached) {
         const breakerAction = policy.riskRules.drawdownBreakerAction ?? "advisory";

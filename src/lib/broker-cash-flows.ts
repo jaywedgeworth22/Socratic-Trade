@@ -9,7 +9,7 @@ import { centralTradingDayKey } from "./trading-day";
 import type { EquityCurvePoint, FillEvent } from "./types";
 
 /** Activity types that move external capital (deposit/withdrawal/journal), not trade fills. */
-const BROKER_TRANSFER_ACTIVITY_TYPES = new Set([
+export const BROKER_TRANSFER_ACTIVITY_TYPE_LIST = [
   "CSD", // cash deposit (+)
   "CSW", // cash withdrawal (−)
   "ACATS",
@@ -19,7 +19,17 @@ const BROKER_TRANSFER_ACTIVITY_TYPES = new Set([
   "DIVNRA",
   "DIVTX",
   "FEE"
-]);
+] as const;
+
+const BROKER_TRANSFER_ACTIVITY_TYPES = new Set<string>(BROKER_TRANSFER_ACTIVITY_TYPE_LIST);
+
+export interface BrokerTransferFlow {
+  id: string;
+  activityType: string;
+  amount: number;
+  day: string;
+  at: string;
+}
 
 export type ExternalCashFlowSource = "broker" | "inferred";
 
@@ -68,4 +78,37 @@ export function resolveExternalCashFlows(args: {
 /** Net external flow on a single Central trading day from broker activities (0 when none). */
 export function brokerFlowOnDay(activities: AlpacaAccountActivity[], dayKey: string): number {
   return flowsFromAlpacaActivities(activities).get(dayKey) ?? 0;
+}
+
+function activityAt(row: AlpacaAccountActivity, day: string): string {
+  return row.transaction_time ?? row.date ?? day;
+}
+
+/** Individual signed transfer rows in chronological order (deposit +, withdrawal −). */
+export function listAlpacaTransferFlows(activities: AlpacaAccountActivity[]): BrokerTransferFlow[] {
+  const flows: BrokerTransferFlow[] = [];
+  for (const row of activities) {
+    const activityType = String(row.activity_type ?? "").toUpperCase();
+    if (!BROKER_TRANSFER_ACTIVITY_TYPES.has(activityType)) continue;
+    const amount = Number(row.net_amount);
+    if (!Number.isFinite(amount) || amount === 0) continue;
+    const day = activityDayKey(row);
+    if (!day) continue;
+    flows.push({
+      id: String(row.id ?? ""),
+      activityType,
+      amount: round2(amount),
+      day,
+      at: activityAt(row, day)
+    });
+  }
+  flows.sort((a, b) => {
+    const ta = Date.parse(a.at);
+    const tb = Date.parse(b.at);
+    const sa = Number.isFinite(ta) ? ta : 0;
+    const sb = Number.isFinite(tb) ? tb : 0;
+    if (sa !== sb) return sa - sb;
+    return a.id.localeCompare(b.id);
+  });
+  return flows;
 }

@@ -1233,6 +1233,15 @@ export function getConnectedAccountByBroker(broker: ConnectedAccount["broker"], 
   };
 }
 
+/** Ops/heal lookup: resolve a connected account by id across users, with decrypted keys. */
+export function findConnectedAccountById(id: string): ConnectedAccount | undefined {
+  const row = getDb()
+    .prepare("SELECT user_id FROM connected_accounts WHERE id = ? LIMIT 1")
+    .get(id) as { user_id?: unknown } | undefined;
+  if (!row || row.user_id == null) return undefined;
+  return getConnectedAccount(id, String(row.user_id));
+}
+
 // Fetch a specific connected account by id (scoped to the owning user), with decrypted
 // keys — used by the scheduler to run a non-active account autonomously.
 export function getConnectedAccount(id: string, userId: string = "local"): ConnectedAccount | undefined {

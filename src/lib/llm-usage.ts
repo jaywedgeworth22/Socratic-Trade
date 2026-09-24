@@ -44,6 +44,21 @@ export interface LlmUsageEntry {
    *  `provider === "openrouter"`; every other provider leaves the ledger on the estimate.  When
    *  present it REPLACES the price-table estimate and the row is stamped `cost_source = 'billed'`. */
   billedCostUsd?: number;
+  /** Wall-clock latency for this call in milliseconds. Optional so legacy callers that don't yet
+   *  measure latency can still record rows; the LLM stats console reads it for p50/p95/p99.
+   *  Pre-call throw sites (4xx/5xx up-front) and timeouts should still record a value so the
+   *  "error" rows have meaningful latency.  Negative or non-finite values are dropped at write. */
+  latencyMs?: number;
+  /** Outcome of the call. Defaults to "success" when the call returned a usable response with
+   *  usage data; "error" when it threw or returned an unusable body; "timeout" when the
+   *  transport's abort signal fired; "canceled" when an upstream caller (e.g. a chat cancel)
+   *  intentionally aborted.  Optional so legacy callers can omit it — rows without a status
+   *  are treated as "success" by the stats aggregator (legacy behavior). */
+  status?: "success" | "error" | "timeout" | "canceled";
+  /** Test-only: override the recorded `created_at` so unit tests can drive the 90-day
+   *  rolling-window aggregator.  Sanitized at write (must be a valid ISO-8601 string).
+   *  Not exported in the type — callers in src/ never pass it; tests use `as never` to bypass. */
+  createdAtOverride?: string;
 }
 
 export interface LlmTokenUsage {
@@ -322,7 +337,11 @@ export function recordLlmUsage(entry: LlmUsageEntry): void {
     const provider = entry.provider;
     const model = entry.model;
     const usageId = crypto.randomUUID();
-    const occurredAt = new Date().toISOString();
+    // Sanitize createdAtOverride: only accept a non-empty ISO string.  Anything else falls
+    // back to "now" — never trust an arbitrary string to be persisted verbatim.
+    const overrideRaw = (entry as { createdAtOverride?: unknown }).createdAtOverride;
+    const overrideValid = typeof overrideRaw === "string" && /^\d{4}-\d{2}-\d{2}T/.test(overrideRaw);
+    const occurredAt = overrideValid ? (overrideRaw as string) : new Date().toISOString();
     const total =
       entry.promptTokens !== undefined || entry.completionTokens !== undefined ? (entry.promptTokens ?? 0) + (entry.completionTokens ?? 0) : undefined;
     // Money precedence: the transport's OWN billed amount beats our price table.  Only OpenRouter
@@ -357,10 +376,23 @@ export function recordLlmUsage(entry: LlmUsageEntry): void {
         entry.connectedAccountId
       );
     }
+    // Sanitize latency: drop negative or non-finite values so a buggy timer can't poison the
+    // stats percentiles.  When omitted entirely the column stays NULL, which the stats
+    // aggregator skips (it does NOT count NULL latency toward the latency distribution).
+    const latencyMs =
+      typeof entry.latencyMs === "number" && Number.isFinite(entry.latencyMs) && entry.latencyMs >= 0
+        ? Math.round(entry.latencyMs)
+        : null;
+    // Status defaults to "success" for legacy callers; explicit callers may stamp error /
+    // timeout / canceled.  The CHECK constraint is added by migration #91 — values not in the
+    // allowed set are coerced to NULL to keep the row insert valid even if a future caller
+    // hands us an unexpected enum value.
+    const allowedStatus = new Set(["success", "error", "timeout", "canceled"]);
+    const status = entry.status && allowedStatus.has(entry.status) ? entry.status : null;
     getDb()
       .prepare(
-        `INSERT INTO llm_usage (id, user_id, provider, model, context, key_source, key_ref, connected_account_id, prompt_tokens, completion_tokens, total_tokens, cost_usd, cost_source, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO llm_usage (id, user_id, provider, model, context, key_source, key_ref, connected_account_id, prompt_tokens, completion_tokens, total_tokens, cost_usd, cost_source, latency_ms, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         usageId,
@@ -376,6 +408,8 @@ export function recordLlmUsage(entry: LlmUsageEntry): void {
         total ?? null,
         cost ?? null,
         costSource,
+        latencyMs,
+        status,
         occurredAt
       );
     setGenAiUsageOnActiveSpan({

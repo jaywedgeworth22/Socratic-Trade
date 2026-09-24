@@ -9,6 +9,7 @@
 import { canonicalTicker } from "../rag/chunk";
 import { resolveLlmCredential } from "../db";
 import { recordLlmUsage, extractLlmUsage, providerRequestIdFromPayload } from "../llm-usage";
+import { isAbortOrTimeoutError } from "../network-errors";
 import { applyOpenRouterClassifierEnrichment, applyOpenRouterProviderRouting } from "../llm-call";
 import { llmFetch, LLM_TIMEOUT_MS, reasoningCapabilityForModel, withLlmRequestBounds } from "../llm-request";
 // Reuse the SAME model-family + OpenRouter-wire-id helpers the strategy engine's
@@ -36,7 +37,17 @@ export type ChatProvider = "openai" | "anthropic" | "xai" | "gemini" | "mistral"
  *  `providerRequestId` is only meaningful when the loop made exactly ONE provider request
  *  (the ledger row is a per-run aggregate; a single generation id can only verify a single
  *  call's cost, so multi-step runs pass undefined rather than a misleading partial id). */
-function recordChatUsage(opts: LlmUsageOpts, provider: ChatProvider, model: string, prompt: number, completion: number, saw: boolean, providerRequestId?: string): void {
+function recordChatUsage(
+  opts: LlmUsageOpts,
+  provider: ChatProvider,
+  model: string,
+  prompt: number,
+  completion: number,
+  saw: boolean,
+  providerRequestId?: string,
+  latencyMs?: number,
+  status?: "success" | "error" | "timeout" | "canceled"
+): void {
   if (!opts.userId) return;
   recordLlmUsage({
     userId: opts.userId,
@@ -47,7 +58,9 @@ function recordChatUsage(opts: LlmUsageOpts, provider: ChatProvider, model: stri
     keyRef: opts.keyRef,
     promptTokens: saw ? prompt : undefined,
     completionTokens: saw ? completion : undefined,
-    providerRequestId
+    providerRequestId,
+    latencyMs,
+    status
   });
 }
 
@@ -378,6 +391,12 @@ export class AnthropicLLM implements ChatLLM {
 
   async run(args: LlmRunArgs): Promise<LlmResult> {
     const { system, message, tools, executeTool, history } = args;
+    // 2026-09-23 MM (llm-stats feature): capture total wall-clock latency for this chat run
+    // (covers the entire multi-step tool loop, not just the last provider request) so the
+    // LLM stats console can render p50/p95/p99 per model alias.  status reflects whether the
+    // run returned a usable assistant message vs. threw / was canceled / timed out.
+    const startedAt = performance.now();
+    let chatStatus: "success" | "error" | "timeout" | "canceled" = "success";
     const messages: any[] = [];
     let promptTokens = 0;
     let completionTokens = 0;
@@ -411,6 +430,7 @@ export class AnthropicLLM implements ChatLLM {
     for (let step = 0; step < MAX_STEPS; step++) {
       if (args.abortSignal?.aborted) {
         args.onStage?.({ stage: "error", reason: "cancelled" });
+        chatStatus = "canceled";
         break;
       }
       if (typeof args.deadlineMs === "number") {
@@ -426,6 +446,8 @@ export class AnthropicLLM implements ChatLLM {
             remainingMs: budget.remainingMs,
             minStageMs: budget.minStageMs
           });
+          // Deadline budget ran out before this step could start, so the reply was cut short.
+          chatStatus = "timeout";
           break;
         }
       }
@@ -436,7 +458,26 @@ export class AnthropicLLM implements ChatLLM {
         maxOutputTokens: 1024,
         reasoningEffort: this.reasoningEffort
       });
-      const resp = await this.transport(requestBody, this.apiKey, args.abortSignal);
+      let resp: any;
+      try {
+        resp = await this.transport(requestBody, this.apiKey, args.abortSignal);
+      } catch (e) {
+        // Record the failed run (tokens billed on earlier steps + wall-clock latency) so
+        // error / timeout / canceled rows reach the LLM stats console, then rethrow unchanged.
+        chatStatus = args.abortSignal?.aborted ? "canceled" : isAbortOrTimeoutError(e) ? "timeout" : "error";
+        recordChatUsage(
+          this.usage,
+          "anthropic",
+          this.model,
+          promptTokens,
+          completionTokens,
+          sawUsage,
+          undefined,
+          performance.now() - startedAt,
+          chatStatus
+        );
+        throw e;
+      }
       const u = extractLlmUsage(resp);
       if (u.promptTokens !== undefined || u.completionTokens !== undefined) {
         sawUsage = true;
@@ -470,7 +511,17 @@ export class AnthropicLLM implements ChatLLM {
     for (const c of toolCalls.filter((tc) => tc.name === "kb_search" && tc.result?.chunks?.length)) {
       for (const chunk of c.result.chunks) citations.push({ source: chunk.source, chunk_id: chunk.chunk_id, evidence_ref: chunk.evidence_ref, as_of: chunk.as_of, url: chunk.url });
     }
-    recordChatUsage(this.usage, "anthropic", this.model, promptTokens, completionTokens, sawUsage);
+    recordChatUsage(
+      this.usage,
+      "anthropic",
+      this.model,
+      promptTokens,
+      completionTokens,
+      sawUsage,
+      undefined,
+      performance.now() - startedAt,
+      chatStatus
+    );
     return { text: withDisclaimer(text), toolCalls, citations };
   }
 }
@@ -518,6 +569,12 @@ export class OpenAILLM implements ChatLLM {
 
   async run(args: LlmRunArgs): Promise<LlmResult> {
     const { system, message, tools, executeTool, history } = args;
+    // 2026-09-23 MM (llm-stats feature): capture total wall-clock latency for this chat run
+    // (covers the entire multi-step tool loop, not just the last provider request) so the
+    // LLM stats console can render p50/p95/p99 per model alias.  status reflects whether the
+    // run returned a usable assistant message vs. threw / was canceled / timed out.
+    const startedAt = performance.now();
+    let chatStatus: "success" | "error" | "timeout" | "canceled" = "success";
     // Build OpenAI messages array. Prior user/assistant turns first, then the current message.
     const messages: any[] = [];
     let promptTokens = 0;
@@ -552,6 +609,7 @@ export class OpenAILLM implements ChatLLM {
     for (let step = 0; step < MAX_STEPS; step++) {
       if (args.abortSignal?.aborted) {
         args.onStage?.({ stage: "error", reason: "cancelled" });
+        chatStatus = "canceled";
         break;
       }
       if (typeof args.deadlineMs === "number") {
@@ -567,6 +625,8 @@ export class OpenAILLM implements ChatLLM {
             remainingMs: budget.remainingMs,
             minStageMs: budget.minStageMs
           });
+          // Deadline budget ran out before this step could start, so the reply was cut short.
+          chatStatus = "timeout";
           break;
         }
       }
@@ -600,11 +660,30 @@ export class OpenAILLM implements ChatLLM {
           })
         : { ...baseBody, max_tokens: 1024 };
       if (this.provider === "openrouter") applyOpenRouterProviderRouting(requestBody);
-      const resp = await this.transport(
-        requestBody,
-        this.apiKey,
-        args.abortSignal
-      );
+      let resp: any;
+      try {
+        resp = await this.transport(
+          requestBody,
+          this.apiKey,
+          args.abortSignal
+        );
+      } catch (e) {
+        // Record the failed run (tokens billed on earlier steps + wall-clock latency) so
+        // error / timeout / canceled rows reach the LLM stats console, then rethrow unchanged.
+        chatStatus = args.abortSignal?.aborted ? "canceled" : isAbortOrTimeoutError(e) ? "timeout" : "error";
+        recordChatUsage(
+          this.usage,
+          this.provider,
+          this.model,
+          promptTokens,
+          completionTokens,
+          sawUsage,
+          generationIds.length === 1 ? generationIds[0] : undefined,
+          performance.now() - startedAt,
+          chatStatus
+        );
+        throw e;
+      }
 
       const genId = providerRequestIdFromPayload(this.provider, resp);
       if (genId) generationIds.push(genId);
@@ -665,7 +744,9 @@ export class OpenAILLM implements ChatLLM {
       promptTokens,
       completionTokens,
       sawUsage,
-      generationIds.length === 1 ? generationIds[0] : undefined
+      generationIds.length === 1 ? generationIds[0] : undefined,
+      performance.now() - startedAt,
+      chatStatus
     );
     return { text: text || DISCLAIMER, toolCalls, citations };
   }

@@ -135,21 +135,24 @@ export const LLM_MODEL_CATALOG: readonly LlmCatalogEntry[] = [
   {
     displaySlug: "claude-opus-latest",
     openRouterSlug: "~anthropic/claude-opus-latest",
-    nativeSlug: "claude-opus-5",
+    nativeSlug: "claude-opus-5-5",
     provider: "anthropic",
-    label: "claude-opus-latest (5) — premium Claude reasoning",
+    label: "claude-opus-latest (5.5) — premium Claude reasoning",
     tier: "$$$",
     aliases: [
+      "claude-opus-5-5",
+      "claude-opus-5.5",
+      "anthropic/claude-opus-5-5",
+      "anthropic/claude-opus-5.5",
       "claude-opus-5",
       // 2026-09-23 MM: opus-5.5 confirmed via free DuckDuckGo HTML search after the bundled
-      // web_search tool 402'd.  Anthropic's own docs (platform.claude.com/.../opus-5-5/overview)
-      // and OpenRouter both report $4/$20 per MTok, 1M context, 128k max output.  Cheaper per
-      // token than opus-5 ($5/$25) — same family, the canonical id stays `claude-opus-latest`
-      // and the price table in src/lib/llm-usage.ts:claude-opus-5.5 pins $4/$20 so the LLM
+      // web_search tool 402'd.  1M context, 128k max output.  The $4/$20 figure first pinned
+      // here was superseded by PR #3705 (merged 2026-09-24), which set the catalog-wide Opus 5.5
+      // price to $4.50/$22.50 — the price table in src/lib/llm-usage.ts:claude-opus-5.5 pins
+      // $4.50/$22.50 so the LLM
       // stats console shows the right number.  Aliases roll up to the `opus` bucket in
       // src/lib/llm-stats.ts:aliasForModel so trade-outcome correlation across opus
       // generations stays unified.
-      "claude-opus-5.5",
       "claude-opus-4-8",
       "claude-opus-4.8",
       "claude-opus",

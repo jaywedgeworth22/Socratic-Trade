@@ -94,6 +94,8 @@ const MODEL_DISPLAY_NAME: Record<string, string> = {
   "claude-fable-latest": "Claude Fable",
   "claude-haiku-4.5": "Claude Haiku",
   "claude-sonnet-5": "Claude Sonnet",
+  "claude-opus-5-5": "Claude Opus",
+  "claude-opus-5.5": "Claude Opus",
   "claude-opus-5": "Claude Opus",
   "claude-fable-5": "Claude Fable",
   "claude-haiku-4-5": "Claude Haiku",

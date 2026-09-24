@@ -132,5 +132,7 @@ describe("remapOpenRouterTelemetry — family identity", () => {
   it("maps every Claude Opus slug onto claude-opus-latest", () => {
     expect(remapOpenRouterTelemetry("openrouter", "anthropic/claude-opus-4-8").model).toBe("claude-opus-latest");
     expect(remapOpenRouterTelemetry("anthropic", "claude-opus-4-8").model).toBe("claude-opus-latest");
+    expect(remapOpenRouterTelemetry("openrouter", "anthropic/claude-opus-5-5").model).toBe("claude-opus-latest");
+    expect(remapOpenRouterTelemetry("anthropic", "claude-opus-5-5").model).toBe("claude-opus-latest");
   });
 });

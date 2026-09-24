@@ -12,6 +12,17 @@ standing owner auto-merge rule, then resolve the review threads.  Watch item: th
 Opus 5.5 price pin ($4/$20) vs PR #3705's $4.50/$22.50 — whichever merges second reconciles.
 Rollout: `docs/rollouts/2026-09-24-llm-stats-console.md`.
 
+## 2026-09-24 AG — Claude Opus 5.5 transition across Socratic.Trade
+
+Transitioned Socratic.Trade across all surfaces to exclusively offer and use Claude Opus 5.5 (`claude-opus-5-5` / `claude-opus-latest`) instead of older Opus versions.
+- Updated `LLM_MODEL_CATALOG` (`src/lib/llm-model-catalog.ts`): `claude-opus-latest` wired to `nativeSlug: "claude-opus-5-5"`, label to `claude-opus-latest (5.5) — premium Claude reasoning`, aliases include `claude-opus-5-5`, `claude-opus-5.5`, and older Opus preserved as predecessors so historical stats roll forward smoothly.
+- Updated `app/console/settings/learning-review.tsx`: Replaced deprecated `claude-opus-4-8` option with `claude-opus-latest` (5.5).
+- Updated `src/lib/llm-usage.ts`: Priced Opus 5.5 slightly cheaper at $4.50/$22.50 per MTok (`[4.5, 22.5]` vs older $5/$25), with exact model matching prioritized before canonical family lookup to maintain historical rate accuracy.
+- Updated `src/lib/llm-request.ts`: `isAnthropicAdaptiveThinkingModel` regex now supports `claude-opus-5-5` / `claude-opus-5.5`.
+- Updated `src/lib/usage-budget.ts`: Added budget fallback downgrade mapping to `claude-sonnet-latest` for Opus 5.5.
+- Updated `app/console/lib/models.ts`: Added display name mapping for `claude-opus-5-5` and `claude-opus-5.5`.
+- Updated unit test suites across `test/llm-model-catalog.test.ts`, `test/chat-openrouter-routing.test.ts`, `test/llm-request.test.ts`, `test/model-identity.test.ts`, `test/llm-cache-usage.test.ts`, and `test/usage-budget.test.ts`.
+Rollout: `docs/rollouts/2026-09-24-opus-5-5-transition.md`.
 ## 2026-09-24 FIXER — PR #3451 tip: retarget to com.socratictrade.ios
 
 **Current state.** Tip of `minimax/bundle-rename` (PR #3451) retargeted from the interim

@@ -425,6 +425,12 @@ const CHEAPER_MODEL: Record<string, string> = {
   "deepseek-reasoner": "deepseek-flash-latest",
 };
 
+// Owner rule 2026-09-24 (PR #3705 review): Claude Opus 5.5 never downgrades on budget
+// exhaustion -- the model chosen is the model used. Blocked up front so neither an exact
+// tier entry, the displaySlug fallback ("claude-opus-latest"), nor the versioned-prefix
+// fallback can route Opus 5.5 to Sonnet.
+const NO_DOWNGRADE_OPUS_55 = /^claude-opus-5[-.]5(?:$|[-.:_])/;
+
 /** A cheaper model in the same family, or undefined if none is known. */
 export function cheaperModel(model: string | null | undefined): string | undefined {
   if (!model) return undefined;
@@ -432,6 +438,7 @@ export function cheaperModel(model: string | null | undefined): string | undefin
   const parts = raw.toLowerCase().replace(/^~/, "").split("/");
   const prefix = parts.length > 1 ? parts.slice(0, -1).join("/") + "/" : "";
   const rawKey = parts[parts.length - 1];
+  if (NO_DOWNGRADE_OPUS_55.test(rawKey)) return undefined;
   const entry = catalogEntryFor(raw);
   // Keep explicitly configured historical tiers; resolve new catalog aliases before prefix fallback.
   const key = CHEAPER_MODEL[rawKey] ? rawKey : (entry?.displaySlug ?? rawKey).toLowerCase();

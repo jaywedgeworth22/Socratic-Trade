@@ -119,7 +119,7 @@ describe("llmForModel — OpenRouter-first routing (review finding llm-12)", () 
       const llm = llmForModel("claude-opus-latest", userId, { transport, reasoningEffort: "high" });
       await llm.run(baseArgs);
       const body = transport.mock.calls[0][0];
-      expect(body.model).toBe("claude-opus-5");
+      expect(body.model).toBe("claude-opus-5-5");
       expect(body.thinking).toEqual({ type: "adaptive" });
       expect(body.output_config).toEqual({ effort: "high" });
       expect(body.max_tokens).toBeGreaterThanOrEqual(4096);

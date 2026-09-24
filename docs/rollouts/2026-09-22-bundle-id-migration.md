@@ -19,7 +19,7 @@ Socratic.Trade is the most cross-layered of the fleet migrations: a single-track
 | Associated Domain — applinks (new) | — | `applinks:socratic.trade` |
 | Associated Domain — webcredentials (new) | — | `webcredentials:socratic.trade` |
 | Associated Domain — applinks (existing, preserved) | `applinks:socratictrade.com` | `applinks:socratictrade.com` |
-| `bundleIdPrefix` (XcodeGen base) | `trade.socratic` | `com.socratictrade` (cosmetic; both targets set `PRODUCT_BUNDLE_IDENTIFIER` explicitly) |
+| `bundleIdPrefix` (XcodeGen base) | `trade.socratic` | `com.socratictrade.ios` (cosmetic; both targets set `PRODUCT_BUNDLE_IDENTIFIER` explicitly) |
 | URL scheme (`socratictrade://`) | `socratictrade` | `socratictrade` (keep — internal scheme, not a bundle ID) |
 | `src/lib/auth/apple-client-id.ts` deployment-override knob | `APPLE_CLIENT_ID` env | `APPLE_CLIENT_ID` env (unchanged) |
 | `src/lib/apns.ts` `.p8` / `.p8-b64` env-var fallback | unchanged | unchanged (key material paths, not bundle IDs) |
@@ -31,7 +31,7 @@ Socratic.Trade is the most cross-layered of the fleet migrations: a single-track
 
 - `ios/project.yml`:
   - Top-of-file callout `2026-09-22 bundle-ID migration` added inside the entitlements block, with the AASA `appIDs` updated to `CC8UTF7ATG.com.socratictrade.ios` and a note that the same `app/.well-known/apple-app-site-association` route serves both domains once `socratic.trade` DNS is in place.
-  - `options.bundleIdPrefix`: `trade.socratic` → `com.socratictrade` (cosmetic; both targets set `PRODUCT_BUNDLE_IDENTIFIER` explicitly so this is the only place the base leaks into a derived ID today).
+  - `options.bundleIdPrefix`: `trade.socratic` → `com.socratictrade.ios` (cosmetic; both targets set `PRODUCT_BUNDLE_IDENTIFIER` explicitly so this is the only place the base leaks into a derived ID today).
   - `SocraticTrade` app target `PRODUCT_BUNDLE_IDENTIFIER`: `trade.socratic.app` → `com.socratictrade.ios`.
   - `SocraticTradeTests` target `PRODUCT_BUNDLE_IDENTIFIER`: `trade.socratic.app.tests` → `com.socratictrade.ios.tests`.
   - `CFBundleURLTypes[0].CFBundleURLName`: `trade.socratic.app` → `com.socratictrade.ios` (the `socratictrade://` URL scheme is unchanged).

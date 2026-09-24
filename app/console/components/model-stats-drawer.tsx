@@ -25,7 +25,7 @@
  *  stats for this role but is no longer a catalog row — see deriveRetiredModelIds below — so a
  *  catalog cleanup never silently deletes a model's history off this screen. */
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { BarChart2 } from "lucide-react";
 // Pure curated-model DATA (no legacy UI components) — same import the strategy
 // page already uses, so the drawer lists exactly what the dropdowns offer.
@@ -72,9 +72,14 @@ interface ModelRoleStats {
   avgTokensPerCall?: number | null;
   promptTokens?: number | null;
   completionTokens?: number | null;
-  inheritedFrom?: string;
+  inheritedFrom?: string | null;
   isInherited?: boolean;
   inheritedClosedTrades?: number;
+  costInheritedFrom?: string | null;
+  latencyInheritedFrom?: string | null;
+  perfInheritedFrom?: string | null;
+  vetoInheritedFrom?: string | null;
+  callsWithTokens?: number;
   p50LatencyMs: number | null;
   latencySamples: number;
   benchmarkCostUsd: number | null;
@@ -123,9 +128,9 @@ function CostCell({ s }: { s: ModelRoleStats | undefined }) {
         <Chip tone="accent" title={`Average cost per call over your last ${s.liveCalls} real calls in this role.`}>
           live · n={s.liveCalls}
         </Chip>
-        {s.isInherited && s.inheritedFrom && (
-          <Chip tone="muted" title={`Cost rolled forward from predecessor model ${s.inheritedFrom}`}>
-            from {s.inheritedFrom}
+        {s.costInheritedFrom && (
+          <Chip tone="muted" title={`Cost rolled forward from predecessor model ${s.costInheritedFrom}`}>
+            from {s.costInheritedFrom}
           </Chip>
         )}
       </span>
@@ -144,12 +149,13 @@ function CostCell({ s }: { s: ModelRoleStats | undefined }) {
 
 function TokensCell({ s }: { s: ModelRoleStats | undefined }) {
   if (s && s.avgTokensPerCall != null && s.avgTokensPerCall > 0) {
-    const prompt = s.promptTokens != null && s.liveCalls > 0 ? Math.round(s.promptTokens / s.liveCalls) : null;
-    const comp = s.completionTokens != null && s.liveCalls > 0 ? Math.round(s.completionTokens / s.liveCalls) : null;
+    const tokenCalls = s.callsWithTokens && s.callsWithTokens > 0 ? s.callsWithTokens : s.liveCalls;
+    const prompt = s.promptTokens != null && tokenCalls > 0 ? Math.round(s.promptTokens / tokenCalls) : null;
+    const comp = s.completionTokens != null && tokenCalls > 0 ? Math.round(s.completionTokens / tokenCalls) : null;
     const tooltip =
       prompt !== null && comp !== null
-        ? `Avg ${fmtTokens(s.avgTokensPerCall)} tokens/call (~${fmtTokens(prompt)} in / ~${fmtTokens(comp)} out). Total: ${fmtTokens(s.totalTokens ?? 0)} tokens across ${s.liveCalls} calls.`
-        : `Avg ${fmtTokens(s.avgTokensPerCall)} tokens/call. Total: ${fmtTokens(s.totalTokens ?? 0)} tokens across ${s.liveCalls} calls.`;
+        ? `Avg ${fmtTokens(s.avgTokensPerCall)} tokens/call (~${fmtTokens(prompt)} in / ~${fmtTokens(comp)} out). Total: ${fmtTokens(s.totalTokens ?? 0)} tokens across ${tokenCalls} calls with reported usage.`
+        : `Avg ${fmtTokens(s.avgTokensPerCall)} tokens/call. Total: ${fmtTokens(s.totalTokens ?? 0)} tokens across ${tokenCalls} calls with reported usage.`;
 
     return (
       <span className="inline-flex items-center gap-1.5 whitespace-nowrap" title={tooltip}>
@@ -186,9 +192,9 @@ function LatencyCell({ s }: { s: ModelRoleStats | undefined }) {
         <Chip tone="accent" title={`Median (p50) of your last ${s.latencySamples} successful real calls in this role.`}>
           live · n={s.latencySamples}
         </Chip>
-        {s.isInherited && s.inheritedFrom && (
-          <Chip tone="muted" title={`Latency rolled forward from predecessor model ${s.inheritedFrom}`}>
-            from {s.inheritedFrom}
+        {s.latencyInheritedFrom && (
+          <Chip tone="muted" title={`Latency rolled forward from predecessor model ${s.latencyInheritedFrom}`}>
+            from {s.latencyInheritedFrom}
           </Chip>
         )}
       </span>
@@ -218,16 +224,16 @@ function ReviewerPerfCell({ s }: { s: ModelRoleStats | undefined }) {
   const { vetoValueAddRate, avgReturnPct } = s.reviewerPerf;
   const avgTone = redTeamReturnTone(avgReturnPct);
   const tier = redTeamSampleTier(n);
-  const isInherited = s.isInherited && s.inheritedFrom;
+  const vetoFrom = s.vetoInheritedFrom;
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
       <span className="con-num">
         {vetoValueAddRate.toFixed(0)}% good vetoes · avg{" "}
         <span style={avgTone === "muted" ? undefined : { color: TONE_VAR[avgTone] }}>{fmtSignedPct(avgReturnPct)}</span>
       </span>
-      {isInherited ? (
-        <Chip tone="accent" title={`Veto efficacy rolled forward from predecessor model ${s.inheritedFrom} (${n} matured vetoes).`}>
-          from {s.inheritedFrom} (n={n})
+      {vetoFrom ? (
+        <Chip tone="accent" title={`Veto efficacy rolled forward from predecessor model ${vetoFrom} (${n} matured vetoes).`}>
+          from {vetoFrom} (n={n})
         </Chip>
       ) : tier === "caution" ? (
         <Chip tone="warn" title={`Only ${n} matured vetoes — treat this as an early read, not an established edge.`}>
@@ -253,15 +259,15 @@ function PerfCell({ s, role }: { s: ModelRoleStats | undefined; role: Exclude<Pi
     );
   }
   const { winRate, avgPnlPct } = s.perf;
-  const isInherited = s.isInherited && s.inheritedFrom && s.inheritedClosedTrades;
+  const perfFrom = s.perfInheritedFrom;
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
       <span className="con-num">
         {winRate.toFixed(0)}% win · avg {fmtSignedPct(avgPnlPct)}
       </span>
-      {isInherited ? (
-        <Chip tone="accent" title={`Realized performance rolled forward from predecessor model ${s.inheritedFrom} (${s.inheritedClosedTrades} closed trades) because this model has ${s.closedTrades} closed trades.`}>
-          from {s.inheritedFrom} (n={s.inheritedClosedTrades})
+      {perfFrom && s.inheritedClosedTrades ? (
+        <Chip tone="accent" title={`Realized performance rolled forward from predecessor model ${perfFrom} (${s.inheritedClosedTrades} closed trades) because this model has ${s.closedTrades} closed trades.`}>
+          from {perfFrom} (n={s.inheritedClosedTrades})
         </Chip>
       ) : n < PERF_SOLID_TRADES ? (
         <Chip tone="warn" title={`Only ${n} closed trades — treat this as an early read, not an established edge.`}>
@@ -300,18 +306,33 @@ export function ModelStatsButton({ role }: { role: PickerRole }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sinceDays, setSinceDays] = useState<number>(0);
+  // Generation counter + AbortController so a slow All-Time response cannot overwrite a newer
+  // 30/90-day result, and an earlier finally cannot clear loading while a newer request is pending.
+  const fetchGenRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   const fetchStats = useCallback((days: number) => {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const gen = ++fetchGenRef.current;
     setLoading(true);
     const query = days > 0 ? `?sinceDays=${days}` : "";
-    fetch(`/api/llm-usage/model-stats${query}`)
+    fetch(`/api/llm-usage/model-stats${query}`, { signal: ac.signal })
       .then(async (res) => {
+        if (gen !== fetchGenRef.current) return;
         if (!res.ok) throw new Error(`Stats unavailable (${res.status}).`);
         setData((await res.json()) as ModelStatsResponse);
         setError(null);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (gen !== fetchGenRef.current) return;
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (gen === fetchGenRef.current) setLoading(false);
+      });
   }, []);
 
   const openDrawer = useCallback(() => {

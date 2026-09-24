@@ -426,6 +426,8 @@ export interface LlmUsageRow {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  /** Calls whose total_tokens column was non-NULL (token telemetry present). */
+  callsWithTokens: number;
   /** Total spend for the group.  This is the SUM of `billedCostUsd` and `estimatedCostUsd`, so it
    *  is only fully authoritative when `estimatedCalls === 0` — surfaces that show it must say so
    *  rather than presenting a mixed figure as billed truth. */
@@ -490,6 +492,7 @@ export function getLlmUsageSummary(opts: {
               COALESCE(SUM(lu.prompt_tokens),0) AS prompt_tokens,
               COALESCE(SUM(lu.completion_tokens),0) AS completion_tokens,
               COALESCE(SUM(lu.total_tokens),0) AS total_tokens,
+              COALESCE(SUM(CASE WHEN lu.total_tokens IS NOT NULL THEN 1 ELSE 0 END),0) AS calls_with_tokens,
               COALESCE(SUM(lu.cost_usd),0) AS cost_usd,
               -- Cost provenance split.  Rows written before the cost_source column existed have
               -- NULL there and were estimates, so "not billed" is the honest bucket for them.
@@ -520,6 +523,7 @@ export function getLlmUsageSummary(opts: {
     promptTokens: Number(r.prompt_tokens),
     completionTokens: Number(r.completion_tokens),
     totalTokens: Number(r.total_tokens),
+    callsWithTokens: Number(r.calls_with_tokens ?? 0),
     costUsd: Number(r.cost_usd),
     billedCostUsd: Number(r.billed_cost_usd ?? 0),
     estimatedCostUsd: Number(r.estimated_cost_usd ?? 0),

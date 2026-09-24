@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { listAuditByKind, listConnectedAccounts, listFillEvents } from "@/lib/db";
 import { getLlmUsageSummary } from "@/lib/llm-usage";
+import { CATALOG_DISPLAY_SLUGS } from "@/lib/llm-model-catalog";
 import { aggregateModelStats, normalizeBenchmarkSummaries, type ClosedLotLike } from "@/lib/model-stats";
 import { calculatePnl, getRedTeamEfficacy, RED_TEAM_EFFICACY_DEFAULT_AUDIT_LIMIT } from "@/lib/performance";
 import { resolveRequestUserId } from "@/lib/request-user";
@@ -50,7 +51,13 @@ export async function GET(request: Request) {
   const sinceIso = sinceDays > 0 ? new Date(Date.now() - sinceDays * 24 * 60 * 60_000).toISOString() : undefined;
 
   const usageRows = getLlmUsageSummary({ sinceIso, userId });
-  const latencyEvents = listAuditByKind("llm_call_latency", 10000, userId);
+  // Apply the same sinceDays window to latency audits. listAuditByKind is newest-N without a
+  // date predicate — without this filter, a 30/90-day selector still mixes years-old p50 samples
+  // into the rollup while All Time silently drops anything older than the newest 10k rows.
+  const latencyEventsRaw = listAuditByKind("llm_call_latency", 10000, userId);
+  const latencyEvents = sinceIso
+    ? latencyEventsRaw.filter((e) => typeof e.createdAt === "string" && e.createdAt >= sinceIso)
+    : latencyEventsRaw;
 
   // Closed lots across every connected account (paper + live), FIFO-replayed exactly as the
   // Results page does. No currentPrices — only REALIZED outcomes matter here.
@@ -76,7 +83,10 @@ export async function GET(request: Request) {
     // those (model, role) pairs — no overwrite ambiguity.
     benchmarkSummaries: normalizeBenchmarkSummaries([...benchmarkJson.summaries, ...mistralRebenchJson.summaries]),
     closedLots,
-    reviewerPerfByModel
+    reviewerPerfByModel,
+    // Seed every catalog display slug so zero-sample new models (e.g. gpt-6-astra) still enter
+    // the lineage loop and can inherit predecessor baselines during cold start.
+    models: [...CATALOG_DISPLAY_SLUGS]
   });
 
   // "Most recently updated" — the later of the two merged runs' timestamps, so the drawer's

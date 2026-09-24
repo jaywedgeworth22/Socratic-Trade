@@ -60,6 +60,9 @@ export interface UsageRowLike {
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
+  /** Calls that reported token telemetry (total_tokens IS NOT NULL). Used so avgTokensPerCall
+   *  excludes missing-usage rows instead of treating them as zero-token calls. */
+  callsWithTokens?: number;
   billedCostUsd?: number;
 }
 
@@ -144,12 +147,23 @@ export interface ModelRoleStats {
   promptTokens: number | null;
   /** Completion / output tokens consumed in the window. */
   completionTokens: number | null;
-  /** Predecessor model display slug if stats were rolled forward via lineage. */
+  /** Predecessor model display slug if ANY metric was rolled forward (legacy/compat). Prefer the
+   *  per-metric *InheritedFrom fields below so the UI does not mislabel direct cost/latency. */
   inheritedFrom: string | null;
-  /** True when metrics (calls, latency, tokens, or trade outcomes) roll forward from a predecessor. */
+  /** True when any metric (cost, latency, perf, or veto) rolled forward from a predecessor. */
   isInherited: boolean;
   /** Number of closed trades inherited from predecessor(s). */
   inheritedClosedTrades?: number;
+  /** Predecessor that supplied cost/token roll-forward; null when cost/tokens are direct. */
+  costInheritedFrom: string | null;
+  /** Predecessor that supplied latency roll-forward; null when latency is direct. */
+  latencyInheritedFrom: string | null;
+  /** Predecessor that supplied realized-performance roll-forward; null when perf is direct. */
+  perfInheritedFrom: string | null;
+  /** Predecessor that supplied reviewer-veto roll-forward; null when veto efficacy is direct. */
+  vetoInheritedFrom: string | null;
+  /** Calls in the window that reported token telemetry (denominator for avgTokensPerCall). */
+  callsWithTokens: number;
 }
 
 /** Map an llm_usage context to a picker role; null = not a strategy-loop context. */
@@ -208,7 +222,14 @@ export function aggregateModelStats(input: AggregateModelStatsInput): ModelRoleS
   // Live cost and token usage per (model, role) from llm_usage rows.
   const usageData = new Map<
     string,
-    { calls: number; totalCostUsd: number; promptTokens: number; completionTokens: number; totalTokens: number }
+    {
+      calls: number;
+      totalCostUsd: number;
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+      callsWithTokens: number;
+    }
   >();
   for (const row of input.usageRows) {
     const role = roleForUsageContext(row.context);
@@ -216,12 +237,31 @@ export function aggregateModelStats(input: AggregateModelStatsInput): ModelRoleS
     const model = cleanModelId(row.model);
     modelSet.add(model);
     const k = key(model, role);
-    const bucket = usageData.get(k) ?? { calls: 0, totalCostUsd: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0 };
-    bucket.calls += Number.isFinite(row.calls) ? row.calls : 0;
+    const bucket = usageData.get(k) ?? {
+      calls: 0,
+      totalCostUsd: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      callsWithTokens: 0
+    };
+    const calls = Number.isFinite(row.calls) ? row.calls : 0;
+    bucket.calls += calls;
     bucket.totalCostUsd += Number.isFinite(row.costUsd) ? row.costUsd : 0;
     bucket.promptTokens += Number.isFinite(row.promptTokens) ? Number(row.promptTokens) : 0;
     bucket.completionTokens += Number.isFinite(row.completionTokens) ? Number(row.completionTokens) : 0;
     bucket.totalTokens += Number.isFinite(row.totalTokens) ? Number(row.totalTokens) : 0;
+    // Prefer explicit callsWithTokens; otherwise, if any token field was reported on the row,
+    // treat all of that row's calls as token-bearing (legacy summaries without the column).
+    if (typeof row.callsWithTokens === "number" && Number.isFinite(row.callsWithTokens)) {
+      bucket.callsWithTokens += Math.max(0, row.callsWithTokens);
+    } else if (
+      (typeof row.totalTokens === "number" && Number.isFinite(row.totalTokens)) ||
+      (typeof row.promptTokens === "number" && Number.isFinite(row.promptTokens)) ||
+      (typeof row.completionTokens === "number" && Number.isFinite(row.completionTokens))
+    ) {
+      bucket.callsWithTokens += calls;
+    }
     usageData.set(k, bucket);
   }
 
@@ -338,13 +378,19 @@ export function aggregateModelStats(input: AggregateModelStatsInput): ModelRoleS
         perf,
         // Mirror the green-perf guard: reviewer veto value-add is a RED-only measure.
         reviewerPerf: role === "red" ? (reviewerByModel.get(model) ?? null) : null,
-        totalTokens: c && c.calls > 0 ? c.totalTokens : null,
-        avgTokensPerCall: c && c.calls > 0 && c.totalTokens > 0 ? Math.round(c.totalTokens / c.calls) : null,
-        promptTokens: c && c.calls > 0 ? c.promptTokens : null,
-        completionTokens: c && c.calls > 0 ? c.completionTokens : null,
+        totalTokens: c && c.callsWithTokens > 0 ? c.totalTokens : null,
+        avgTokensPerCall:
+          c && c.callsWithTokens > 0 && c.totalTokens > 0 ? Math.round(c.totalTokens / c.callsWithTokens) : null,
+        promptTokens: c && c.callsWithTokens > 0 ? c.promptTokens : null,
+        completionTokens: c && c.callsWithTokens > 0 ? c.completionTokens : null,
         inheritedFrom: null,
         isInherited: false,
-        inheritedClosedTrades: undefined
+        inheritedClosedTrades: undefined,
+        costInheritedFrom: null,
+        latencyInheritedFrom: null,
+        perfInheritedFrom: null,
+        vetoInheritedFrom: null,
+        callsWithTokens: c?.callsWithTokens ?? 0
       });
     }
   }
@@ -354,83 +400,130 @@ export function aggregateModelStats(input: AggregateModelStatsInput): ModelRoleS
   // a new model starts with zero live samples, starving the UI and policy engine of statistical
   // baselines. If a model lacks sufficient samples (< 3 live calls or < 20 closed trades / vetoes),
   // roll forward and inherit historical evidence from its catalog-configured predecessors.
+  // CRITICAL: skip predecessors that canonicalize to the current model (aliases / self-ids such as
+  // gpt-luna-latest → gpt-5.6-luna, gemini-3.8-flash → gemini-flash-latest) so metrics are never
+  // double-counted against the model's own direct samples.
   const outByKey = new Map<string, ModelRoleStats>(out.map((row) => [key(row.model, row.role), row]));
   for (const stat of out) {
     const rawPreds = getPredecessorModelIds(stat.model);
     if (!rawPreds || rawPreds.length === 0) continue;
-    const preds = rawPreds.map(cleanModelId);
+    const selfId = cleanModelId(stat.model);
+    const preds = [
+      ...new Set(rawPreds.map(cleanModelId).filter((pred) => pred.length > 0 && pred !== selfId))
+    ];
+    if (preds.length === 0) continue;
 
-    // 1. Cost, latency, and token metrics roll-forward (when liveCalls < 3)
+    // 1. Cost, latency, and token metrics roll-forward (when liveCalls < 3).
+    // When the successor already has 1–2 direct calls, COMBINE with the predecessor rather than
+    // replacing — Strategist Runs / Total cost promise the actual window totals.
     if (stat.liveCalls < 3) {
       for (const pred of preds) {
         const predStat = outByKey.get(key(pred, stat.role));
-        if (predStat && predStat.liveCalls > 0) {
-          stat.liveCalls = predStat.liveCalls;
-          stat.avgCostUsd = predStat.avgCostUsd;
-          stat.totalCostUsd = predStat.totalCostUsd;
-          stat.totalTokens = predStat.totalTokens;
-          stat.avgTokensPerCall = predStat.avgTokensPerCall;
-          stat.promptTokens = predStat.promptTokens;
-          stat.completionTokens = predStat.completionTokens;
-          if (stat.latencySamples === 0 && predStat.latencySamples > 0) {
-            stat.p50LatencyMs = predStat.p50LatencyMs;
-            stat.latencySamples = predStat.latencySamples;
-          }
-          stat.isInherited = true;
-          stat.inheritedFrom = predStat.model;
-          break;
+        if (!predStat || predStat.liveCalls <= 0) continue;
+        // Never inherit from a row that is actually the same canonical model (defense in depth).
+        if (cleanModelId(predStat.model) === selfId) continue;
+
+        const directCalls = stat.liveCalls;
+        const directCost = stat.totalCostUsd ?? 0;
+        const directPrompt = stat.promptTokens ?? 0;
+        const directCompletion = stat.completionTokens ?? 0;
+        const directTotalTokens = stat.totalTokens ?? 0;
+        const directTokenCalls = stat.callsWithTokens;
+
+        const predCost = predStat.totalCostUsd ?? 0;
+        const predPrompt = predStat.promptTokens ?? 0;
+        const predCompletion = predStat.completionTokens ?? 0;
+        const predTotalTokens = predStat.totalTokens ?? 0;
+        const predTokenCalls = predStat.callsWithTokens;
+
+        const combinedCalls = directCalls + predStat.liveCalls;
+        const combinedCost = directCost + predCost;
+        const combinedPrompt = directPrompt + predPrompt;
+        const combinedCompletion = directCompletion + predCompletion;
+        const combinedTotalTokens = directTotalTokens + predTotalTokens;
+        const combinedTokenCalls = directTokenCalls + predTokenCalls;
+
+        stat.liveCalls = combinedCalls;
+        stat.totalCostUsd = combinedCalls > 0 ? Number(combinedCost.toFixed(6)) : null;
+        stat.avgCostUsd = combinedCalls > 0 ? Number((combinedCost / combinedCalls).toFixed(6)) : null;
+        stat.callsWithTokens = combinedTokenCalls;
+        if (combinedTokenCalls > 0) {
+          stat.totalTokens = combinedTotalTokens;
+          stat.promptTokens = combinedPrompt;
+          stat.completionTokens = combinedCompletion;
+          stat.avgTokensPerCall =
+            combinedTotalTokens > 0 ? Math.round(combinedTotalTokens / combinedTokenCalls) : null;
+        } else {
+          stat.totalTokens = null;
+          stat.promptTokens = null;
+          stat.completionTokens = null;
+          stat.avgTokensPerCall = null;
         }
+        stat.costInheritedFrom = predStat.model;
+        stat.isInherited = true;
+        stat.inheritedFrom = stat.inheritedFrom ?? predStat.model;
+
+        if (stat.latencySamples === 0 && predStat.latencySamples > 0) {
+          stat.p50LatencyMs = predStat.p50LatencyMs;
+          stat.latencySamples = predStat.latencySamples;
+          stat.latencyInheritedFrom = predStat.model;
+        }
+        break;
       }
     }
 
     // 2. Realized performance roll-forward (Green Team, when closedTrades < 20)
     if (stat.role === "green" && stat.closedTrades < 20) {
       for (const pred of preds) {
+        if (pred === selfId) continue;
         const predLots = proposerLotsByModel.get(pred) ?? [];
-        if (predLots.length > 0) {
-          const currentLots = proposerLotsByModel.get(stat.model) ?? [];
-          const combinedLots = [...currentLots, ...predLots];
-          const totalClosed = combinedLots.length;
-          const wins = combinedLots.filter((l) => l.returnPct > 0).length;
-          stat.perf = {
-            closedTrades: totalClosed,
-            winRate: Number(((wins / totalClosed) * 100).toFixed(1)),
-            avgPnlPct: Number((combinedLots.reduce((s, l) => s + l.returnPct, 0) / totalClosed).toFixed(2)),
-            totalPnlUsd: Number(combinedLots.reduce((s, l) => s + l.pnl, 0).toFixed(2))
-          };
-          stat.closedTrades = totalClosed;
-          stat.isInherited = true;
-          stat.inheritedFrom = stat.inheritedFrom ?? pred;
-          stat.inheritedClosedTrades = predLots.length;
-          break;
-        }
+        if (predLots.length === 0) continue;
+        const currentLots = proposerLotsByModel.get(stat.model) ?? [];
+        const combinedLots = [...currentLots, ...predLots];
+        const totalClosed = combinedLots.length;
+        if (totalClosed === 0) continue;
+        const wins = combinedLots.filter((l) => l.returnPct > 0).length;
+        stat.perf = {
+          closedTrades: totalClosed,
+          winRate: Number(((wins / totalClosed) * 100).toFixed(1)),
+          avgPnlPct: Number((combinedLots.reduce((s, l) => s + l.returnPct, 0) / totalClosed).toFixed(2)),
+          totalPnlUsd: Number(combinedLots.reduce((s, l) => s + l.pnl, 0).toFixed(2))
+        };
+        stat.closedTrades = totalClosed;
+        stat.perfInheritedFrom = pred;
+        stat.isInherited = true;
+        stat.inheritedFrom = stat.inheritedFrom ?? pred;
+        stat.inheritedClosedTrades = predLots.length;
+        break;
       }
     }
 
     // 3. Reviewer veto value-add roll-forward (Red Team, when maturedVetoes < 20)
     if (stat.role === "red" && (!stat.reviewerPerf || stat.reviewerPerf.maturedVetoes < 20)) {
       for (const pred of preds) {
+        if (pred === selfId) continue;
         const predStat = outByKey.get(key(pred, "red"));
-        if (predStat?.reviewerPerf && predStat.reviewerPerf.maturedVetoes > 0) {
-          const cur = stat.reviewerPerf;
-          const predPerf = predStat.reviewerPerf;
-          if (!cur || cur.maturedVetoes === 0) {
-            stat.reviewerPerf = { ...predPerf };
-          } else {
-            const n1 = cur.maturedVetoes;
-            const n2 = predPerf.maturedVetoes;
-            const n = n1 + n2;
-            stat.reviewerPerf = {
-              maturedVetoes: n,
-              vetoValueAddRate: Number(((cur.vetoValueAddRate * n1 + predPerf.vetoValueAddRate * n2) / n).toFixed(1)),
-              survivorRiskHitRate: Number(((cur.survivorRiskHitRate * n1 + predPerf.survivorRiskHitRate * n2) / n).toFixed(1)),
-              avgReturnPct: Number(((cur.avgReturnPct * n1 + predPerf.avgReturnPct * n2) / n).toFixed(2))
-            };
-          }
-          stat.isInherited = true;
-          stat.inheritedFrom = stat.inheritedFrom ?? predStat.model;
-          break;
+        if (!predStat?.reviewerPerf || predStat.reviewerPerf.maturedVetoes <= 0) continue;
+        if (cleanModelId(predStat.model) === selfId) continue;
+        const cur = stat.reviewerPerf;
+        const predPerf = predStat.reviewerPerf;
+        if (!cur || cur.maturedVetoes === 0) {
+          stat.reviewerPerf = { ...predPerf };
+        } else {
+          const n1 = cur.maturedVetoes;
+          const n2 = predPerf.maturedVetoes;
+          const n = n1 + n2;
+          stat.reviewerPerf = {
+            maturedVetoes: n,
+            vetoValueAddRate: Number(((cur.vetoValueAddRate * n1 + predPerf.vetoValueAddRate * n2) / n).toFixed(1)),
+            survivorRiskHitRate: Number(((cur.survivorRiskHitRate * n1 + predPerf.survivorRiskHitRate * n2) / n).toFixed(1)),
+            avgReturnPct: Number(((cur.avgReturnPct * n1 + predPerf.avgReturnPct * n2) / n).toFixed(2))
+          };
         }
+        stat.vetoInheritedFrom = predStat.model;
+        stat.isInherited = true;
+        stat.inheritedFrom = stat.inheritedFrom ?? predStat.model;
+        break;
       }
     }
   }

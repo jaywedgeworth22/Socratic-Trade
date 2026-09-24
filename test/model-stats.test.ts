@@ -485,6 +485,9 @@ describe("aggregateModelStats — token aggregation & predecessor lineage", () =
     const solGreen = statFor(stats, "gpt-5.6-sol", "green");
     expect(solGreen.isInherited).toBe(true);
     expect(solGreen.inheritedFrom).toBe("gpt-5.6-terra");
+    expect(solGreen.costInheritedFrom).toBe("gpt-5.6-terra");
+    expect(solGreen.latencyInheritedFrom).toBe("gpt-5.6-terra");
+    expect(solGreen.perfInheritedFrom).toBe("gpt-5.6-terra");
     // Cost and latency inherited from predecessor
     expect(solGreen.avgCostUsd).toBeCloseTo(0.05, 6);
     expect(solGreen.p50LatencyMs).toBe(4200);
@@ -518,8 +521,139 @@ describe("aggregateModelStats — token aggregation & predecessor lineage", () =
     const solRed = statFor(stats, "gpt-5.6-sol", "red");
     expect(solRed.isInherited).toBe(true);
     expect(solRed.inheritedFrom).toBe("gpt-5.6-terra");
+    expect(solRed.vetoInheritedFrom).toBe("gpt-5.6-terra");
+    expect(solRed.costInheritedFrom).toBeNull();
     expect(solRed.reviewerPerf).not.toBeNull();
     expect(solRed.reviewerPerf?.maturedVetoes).toBe(35);
     expect(solRed.reviewerPerf?.vetoValueAddRate).toBe(70);
+  });
+
+  it("excludes canonical self-IDs from lineage roll-forward (no double-count)", () => {
+    // gemini-3.8-flash canonicalizes to gemini-flash-latest. If we treated it as a predecessor
+    // of gemini-flash-latest, combining lots would double-count the same 10 trades into 20.
+    const lots = Array.from({ length: 10 }, () => ({
+      entryModel: "gemini-flash-latest",
+      reviewedByModel: null,
+      pnl: 10,
+      returnPct: 1
+    }));
+    const stats = aggregateModelStats({
+      usageRows: [
+        {
+          model: "gemini-flash-latest",
+          context: "strategy",
+          calls: 2,
+          costUsd: 0.02,
+          promptTokens: 200,
+          completionTokens: 40,
+          totalTokens: 240
+        }
+      ],
+      latencyEvents: [],
+      benchmarkSummaries: NO_BENCH,
+      closedLots: lots,
+      models: ["gemini-flash-latest"]
+    });
+    const flash = statFor(stats, "gemini-flash-latest", "green");
+    expect(flash.closedTrades).toBe(10);
+    expect(flash.perf?.closedTrades).toBe(10);
+    expect(flash.liveCalls).toBe(2);
+    expect(flash.perfInheritedFrom).toBeNull();
+    // Cost stay direct (no true predecessor with samples to combine against self).
+    expect(flash.costInheritedFrom).toBeNull();
+  });
+
+  it("preserves/combines direct usage when inheriting predecessor cost/tokens", () => {
+    const stats = aggregateModelStats({
+      usageRows: [
+        {
+          model: "gpt-5.6-terra",
+          context: "strategy",
+          calls: 10,
+          costUsd: 1.0,
+          promptTokens: 10000,
+          completionTokens: 2000,
+          totalTokens: 12000
+        },
+        {
+          model: "gpt-5.6-sol",
+          context: "strategy",
+          calls: 2,
+          costUsd: 0.2,
+          promptTokens: 2000,
+          completionTokens: 400,
+          totalTokens: 2400
+        }
+      ],
+      latencyEvents: [],
+      benchmarkSummaries: NO_BENCH,
+      closedLots: [],
+      models: ["gpt-5.6-sol", "gpt-5.6-terra"]
+    });
+    const sol = statFor(stats, "gpt-5.6-sol", "green");
+    expect(sol.liveCalls).toBe(12); // 2 direct + 10 predecessor
+    expect(sol.totalCostUsd).toBeCloseTo(1.2, 6);
+    expect(sol.avgCostUsd).toBeCloseTo(0.1, 6);
+    expect(sol.totalTokens).toBe(14400);
+    expect(sol.avgTokensPerCall).toBe(1200);
+    expect(sol.costInheritedFrom).toBe("gpt-5.6-terra");
+  });
+
+  it("excludes missing token telemetry from avgTokensPerCall denominator", () => {
+    const stats = aggregateModelStats({
+      usageRows: [
+        {
+          model: "gpt-5.4-mini",
+          context: "strategy",
+          calls: 5,
+          costUsd: 0.05,
+          // 3 of 5 calls reported tokens
+          callsWithTokens: 3,
+          promptTokens: 3000,
+          completionTokens: 600,
+          totalTokens: 3600
+        }
+      ],
+      latencyEvents: [],
+      benchmarkSummaries: NO_BENCH,
+      closedLots: []
+    });
+    const green = statFor(stats, "gpt-mini-latest", "green");
+    expect(green.liveCalls).toBe(5);
+    expect(green.callsWithTokens).toBe(3);
+    expect(green.avgTokensPerCall).toBe(1200); // 3600/3, not 3600/5
+  });
+
+  it("seeds catalog models so zero-sample successors still get predecessor fallback", () => {
+    // gpt-6-astra has predecessors gpt-5.6-sol / gpt-5.6-terra. With no direct usage/lots for
+    // astra, seeding models[] is what makes the lineage loop run for it.
+    const stats = aggregateModelStats({
+      usageRows: [
+        {
+          model: "gpt-5.6-terra",
+          context: "strategy",
+          calls: 8,
+          costUsd: 0.4,
+          promptTokens: 8000,
+          completionTokens: 1600,
+          totalTokens: 9600
+        }
+      ],
+      latencyEvents: [],
+      benchmarkSummaries: NO_BENCH,
+      closedLots: Array.from({ length: 25 }, () => ({
+        entryModel: "gpt-5.6-terra",
+        reviewedByModel: null,
+        pnl: 20,
+        returnPct: 3
+      })),
+      models: ["gpt-6-astra", "gpt-5.6-terra"]
+    });
+    const astra = statFor(stats, "gpt-6-astra", "green");
+    expect(astra.isInherited).toBe(true);
+    expect(astra.costInheritedFrom).toBe("gpt-5.6-terra");
+    expect(astra.liveCalls).toBe(8);
+    expect(astra.perfInheritedFrom).toBe("gpt-5.6-terra");
+    expect(astra.closedTrades).toBe(25);
   });
 });

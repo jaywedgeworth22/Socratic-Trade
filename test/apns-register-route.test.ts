@@ -113,7 +113,7 @@ describe("POST /api/mobile/push/register", () => {
     expect(getNotifyPrefs(userId).channels).toContain("apns");
   });
 
-  it("rejects a malformed token, a bad environment, and a mismatched bundle id", async () => {
+  it("rejects a malformed token, a bad environment, and an unknown bundle id; accepts legacy + current", async () => {
     const { POST } = await import("../app/api/mobile/push/register/route");
     const email = `bad-${randomUUID()}@example.com`;
     const token = hexToken("route-bad");
@@ -121,7 +121,16 @@ describe("POST /api/mobile/push/register", () => {
     expect((await POST(request(email, "POST", { token: "nope", environment: "production" }))).status).toBe(400);
     expect((await POST(request(email, "POST", { token, environment: "staging" }))).status).toBe(400);
     expect((await POST(request(email, "POST", { token, environment: "production", bundleId: "com.someone.else" }))).status).toBe(400);
+
+    // Coexistence window: both current and legacy native topics must register.
+    expect((await POST(request(email, "POST", { token, environment: "production", bundleId: "trade.socratic.ios" }))).status).toBe(200);
+    const legacyToken = hexToken("route-legacy");
+    const legacyRes = await POST(request(email, "POST", { token: legacyToken, environment: "production", bundleId: "trade.socratic.app" }));
+    expect(legacyRes.status).toBe(200);
+    const legacyJson = await legacyRes.json();
+    expect(legacyJson.device.bundleId).toBe("trade.socratic.app");
   });
+
 });
 
 describe("DELETE /api/mobile/push/register", () => {

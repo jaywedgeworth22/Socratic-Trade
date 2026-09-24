@@ -32,7 +32,7 @@ import {
   setNotifyPrefs,
   unregisterDeviceToken
 } from "@/lib/db";
-import { loadApnsConfig } from "@/lib/apns";
+import { isAcceptedApnsBundleId, loadApnsConfig } from "@/lib/apns";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { resolveRequestUserId } from "@/lib/request-user";
 import { NextResponse } from "next/server";
@@ -62,12 +62,18 @@ export async function POST(request: Request) {
     );
   }
 
-  // The bundle id doubles as the APNs topic. Default to the configured one; reject a mismatch
-  // rather than storing a token we could never successfully push to.
+  // The bundle id doubles as the APNs topic. During the 2026-09-22 rename coexistence
+  // window both trade.socratic.ios and trade.socratic.app are accepted (see
+  // resolveAcceptedApnsBundleIds). Default to the configured primary when omitted;
+  // reject anything outside the accepted set rather than storing a token we could
+  // never successfully push to.
   const configured = loadApnsConfig()?.bundleId ?? "";
   const suppliedBundleId = typeof body.bundleId === "string" ? body.bundleId.trim() : "";
-  if (suppliedBundleId && configured && suppliedBundleId !== configured) {
-    return NextResponse.json({ ok: false, error: "bundleId does not match this server's APNs topic" }, { status: 400 });
+  if (suppliedBundleId && !isAcceptedApnsBundleId(suppliedBundleId)) {
+    return NextResponse.json(
+      { ok: false, error: "bundleId does not match an accepted APNs topic for this server" },
+      { status: 400 }
+    );
   }
   const bundleId = suppliedBundleId || configured;
   if (!bundleId) {

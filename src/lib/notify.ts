@@ -372,6 +372,9 @@ const CHANNELS: Record<NotifyChannelId, ChannelDef> = {
           {
             deviceToken: device.token,
             environment: device.environment,
+            // Per-device topic so old TF (trade.socratic.app) and new TF
+            // (trade.socratic.ios) both receive pushes during coexistence.
+            topic: device.bundleId,
             title: msg.title,
             // APNs caps the whole payload at 4KB; a digest-sized body would blow it.
             body: msg.body.slice(0, CHANNEL_CAPABILITIES.apns.maxBodyChars),

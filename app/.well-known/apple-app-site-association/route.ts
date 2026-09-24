@@ -16,7 +16,13 @@ export const APPLE_APP_SITE_ASSOCIATION = {
   applinks: {
     details: [
       {
-        appIDs: ["CC8UTF7ATG.trade.socratic.ios"],
+        // Both team-qualified app IDs during the 2026-09-22 bundle rename coexistence
+        // window so old TestFlight installs (trade.socratic.app) keep opening universal
+        // links until they are retired. Drop the legacy ID only after old TF is gone.
+        appIDs: [
+          "CC8UTF7ATG.trade.socratic.ios",
+          "CC8UTF7ATG.trade.socratic.app"
+        ],
         components: [
           { "/": "/console/approvals", comment: "Proposals tab" },
           { "/": "/console/approvals/*", comment: "One specific proposal" },
@@ -29,6 +35,15 @@ export const APPLE_APP_SITE_ASSOCIATION = {
           { "/": "/console/results", comment: "Results" }
         ]
       }
+    ]
+  },
+  // Required for the webcredentials:socratic.trade associated-domain entitlement.
+  // Without this top-level object, Shared Web Credentials against socratic.trade
+  // never authorizes even when the entitlement is present on the binary.
+  webcredentials: {
+    apps: [
+      "CC8UTF7ATG.trade.socratic.ios",
+      "CC8UTF7ATG.trade.socratic.app"
     ]
   }
 } as const;

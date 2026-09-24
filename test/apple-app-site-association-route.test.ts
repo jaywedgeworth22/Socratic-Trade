@@ -18,7 +18,14 @@ describe("GET /.well-known/apple-app-site-association", () => {
     expect(response.headers.get("content-type")).toContain("application/json");
     const body = await response.json();
     expect(body.applinks.details).toHaveLength(1);
-    expect(body.applinks.details[0].appIDs).toEqual(["CC8UTF7ATG.trade.socratic.ios"]);
+    expect(body.applinks.details[0].appIDs).toEqual([
+      "CC8UTF7ATG.trade.socratic.ios",
+      "CC8UTF7ATG.trade.socratic.app"
+    ]);
+    expect(body.webcredentials.apps).toEqual([
+      "CC8UTF7ATG.trade.socratic.ios",
+      "CC8UTF7ATG.trade.socratic.app"
+    ]);
   });
 
   it("claims exactly the routes the iOS app routes, and nothing broader", async () => {
@@ -62,5 +69,15 @@ describe("GET /.well-known/apple-app-site-association", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("location")).toBeNull();
+  });
+
+  it("serves webcredentials with both team-qualified app IDs during coexistence", async () => {
+    const { APPLE_APP_SITE_ASSOCIATION } = await import(
+      "../app/.well-known/apple-app-site-association/route"
+    );
+    expect(APPLE_APP_SITE_ASSOCIATION.webcredentials.apps).toEqual([
+      "CC8UTF7ATG.trade.socratic.ios",
+      "CC8UTF7ATG.trade.socratic.app"
+    ]);
   });
 });

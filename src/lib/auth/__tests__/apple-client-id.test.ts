@@ -9,7 +9,7 @@ import {
 describe("apple-client-id", () => {
   it("always includes both native audiences during the bundle-rename coexistence window", () => {
     expect(NATIVE_APPLE_CLIENT_IDS).toEqual([
-      "trade.socratic.ios",
+      "com.socratictrade.ios",
       "trade.socratic.app"
     ]);
     expect(resolveAppleClientIds(undefined)).toEqual([

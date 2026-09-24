@@ -1,6 +1,6 @@
 # Current Status
 
-## 2026-09-24 FIXER — PR #3451 tip: retarget to com.socratictrade.ios (NO-SHIP until ASC)
+## 2026-09-24 FIXER — PR #3451 tip: retarget to com.socratictrade.ios
 
 **Current state.** Tip of `minimax/bundle-rename` (PR #3451) retargeted from the interim
 wrong ID `trade.socratic.ios` → correct **`com.socratictrade.ios`**, rebased onto
@@ -11,15 +11,14 @@ ID); APNs register/send accepts + uses per-device topic for both bundle IDs
 (`resolveAcceptedApnsBundleIds` / `APNS_BUNDLE_IDS`); AASA keeps BOTH
 `CC8UTF7ATG.com.socratictrade.ios` and `CC8UTF7ATG.trade.socratic.app` and adds top-level
 `webcredentials.apps`; `scripts/ios-fleet.sha256` pin refreshed after `apps.json` /
-`asc-api.mjs` drift. Extra-ship no. Deployer: treat as **no-ship**.
+`asc-api.mjs` drift. Extra-ship no.
 
-**Blockers (Jay / ASC — not inventable in-repo):**
-1. **ASC new app record** — changing `bundleId` to `com.socratictrade.ios` does NOT retarget
-   existing App Store Connect app `6799238379` (immutable bundle on that record). Ship is
-   blocked until Jay creates a new ASC app for `com.socratictrade.ios` and the new Apple ID is
-   written into `scripts/ios-fleet/apps.json` + `scripts/ios-fleet/ios-app-versions.json`.
-   Do not invent an Apple ID. Current `appleId: 6799238379` remains the OLD app's id and is
-   intentionally left as a documented mismatch.
+**Resolved (Jay / ASC):**
+1. **ASC new app record** — DONE: Jay created the new ASC app for `com.socratictrade.ios`;
+   Apple ID `6815511597` (owner-supplied via iMessage 2026-09-23 ~11:05 PM CT) is now written
+   into `scripts/ios-fleet/apps.json` + `scripts/ios-fleet/ios-app-versions.json`. `6799238379`
+   remains the OLD app's id (immutable bundle on that record). An intermediate revert that
+   called the new ID invented was wrong.
 2. **Apple Developer Portal** — register App ID `com.socratictrade.ios` (+ tests
    `com.socratictrade.ios.tests`), App Group `group.com.socratictrade`, Associated Domains
    `socratic.trade` (applinks + webcredentials).

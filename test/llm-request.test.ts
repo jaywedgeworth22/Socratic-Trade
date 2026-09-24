@@ -60,6 +60,8 @@ describe("llm-request — model resolution", () => {
   });
 
   it("keeps current native model reasoning controls aligned with their aliases", () => {
+    expect(reasoningCapabilityForModel("claude-opus-5-5")?.provider).toBe("anthropic");
+    expect(reasoningCapabilityForModel("claude-opus-5.5")?.provider).toBe("anthropic");
     expect(reasoningCapabilityForModel("claude-opus-5")?.provider).toBe("anthropic");
     for (const model of ["grok-4.6", "grok-latest", "x-ai/grok-4.6"]) {
       expect(reasoningCapabilityForModel(model)?.options.map((option) => option.value)).toEqual(["low", "medium", "high", "xhigh"]);

@@ -16,7 +16,7 @@ const OWNER_ROWS: Array<[string, string, string]> = [
   ["gpt-5.6-luna", "openai/gpt-5.6-luna", "gpt-5.6-luna"],
   ["claude-sonnet-latest", "~anthropic/claude-sonnet-latest", "claude-sonnet-5"],
   ["claude-haiku-latest", "~anthropic/claude-haiku-latest", "claude-haiku-4-5-20251001"],
-  ["claude-opus-latest", "~anthropic/claude-opus-latest", "claude-opus-5"],
+  ["claude-opus-latest", "~anthropic/claude-opus-latest", "claude-opus-5-5"],
   ["claude-fable-latest", "~anthropic/claude-fable-latest", "claude-fable-5-1"],
   ["grok-latest", "~x-ai/grok-latest", "grok-4.6"],
   ["gemini-flash-lite-latest", "google/gemini-3.5-flash-lite", "gemini-flash-lite-latest"],
@@ -33,6 +33,8 @@ const OWNER_ROWS: Array<[string, string, string]> = [
 const ALIASES: Array<[string, string]> = [
   ["claude-sonnet-5", "claude-sonnet-latest"],
   ["claude-haiku-4.5", "claude-haiku-latest"],
+  ["claude-opus-5-5", "claude-opus-latest"],
+  ["claude-opus-5.5", "claude-opus-latest"],
   ["claude-opus-5", "claude-opus-latest"],
   ["claude-fable-5", "claude-fable-latest"],
   ["grok-4.5", "grok-latest"],

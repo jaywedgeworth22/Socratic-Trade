@@ -26,6 +26,8 @@ describe("canonicalModelId — family identity for Results / price benchmarking 
   });
 
   it("collapses every Claude Opus / Sonnet / Haiku / Fable onto the catalog family id", () => {
+    expect(canonicalModelId("claude-opus-5-5")).toBe("claude-opus-latest");
+    expect(canonicalModelId("claude-opus-5.5")).toBe("claude-opus-latest");
     expect(canonicalModelId("claude-opus-5")).toBe("claude-opus-latest");
     expect(canonicalModelId("claude-opus-4-8")).toBe("claude-opus-latest");
     expect(canonicalModelId("anthropic/claude-opus-latest")).toBe("claude-opus-latest");

@@ -70,6 +70,7 @@ import {
   qdrantDeleteByIds,
   qdrantDeleteNamespace,
   qdrantInventoryByMetadata,
+  qdrantVisitInventoryPages,
   qdrantProviderAuthority,
   qdrantRetrieveByPcIds,
   qdrantSetPayload,
@@ -5886,6 +5887,95 @@ export async function purgePrivateVectorRecordsForUser(options: {
   const localLegacyIds = new Set(
     localEvidence.filter((row) => !row.id.startsWith("occ:v3:")).map((row) => row.id)
   );
+  // Qdrant account erasure must not use the reconciliation inventory: that materializes
+  // everything and deliberately fails at 50k. Stream provider pages, delete matching IDs in
+  // bounded batches, then verify clean observations. Keep public/default records untouched.
+  if (qdrantWrites) {
+    const managedPrefix = managedOccurrenceVectorPrefix({ ledgerAuthority, providerAuthority, tenantScope });
+    const privateNamespaceName = vectorNamespaceName("private", undefined, options.userId);
+    const namespaces: Array<{ name: VectorDataNamespace; matches: (row: { id: string; metadata: Record<string, unknown> }) => boolean }> = [
+      { name: "managed", matches: (row) => row.id.startsWith(managedPrefix) },
+      { name: "default", matches: (row) =>
+        localLegacyIds.has(row.id) || vectorMetadataBelongsToPrivateUser(row.metadata, options.userId) },
+      { name: "private", matches: () => true }
+    ];
+    const contentHashes = new Set(localEvidence.map((row) => row.contentHash));
+    const collectHashes = (metadata: Record<string, unknown>) => {
+      if (typeof metadata.content_hash === "string" && metadata.content_hash) {
+        contentHashes.add(metadata.content_hash);
+      }
+      if (typeof metadata.text === "string" && metadata.text.trim()) {
+        contentHashes.add(hashContent(metadata.text));
+      }
+    };
+    let deleted = 0;
+    const batchSize = Math.max(1, Math.min(1_000, Math.floor(options.batchSize ?? 100)));
+    for (const entry of namespaces) {
+      const namespace = vectorNamespaceName(entry.name, undefined, options.userId);
+      await qdrantVisitInventoryPages({
+        namespace, batchSize, signal: options.leaseGuard.signal,
+        visit: async (page) => {
+          assertVectorStoreLease(options.leaseGuard);
+          const matched = page.filter(entry.matches);
+          for (const row of matched) collectHashes(row.metadata);
+          if (entry.name !== "private" && matched.length) {
+            await qdrantDeleteByIds({ namespace, ids: matched.map((row) => row.id) });
+            deleted += matched.length;
+          } else if (entry.name === "private") {
+            deleted += matched.length;
+          }
+          assertVectorStoreLease(options.leaseGuard);
+        }
+      });
+    }
+    // Local receipt IDs may have been omitted by an eventually consistent scroll.
+    for (const [name, localIds] of [["managed", [...localManagedIds]], ["default", [...localLegacyIds]]] as const) {
+      for (const idBatch of chunks(localIds, batchSize)) {
+        assertVectorStoreLease(options.leaseGuard);
+        await qdrantDeleteByIds({ namespace: vectorNamespaceName(name, undefined, options.userId), ids: idBatch });
+      }
+    }
+    await qdrantDeleteNamespace({ namespace: privateNamespaceName });
+    assertVectorStoreLease(options.leaseGuard);
+    // A scan that races eventual consistency is insufficient. Require consecutive empty
+    // observations, including exact receipt ID lookups, before account deletion can commit.
+    const verifyAttempts = erasureVerifyAttempts();
+    const requiredClean = erasureVerifyConsecutiveClean(verifyAttempts);
+    const verifyDelay = erasureVerifyDelayMs();
+    let consecutiveClean = 0;
+    let residual = false;
+    for (let attempt = 0; attempt < verifyAttempts; attempt++) {
+      if (attempt > 0 && verifyDelay > 0) {
+        await sleep(Math.min(30_000, verifyDelay * (2 ** (attempt - 1))), options.leaseGuard.signal);
+      }
+      assertVectorStoreLease(options.leaseGuard);
+      residual = false;
+      for (const entry of namespaces) {
+        const namespace = vectorNamespaceName(entry.name, undefined, options.userId);
+        await qdrantVisitInventoryPages({
+          namespace, batchSize, signal: options.leaseGuard.signal,
+          visit: async (page) => {
+            assertVectorStoreLease(options.leaseGuard);
+            if (page.some(entry.matches)) { residual = true; return false; }
+          }
+        });
+      }
+      for (const [name, localIds] of [["managed", [...localManagedIds]], ["default", [...localLegacyIds]]] as const) {
+        const namespace = vectorNamespaceName(name, undefined, options.userId);
+        for (const idBatch of chunks(localIds, batchSize)) {
+          assertVectorStoreLease(options.leaseGuard);
+          if ((await qdrantRetrieveByPcIds({ namespace, ids: idBatch })).length) residual = true;
+        }
+      }
+      consecutiveClean = residual ? 0 : consecutiveClean + 1;
+      if (consecutiveClean >= requiredClean) break;
+    }
+    if (consecutiveClean < requiredClean) {
+      throw new Error(`Private vector purge stability verification failed (provider residual: ${residual}).`);
+    }
+    // The deletion caller consumes contentHashes and deleted, not a materialized ID list.
+    return { ids: [], contentHashes: [...contentHashes].sort(), deleted };
+  }
   const managedRows = await inventoryVectorRecordsByMetadata({
     userId: options.userId,
     namespace: "managed",

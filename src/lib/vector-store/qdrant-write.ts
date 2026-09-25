@@ -217,7 +217,9 @@ async function qdrantRequest(path: string, init: RequestInit): Promise<Response>
       const response = await fetch(`${qdrantBaseUrl()}${path}`, {
         ...init,
         headers: { ...qdrantHeaders(), ...(init.headers as Record<string, string> | undefined) },
-        signal: init.signal ?? AbortSignal.timeout(qdrantTimeoutMs())
+        signal: init.signal
+          ? AbortSignal.any([init.signal, AbortSignal.timeout(qdrantTimeoutMs())])
+          : AbortSignal.timeout(qdrantTimeoutMs())
       });
       if (!response.ok) {
         const text = (await response.text().catch(() => "")).slice(0, 400);
@@ -431,6 +433,49 @@ export async function qdrantRetrieveByPcIds(options: {
   return [...new Set(existing)].sort();
 }
 
+/** Stream Qdrant inventory one page at a time. Account erasure uses this rather than the
+ * reconciliation-only 50k materialized inventory. Do not collect pages in this helper. */
+export async function qdrantVisitInventoryPages(options: {
+  namespace?: string | null;
+  batchSize?: number;
+  signal?: AbortSignal;
+  visit: (rows: QdrantInventoryRow[]) => Promise<boolean | void>;
+}): Promise<void> {
+  const batchSize = Math.max(1, Math.min(1_000, Math.floor(options.batchSize ?? DEFAULT_SCROLL_LIMIT)));
+  const collection = encodeURIComponent(qdrantCollectionName());
+  const filter = qdrantTenantFilter(pineconeNamespaceToQdrantTenant(options.namespace));
+  let offset: unknown = null;
+  do {
+    options.signal?.throwIfAborted();
+    const body: Record<string, unknown> = { filter, limit: batchSize, with_payload: true, with_vector: false };
+    if (offset != null) body.offset = offset;
+    const response = await qdrantRequest(`/collections/${collection}/points/scroll`, {
+      method: "POST", body: JSON.stringify(body), signal: options.signal
+    });
+    options.signal?.throwIfAborted();
+    const parsed = (await response.json()) as {
+      result?: { points?: Array<{ payload?: unknown }>; next_page_offset?: unknown };
+    };
+    options.signal?.throwIfAborted();
+    const points = Array.isArray(parsed.result?.points) ? parsed.result.points : [];
+    const rows: QdrantInventoryRow[] = [];
+    for (const point of points) {
+      options.signal?.throwIfAborted();
+      const payload = point?.payload && typeof point.payload === "object" && !Array.isArray(point.payload)
+        ? point.payload as Record<string, unknown> : undefined;
+      const { pcId, metadata } = metadataFromPayload(payload);
+      if (pcId) rows.push({ id: pcId, metadata });
+    }
+    if (await options.visit(rows) === false) return;
+    options.signal?.throwIfAborted();
+    offset = parsed.result?.next_page_offset ?? null;
+    if (offset != null && offset !== "") {
+      await yieldEventLoop();
+      options.signal?.throwIfAborted();
+    }
+  } while (offset != null && offset !== "");
+}
+
 export async function qdrantInventoryByMetadata(options: {
   namespace?: string | undefined | null;
   prefix?: string;
@@ -439,11 +484,13 @@ export async function qdrantInventoryByMetadata(options: {
   receiptRequired?: boolean;
   batchSize?: number;
   maxScanned?: number;
+  signal?: AbortSignal;
 } = {}): Promise<QdrantInventoryRow[]> {
   const batchSize = Math.max(1, Math.min(1_000, Math.floor(options.batchSize ?? DEFAULT_SCROLL_LIMIT)));
   const configuredMaxScanned = Number(process.env.VECTOR_INVENTORY_MAX_SCANNED ?? process.env.MANAGED_VECTOR_MAX_SCANNED);
-  const defaultMaxScanned = Number.isFinite(configuredMaxScanned) && configuredMaxScanned > 0 ? configuredMaxScanned : 250_000;
-  const maxScanned = Math.max(1, Math.min(1_000_000, Math.floor(options.maxScanned ?? defaultMaxScanned)));
+  // A caller or environment may lower this guard, never raise the 50k hard ceiling.
+  const defaultMaxScanned = Number.isFinite(configuredMaxScanned) && configuredMaxScanned > 0 ? configuredMaxScanned : 50_000;
+  const maxScanned = Math.max(1, Math.min(50_000, Math.floor(options.maxScanned ?? defaultMaxScanned)));
   const ns = pineconeNamespaceToQdrantTenant(options.namespace);
   const extraFilter: Record<string, unknown> = {};
   if (options.source !== undefined) extraFilter.source = { $eq: options.source };
@@ -458,6 +505,7 @@ export async function qdrantInventoryByMetadata(options: {
   let scanned = 0;
   let offset: unknown = null;
   do {
+    options.signal?.throwIfAborted();
     const body: Record<string, unknown> = {
       filter,
       limit: batchSize,
@@ -467,20 +515,24 @@ export async function qdrantInventoryByMetadata(options: {
     if (offset != null) body.offset = offset;
     const response = await qdrantRequest(`/collections/${collection}/points/scroll`, {
       method: "POST",
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: options.signal
     });
+    options.signal?.throwIfAborted();
     const parsed = (await response.json()) as {
       result?: {
         points?: Array<{ id?: unknown; payload?: unknown }>;
         next_page_offset?: unknown;
       };
     };
+    options.signal?.throwIfAborted();
     const points = Array.isArray(parsed.result?.points) ? parsed.result.points : [];
     if (scanned + points.length > maxScanned) {
       throw new Error(`Vector inventory scan limit exceeded (${maxScanned} records).`);
     }
     scanned += points.length;
     for (const point of points) {
+      options.signal?.throwIfAborted();
       const payload =
         point?.payload && typeof point.payload === "object" && !Array.isArray(point.payload)
           ? (point.payload as Record<string, unknown>)
@@ -503,8 +555,10 @@ export async function qdrantInventoryByMetadata(options: {
     offset = parsed.result?.next_page_offset ?? null;
     if (offset != null && offset !== "") {
       await yieldEventLoop();
+      options.signal?.throwIfAborted();
     }
   } while (offset != null && offset !== "");
+  options.signal?.throwIfAborted();
   return found.sort((a, b) => a.id.localeCompare(b.id));
 }
 

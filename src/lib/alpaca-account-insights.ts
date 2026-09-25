@@ -114,16 +114,27 @@ function authHeaders(apiKey: string, secretKey?: string): Record<string, string>
 //  - err.cause (the real network-layer reason "fetch failed" alone omits) is appended, and the
 //    account's own secret is scrubbed, before the row is ever written -- same helpers
 //    data-providers.ts uses for every other provider's health row.
-async function getJson<T>(
+interface GetJsonOutcome<T> {
+  data?: T;
+  /** HTTP status when the server answered (ok or not). Absent on a transport failure. */
+  status?: number;
+  /** Short, secret-scrubbed failure text (HTTP status + a trimmed body, or the transport error). */
+  error?: string;
+}
+
+const ERROR_BODY_MAX_CHARS = 200;
+
+async function getJsonDetailed<T>(
   baseUrl: string,
   path: string,
   service: string,
   apiKey: string,
   secretKey: string | undefined,
   keySource: ApiKeySource
-): Promise<T | undefined> {
+): Promise<GetJsonOutcome<T>> {
   const url = `${baseUrl}${path}`;
   const start = Date.now();
+  const scrub = (text: string) => scrubProviderErrorText(scrubProviderErrorText(text, secretKey), apiKey);
   for (let attempt = 0; ; attempt++) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -140,8 +151,22 @@ async function getJson<T>(
         errorText: response.ok ? undefined : `HTTP ${response.status}`,
         keySource,
       });
-      if (!response.ok) return undefined;
-      return (await response.json()) as T;
+      if (!response.ok) {
+        // Keep the broker's own reason (e.g. Alpaca's `{"code":…,"message":"invalid activity
+        // type"}`) so an ops caller can see WHY a read failed instead of an indistinguishable
+        // empty result. Trimmed and scrubbed; never includes request headers.
+        let bodyText = "";
+        try {
+          bodyText = (await response.text()).replace(/\s+/g, " ").trim().slice(0, ERROR_BODY_MAX_CHARS);
+        } catch {
+          bodyText = "";
+        }
+        return {
+          status: response.status,
+          error: scrub(`HTTP ${response.status}${bodyText ? `: ${bodyText}` : ""}`)
+        };
+      }
+      return { data: (await response.json()) as T, status: response.status };
     } catch (err) {
       if (attempt === 0 && !isAbortOrTimeoutError(err) && isTransientNetworkError(err)) {
         await new Promise((resolve) => setTimeout(resolve, jitteredBackoffMs(TRANSIENT_RETRY_BACKOFF_MS, attempt)));
@@ -152,7 +177,7 @@ async function getJson<T>(
       // APCA-API-SECRET-KEY, or a Bearer apiKey when secretKey is absent), so both must be
       // scrubbed from a transport-error cause before it reaches api_health_log — scrubbing only
       // secretKey left apiKey exposed verbatim whenever it appeared in the appended cause text.
-      const errorText = scrubProviderErrorText(scrubProviderErrorText(appendErrorCause(rawMessage, err), secretKey), apiKey);
+      const errorText = scrub(appendErrorCause(rawMessage, err));
       logApiHealth({
         service,
         ok: false,
@@ -161,11 +186,22 @@ async function getJson<T>(
         keySource,
         ...(isAbortOrTimeoutError(err) ? { soft: true } : {})
       });
-      return undefined;
+      return { error: errorText };
     } finally {
       clearTimeout(timeout);
     }
   }
+}
+
+async function getJson<T>(
+  baseUrl: string,
+  path: string,
+  service: string,
+  apiKey: string,
+  secretKey: string | undefined,
+  keySource: ApiKeySource
+): Promise<T | undefined> {
+  return (await getJsonDetailed<T>(baseUrl, path, service, apiKey, secretKey, keySource)).data;
 }
 
 const SERVICE = "alpaca-account-insights";
@@ -214,6 +250,9 @@ export interface AlpacaAccountActivity {
   per_share_amount?: string;
   description?: string;
   status?: string;
+  /** Non-trade activities: Alpaca's creation timestamp (when present) and sub-type. */
+  created_at?: string;
+  activity_sub_type?: string;
 }
 
 // Equity-curve time series (GET /v2/account/portfolio/history). Returns undefined when no
@@ -258,48 +297,118 @@ export async function fetchAlpacaMarketClock(): Promise<AlpacaMarketClock | unde
   return getJson<AlpacaMarketClock>(tradingBase(), "/v2/clock", SERVICE, creds.apiKey, creds.secretKey, creds.source);
 }
 
-// Account activity/audit log — fills, dividends, transfers (GET /v2/account/activities).
-// Returns an empty array when no Alpaca credential is available or the request fails.
-export async function fetchAlpacaAccountActivities(
-  userId: string,
-  opts: {
-    activityTypes?: string[];
-    pageSize?: number;
-    maxPages?: number;
-    connectedAccountId?: string;
-    after?: string;
-    until?: string;
-  } = {}
-): Promise<AlpacaAccountActivity[]> {
-  const creds = resolvePrivateAlpacaAccount(userId, opts.connectedAccountId);
-  if (!creds) return [];
+/** Alpaca `category` filter. Mutually exclusive with `activity_types` (Alpaca rejects both). */
+export type AlpacaActivityCategory = "trade_activity" | "non_trade_activity";
 
+export interface AlpacaActivitiesFetchOptions {
+  activityTypes?: string[];
+  category?: AlpacaActivityCategory;
+  pageSize?: number;
+  maxPages?: number;
+  connectedAccountId?: string;
+  after?: string;
+  until?: string;
+}
+
+/**
+ * Honest activity-ledger read. `ok: false` means the broker ledger is UNKNOWN (no credential,
+ * HTTP error, transport failure, malformed body) — callers that do money math on flows must
+ * not treat that the same as "the account had no deposits or withdrawals".
+ */
+export interface AlpacaActivitiesFetchResult {
+  ok: boolean;
+  activities: AlpacaAccountActivity[];
+  pages: number;
+  /** True when paging stopped at maxPages with a full last page (older rows may be missing). */
+  truncated: boolean;
+  httpStatus?: number;
+  error?: string;
+  credentialMissing?: boolean;
+  /** Query shape that was sent (no credentials, no account identifiers). */
+  query: string;
+}
+
+// Account activity/audit log — fills, dividends, transfers (GET /v2/account/activities).
+export async function fetchAlpacaAccountActivitiesDetailed(
+  userId: string,
+  opts: AlpacaActivitiesFetchOptions = {}
+): Promise<AlpacaActivitiesFetchResult> {
   const types = (opts.activityTypes ?? [])
     .map((t) => t.trim())
     .filter(Boolean);
+  const category = types.length > 0 ? undefined : opts.category;
+  const queryShape = category ? `category=${category}` : types.length > 0 ? `activity_types=${types.join(",")}` : "all";
+  const creds = resolvePrivateAlpacaAccount(userId, opts.connectedAccountId);
+  if (!creds) {
+    return {
+      ok: false,
+      activities: [],
+      pages: 0,
+      truncated: false,
+      credentialMissing: true,
+      error: "no private Alpaca credential for this account",
+      query: queryShape
+    };
+  }
+
   const pageSize = Math.max(1, Math.min(100, Math.trunc(opts.pageSize ?? DEFAULT_ACTIVITIES_PAGE_SIZE)));
   const maxPages = Math.max(1, Math.trunc(opts.maxPages ?? DEFAULT_ACTIVITIES_MAX_PAGES));
   const all: AlpacaAccountActivity[] = [];
   let pageToken: string | undefined;
+  let pages = 0;
+  let truncated = false;
 
   for (let page = 0; page < maxPages; page += 1) {
     const params = new URLSearchParams();
     if (types.length > 0) params.set("activity_types", types.join(","));
+    else if (category) params.set("category", category);
     params.set("page_size", String(pageSize));
     if (opts.after) params.set("after", opts.after);
     if (opts.until) params.set("until", opts.until);
     if (pageToken) params.set("page_token", pageToken);
     const path = `/v2/account/activities?${params.toString()}`;
-    const activities = await getJson<AlpacaAccountActivity[]>(tradingBase(creds.environment), path, SERVICE, creds.apiKey, creds.secretKey, creds.source);
-    if (!Array.isArray(activities) || activities.length === 0) break;
+    const outcome = await getJsonDetailed<AlpacaAccountActivity[]>(
+      tradingBase(creds.environment),
+      path,
+      SERVICE,
+      creds.apiKey,
+      creds.secretKey,
+      creds.source
+    );
+    if (outcome.data === undefined || !Array.isArray(outcome.data)) {
+      // A failure on ANY page leaves the ledger incomplete — report it rather than returning a
+      // silently short list that reads as "no more transfers".
+      return {
+        ok: false,
+        activities: all,
+        pages,
+        truncated: false,
+        httpStatus: outcome.status,
+        error: outcome.error ?? (outcome.data === undefined ? "activity read failed" : "activity response was not a list"),
+        query: queryShape
+      };
+    }
+    pages += 1;
+    const activities = outcome.data;
+    if (activities.length === 0) break;
     all.push(...activities);
     if (activities.length < pageSize) break;
     const nextToken = activities[activities.length - 1]?.id;
     if (!nextToken || nextToken === pageToken) break;
     pageToken = nextToken;
+    if (page === maxPages - 1) truncated = true;
   }
 
-  return all;
+  return { ok: true, activities: all, pages, truncated, query: queryShape };
+}
+
+// Back-compat list form: returns an empty array when no Alpaca credential is available or the
+// request fails. Money-path callers (drawdown HWM) use the Detailed form so a failure is visible.
+export async function fetchAlpacaAccountActivities(
+  userId: string,
+  opts: AlpacaActivitiesFetchOptions = {}
+): Promise<AlpacaAccountActivity[]> {
+  return (await fetchAlpacaAccountActivitiesDetailed(userId, opts)).activities;
 }
 
 export interface AlpacaAccountEquitySnapshot {

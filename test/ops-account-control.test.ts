@@ -354,6 +354,23 @@ describe("set_system_state", () => {
     expect(getPolicy(seeded.userId, seeded.namedId).systemState).toBe("halted");
   });
 
+  it("a refused arming check does not seed an uninitialized account policy", async () => {
+    const seeded = await seed();
+    const { getDb } = await import("../src/lib/db");
+    const database = getDb();
+    database.prepare("DELETE FROM account_strategy_state WHERE user_id = ? AND connected_account_id = ?")
+      .run(seeded.userId, seeded.namedId);
+    const policyRow = () => database.prepare(
+      "SELECT COUNT(*) AS n FROM account_strategy_state WHERE user_id = ? AND connected_account_id = ?"
+    ).get(seeded.userId, seeded.namedId) as { n: number };
+    expect(policyRow().n).toBe(0);
+    broker.readThrows.add(seeded.namedAccountNumber);
+
+    const res = await call({ action: "set_system_state", connectedAccountId: seeded.namedId, systemState: "active" });
+    expect(res.status).toBe(400);
+    expect(policyRow().n).toBe(0);
+  });
+
   it("active refuses an unreachable broker and a non-agentic account with the console's messages", async () => {
     const seeded = await seed();
     broker.readThrows.add(seeded.namedAccountNumber);

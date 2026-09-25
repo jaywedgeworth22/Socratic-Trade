@@ -439,10 +439,15 @@ export async function qdrantInventoryByMetadata(options: {
   receiptRequired?: boolean;
   batchSize?: number;
   maxScanned?: number;
+  /** When provided, each scroll page passes this signal to the underlying fetch so the loop
+   *  stops immediately when the caller is aborted (e.g. a scheduler tick watchdog firing).
+   *  Without this, an orphaned long-running scan keeps accumulating `found[]` in memory even
+   *  after the owning tick has been abandoned, leaking 1+ GB per aborted scan run. */
+  signal?: AbortSignal;
 } = {}): Promise<QdrantInventoryRow[]> {
   const batchSize = Math.max(1, Math.min(1_000, Math.floor(options.batchSize ?? DEFAULT_SCROLL_LIMIT)));
   const configuredMaxScanned = Number(process.env.VECTOR_INVENTORY_MAX_SCANNED ?? process.env.MANAGED_VECTOR_MAX_SCANNED);
-  const defaultMaxScanned = Number.isFinite(configuredMaxScanned) && configuredMaxScanned > 0 ? configuredMaxScanned : 250_000;
+  const defaultMaxScanned = Number.isFinite(configuredMaxScanned) && configuredMaxScanned > 0 ? configuredMaxScanned : 50_000;
   const maxScanned = Math.max(1, Math.min(1_000_000, Math.floor(options.maxScanned ?? defaultMaxScanned)));
   const ns = pineconeNamespaceToQdrantTenant(options.namespace);
   const extraFilter: Record<string, unknown> = {};
@@ -458,6 +463,9 @@ export async function qdrantInventoryByMetadata(options: {
   let scanned = 0;
   let offset: unknown = null;
   do {
+    // Bail out early if the caller has been aborted (e.g. scheduler tick watchdog) — this
+    // check runs before every page fetch so the loop exits promptly and `found[]` is freed.
+    options.signal?.throwIfAborted();
     const body: Record<string, unknown> = {
       filter,
       limit: batchSize,
@@ -467,7 +475,8 @@ export async function qdrantInventoryByMetadata(options: {
     if (offset != null) body.offset = offset;
     const response = await qdrantRequest(`/collections/${collection}/points/scroll`, {
       method: "POST",
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: options.signal
     });
     const parsed = (await response.json()) as {
       result?: {
@@ -503,6 +512,8 @@ export async function qdrantInventoryByMetadata(options: {
     offset = parsed.result?.next_page_offset ?? null;
     if (offset != null && offset !== "") {
       await yieldEventLoop();
+      // Re-check after yielding: the watchdog may have fired during the yield.
+      options.signal?.throwIfAborted();
     }
   } while (offset != null && offset !== "");
   return found.sort((a, b) => a.id.localeCompare(b.id));

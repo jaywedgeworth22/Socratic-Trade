@@ -116,7 +116,10 @@ const managedVectorReconcileGuardHost = globalThis as unknown as {
  * global `local` tenant. The promise guard is pinned to globalThis so HMR/module duplication cannot
  * start a second provider/SQLite repair in the same process.
  */
-export async function reconcileManagedVectorRecordsIfDue(now = Date.now()): Promise<ManagedVectorReconcileRun | null> {
+export async function reconcileManagedVectorRecordsIfDue(
+  now = Date.now(),
+  options: { signal?: AbortSignal } = {}
+): Promise<ManagedVectorReconcileRun | null> {
   const existing = managedVectorReconcileGuardHost.__schedulerManagedVectorReconcileInFlight;
   if (existing) return existing;
 
@@ -149,7 +152,9 @@ export async function reconcileManagedVectorRecordsIfDue(now = Date.now()): Prom
       const { reconcileManagedVectorRecords } = await import("./vector-db");
       // Scheduled maintenance is observation-only. Provider list inventory is eventually
       // consistent, so destructive repair requires an explicit operator invocation after review.
-      const result = await reconcileManagedVectorRecords({ dryRun: true });
+      // Pass the caller's AbortSignal so the Qdrant scroll stops immediately when the
+      // scheduler tick watchdog fires, preventing orphaned in-memory accumulation.
+      const result = await reconcileManagedVectorRecords({ dryRun: true, signal: options.signal });
       if (result.skipped) {
         console.warn("[scheduler] managed-vector reconciliation busy; retry deferred");
         return { status: "busy", result };
@@ -842,8 +847,12 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
 
   // Global managed-vector crash repair is cadence-gated and single-flight. It must never block or
   // throw into trading work; failed or lease-busy attempts persist their hourly retry marker.
+  // Pass the tick's AbortSignal so the Qdrant inventory scroll stops immediately when the
+  // watchdog fires, preventing orphaned scans from accumulating memory until OOM.
   void journalLane("managed-vector-reconcile", {}, async () => {
-    const run = await reconcileManagedVectorRecordsIfDue();
+    const run = await reconcileManagedVectorRecordsIfDue(Date.now(), {
+      signal: tickGuardHost.__tickAbortController?.signal
+    });
     if (run === null) return { status: "skipped" as const, summary: "not due" };
     return { status: "ok" as const, summary: `status=${run.status}` };
   }).catch((err) => console.error("[scheduler] managed-vector reconcile journal error:", err));

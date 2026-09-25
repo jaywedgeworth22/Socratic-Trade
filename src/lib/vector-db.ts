@@ -5245,6 +5245,9 @@ export async function inventoryVectorRecordsByMetadata(options: {
   leaseGuard?: VectorStoreLeaseGuard;
   /** Managed corpus is isolated from legacy/direct vectors and other applications in shared BYOK indexes. */
   namespace?: VectorDataNamespace;
+  /** When provided, each Qdrant scroll page is aborted when the signal fires, stopping the loop
+   *  immediately so the in-memory result array is released (prevents OOM from orphaned scans). */
+  signal?: AbortSignal;
 } = {}): Promise<VectorMetadataInventoryRow[]> {
   const userId = options.userId ?? "local";
   const batchSize = Math.max(1, Math.min(1_000, Math.floor(options.batchSize ?? 100)));
@@ -5262,7 +5265,8 @@ export async function inventoryVectorRecordsByMetadata(options: {
       docType: options.docType,
       receiptRequired: options.receiptRequired,
       batchSize: options.batchSize,
-      maxScanned: options.maxScanned
+      maxScanned: options.maxScanned,
+      signal: options.signal
     });
   }
   const { pc, pineconeSource } = await getPineconeClient(userId, options.leaseGuard);
@@ -6089,6 +6093,9 @@ export async function reconcileManagedVectorRecords(options: {
   userId?: string;
   source?: string;
   dryRun?: boolean;
+  /** AbortSignal from the caller (e.g. scheduler tick watchdog) passed through to the
+   *  Qdrant scroll so the inventory scan stops immediately when the signal fires. */
+  signal?: AbortSignal;
 } = {}): Promise<ReconcileManagedVectorRecordsResult> {
   if (options.dryRun !== false) return reconcileManagedVectorRecordsUnlocked(options);
   const guarded = await runWithOperationLease(
@@ -6134,7 +6141,7 @@ function emptyReconcileResult(dryRun: boolean, skipped = false): ReconcileManage
 }
 
 async function reconcileManagedVectorRecordsUnlocked(
-  options: { userId?: string; source?: string; dryRun?: boolean },
+  options: { userId?: string; source?: string; dryRun?: boolean; signal?: AbortSignal },
   operationLeaseGuard?: VectorStoreLeaseGuard
 ): Promise<ReconcileManagedVectorRecordsResult> {
   assertVectorStoreLease(operationLeaseGuard);
@@ -6174,7 +6181,8 @@ async function reconcileManagedVectorRecordsUnlocked(
       userId,
       namespace: targetNamespace,
       prefix: managedOccurrenceVectorPrefix({ ledgerAuthority, providerAuthority }),
-      leaseGuard: operationLeaseGuard
+      leaseGuard: operationLeaseGuard,
+      signal: options.signal
     })).filter((row) => (
       row.metadata.receipt_required === true ||
       typeof row.metadata.vector_commit_id === "string" ||

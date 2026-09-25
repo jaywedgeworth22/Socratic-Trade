@@ -3864,6 +3864,22 @@ function migrate(database: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_user_api_keys_user ON user_api_keys (user_id);
 
+    -- Per-user data-source proxy settings (2026-09-25 residential-proxy egress).
+    -- password is encrypted with the same ENCRYPTION_KEY machinery as user_api_keys
+    -- (src/lib/db-api-keys.ts); see src/lib/user-proxy-settings.ts.
+    CREATE TABLE IF NOT EXISTS user_proxy_settings (
+      user_id TEXT PRIMARY KEY,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      protocol TEXT NOT NULL DEFAULT 'http',
+      host TEXT NOT NULL,
+      port INTEGER,
+      username TEXT,
+      password TEXT,
+      failure_mode TEXT NOT NULL DEFAULT 'fail_soft',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     -- Multi-account storage
     CREATE TABLE IF NOT EXISTS connected_accounts (
       id TEXT PRIMARY KEY,

@@ -70,6 +70,11 @@ import { fetchNasdaqScreenerResponse } from "./nasdaq-screener-fetch";
 const DEFAULT_BASE_URL = "https://congress.trade";
 const DEFAULT_TIMEOUT_MS = 30_000; // App A upserts + recomputes per-trade perf anchors per call — give it room
 const LAST_DAILY_RUN_KEY = "congress-share:lastDailyRunDate";
+const LAST_TOKEN_PROBE_KEY = "congress-share:lastTokenProbeTs";
+
+/** Minimum interval between scheduled token probes — matches the auth breaker cooldown so
+ *  a probe fires roughly once per breaker window even on long-running instances. */
+const TOKEN_PROBE_INTERVAL_MS = 6 * 60 * 60_000; // 6h
 
 /**
  * Auth circuit-breaker (prod incident 2026-09-07): HTTP 401/403 from App A means the shared
@@ -349,6 +354,81 @@ export async function fetchCongressPriceNeeds(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Lightweight congress-share auth probe. Makes a cheap GET to PRICE_NEEDS_PATH?limit=0 using
+ * the configured CONGRESS_TRADE_TOKEN. On 401/403, logs via logApiHealth with an explicit
+ * operator remediation hint and trips the auth circuit breaker so subsequent batch runs are
+ * gated immediately. On success, clears the breaker and logs ok. Never throws — always
+ * fire-and-forget safe.
+ */
+export async function probeCongressShareToken(
+  fetchImpl: typeof fetch = fetch
+): Promise<void> {
+  const token = congressTradeToken();
+  if (!token) return; // no token configured — nothing to probe
+  const url = `${congressTradeBaseUrl()}${PRICE_NEEDS_PATH}?limit=0`;
+  const timeoutMs = Number(process.env.CONGRESS_SHARE_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetchImpl(url, {
+      method: "GET",
+      headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+      signal: controller.signal,
+      cache: "no-store"
+    });
+    if (res.status === 401 || res.status === 403) {
+      const text = await res.text().catch(() => "");
+      const base = `HTTP ${res.status} ${text.slice(0, 200)}`.trim();
+      const errorText =
+        `${base} — token mismatch: resync CONGRESS_TRADE_TOKEN in ST Infisical prod ` +
+        `to match INGEST_TOKEN / ADMIN_TOKEN in CT Infisical prod`;
+      console.error(`[congress-share] token probe auth failure: ${errorText}`);
+      tripCongressAuthBreaker(Date.now(), errorText, token);
+      logApiHealth({ service: "congress-share", ok: false, errorText, keySource: "env" });
+      return;
+    }
+    if (!res.ok) {
+      // Non-auth failure (5xx, network, etc.): log as transient; do not trip the auth breaker.
+      const text = await res.text().catch(() => "");
+      const errorText = `${HEALTH_TRANSIENT_FAILURE_PREFIX}HTTP ${res.status} ${text.slice(0, 200)}`.trim();
+      console.warn(`[congress-share] token probe non-auth failure: ${errorText}`);
+      logApiHealth({ service: "congress-share", ok: false, errorText, keySource: "env" });
+      return;
+    }
+    clearCongressAuthBreaker();
+    logApiHealth({ service: "congress-share", ok: true, keySource: "env" });
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    const isTransient = isTransientNetworkError(err);
+    const errorText = isTransient ? `${HEALTH_TRANSIENT_FAILURE_PREFIX}${error}` : error;
+    console.warn(`[congress-share] token probe error: ${error}`);
+    logApiHealth({ service: "congress-share", ok: false, errorText, keySource: "env" });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Run the congress-share token probe if the probe interval has elapsed since the last run.
+ * Intended for the scheduler tick — returns {status:"skipped"} when the window hasn't elapsed
+ * so the task journal records a benign skip rather than a gap. Never throws.
+ */
+export async function probeCongressShareTokenIfDue(now: number = Date.now()): Promise<{ status: "ok" | "skipped" }> {
+  if (!congressTradeToken()) return { status: "skipped" };
+  try {
+    const last = getInternalSetting<number>(LAST_TOKEN_PROBE_KEY);
+    if (last !== undefined && now - last < TOKEN_PROBE_INTERVAL_MS) {
+      return { status: "skipped" };
+    }
+    setInternalSetting(LAST_TOKEN_PROBE_KEY, now);
+  } catch {
+    // fail open — if the marker read/write fails, run the probe anyway
+  }
+  await probeCongressShareToken();
+  return { status: "ok" };
 }
 
 /**
@@ -790,8 +870,12 @@ export async function shareWithCongressTrade(payload: CongressSharePayload): Pro
       });
       if (!res.ok) {
         const text = await res.text().catch(() => "");
-        const errorText = `HTTP ${res.status} ${text.slice(0, 300)}`;
         const isAuthFailure = res.status === 401 || res.status === 403;
+        const baseError = `HTTP ${res.status} ${text.slice(0, 300)}`;
+        const errorText = isAuthFailure
+          ? `${baseError} — token mismatch: resync CONGRESS_TRADE_TOKEN in ST Infisical prod ` +
+            `to match INGEST_TOKEN / ADMIN_TOKEN in CT Infisical prod`
+          : baseError;
         if (isAuthFailure) {
           console.error(`[congress-share] import failed: ${errorText}`);
           tripCongressAuthBreaker(now, errorText, token);

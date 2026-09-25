@@ -6,7 +6,7 @@
 
 import { LANE_WAITS, withAccountMutation } from "./account-mutation";
 import { checkAllUserPriceAlerts } from "./alerts";
-import { runCongressDailyShareIfDue } from "./congress-share";
+import { probeCongressShareTokenIfDue, runCongressDailyShareIfDue } from "./congress-share";
 import { runMarketScanFreshnessIfDue } from "./market-scan-freshness";
 import { runWeeklyMarketDigestRefreshIfDue } from "./weekly-market-digest";
 import { runHealthLaneReprobeIfDue } from "./health-lane-reprobe";
@@ -975,6 +975,13 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
       console.error("[scheduler] roic transcript refresh error:", err instanceof Error ? err.message : err)
     );
   }
+
+  // Periodic congress-share token probe (~6h cadence): validates CONGRESS_TRADE_TOKEN against
+  // App A so a drifted/rotated token is surfaced via Sentry + health log well before the next
+  // nightly batch run. No-op when token is not configured or the interval hasn't elapsed.
+  void journalLane("congress-share-token-probe", {}, () => probeCongressShareTokenIfDue(Date.now())).catch((err) =>
+    console.error("[scheduler] congress-share token probe error:", err)
+  );
 
   // Once-per-day share of company refs + daily closes + the S&P-500 series to congress.trade
   // (App A) so it can avoid spending the shared FMP quota. No-op unless CONGRESS_TRADE_TOKEN +

@@ -31,7 +31,7 @@
 ## Policy update — 2026-09-25
 
 The current same-repository PR workflow actor allowlist is `cursor[bot]`,
-`dependabot[bot]`, `sentry[bot]`, and `codex[bot]` in CI, Playwright Smoke,
+`dependabot[bot]`, `sentry[bot]`, `codex[bot]`, and `chatgpt-codex-connector[bot]` in CI, Playwright Smoke,
 and Security. A bot-authored PR does not need another bot to copy it under a
 human identity: these actors run the ordinary required checks and review rules.
 The workflows check `github.actor` for the event, not an immutable PR-author

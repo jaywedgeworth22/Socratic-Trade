@@ -5257,6 +5257,7 @@ export async function inventoryVectorRecordsByMetadata(options: {
   batchSize?: number;
   /** Hard provider-record scan bound. Exceeding it throws rather than returning a partial inventory. */
   maxScanned?: number;
+  signal?: AbortSignal;
   /** Exact prepared request authorizing provider reads through the account-deletion fence. */
   accountDeletionRequestId?: string;
   leaseGuard?: VectorStoreLeaseGuard;
@@ -5279,7 +5280,10 @@ export async function inventoryVectorRecordsByMetadata(options: {
       docType: options.docType,
       receiptRequired: options.receiptRequired,
       batchSize: options.batchSize,
-      maxScanned: options.maxScanned
+      maxScanned: options.maxScanned,
+      signal: options.signal && options.leaseGuard?.signal
+        ? AbortSignal.any([options.signal, options.leaseGuard.signal])
+        : options.signal ?? options.leaseGuard?.signal
     });
   }
   const { pc, pineconeSource } = await getPineconeClient(userId, options.leaseGuard);
@@ -6106,6 +6110,7 @@ export async function reconcileManagedVectorRecords(options: {
   userId?: string;
   source?: string;
   dryRun?: boolean;
+  signal?: AbortSignal;
 } = {}): Promise<ReconcileManagedVectorRecordsResult> {
   if (options.dryRun !== false) return reconcileManagedVectorRecordsUnlocked(options);
   const guarded = await runWithOperationLease(
@@ -6151,7 +6156,7 @@ function emptyReconcileResult(dryRun: boolean, skipped = false): ReconcileManage
 }
 
 async function reconcileManagedVectorRecordsUnlocked(
-  options: { userId?: string; source?: string; dryRun?: boolean },
+  options: { userId?: string; source?: string; dryRun?: boolean; signal?: AbortSignal },
   operationLeaseGuard?: VectorStoreLeaseGuard
 ): Promise<ReconcileManagedVectorRecordsResult> {
   assertVectorStoreLease(operationLeaseGuard);
@@ -6191,7 +6196,8 @@ async function reconcileManagedVectorRecordsUnlocked(
       userId,
       namespace: targetNamespace,
       prefix: managedOccurrenceVectorPrefix({ ledgerAuthority, providerAuthority }),
-      leaseGuard: operationLeaseGuard
+      leaseGuard: operationLeaseGuard,
+      signal: options.signal
     })).filter((row) => (
       row.metadata.receipt_required === true ||
       typeof row.metadata.vector_commit_id === "string" ||

@@ -423,6 +423,11 @@ export async function runHealthLaneReprobeIfDue(
 
     for (const s of candidates) {
       if (backupLanePrimaryIsServing(s.service, summaries)) {
+        // Advance the reprobe clock so this backup lane is not re-evaluated on every scheduler
+        // tick while its primary is healthy.  The lane stays red in Admin Connections (correct —
+        // it IS stopped and we want it ready for failover), but we do not burn a real probe
+        // attempt or generate any Sentry event until the next interval expires.
+        setInternalSetting(laneKey(s.service, s.keySource), new Date(nowMs + intervalMs).toISOString());
         results.push({
           service: s.service,
           keySource: s.keySource,

@@ -538,6 +538,26 @@ describe("console paths are unchanged", () => {
     expect(broker.cancelCalls).toEqual([]);
   });
 
+  it("failClosedWhenUnverified refuses an unverifiable cancel; without it the read failure stays fail-open", async () => {
+    const seeded = await seed({ namedOrders: [order("n-1", "AAPL")] });
+    broker.readThrows.add(seeded.namedAccountNumber);
+    const { cancelWorkingOrder, OrderCancelPreconditionError } = await import("../src/lib/order-cancel");
+    await expect(
+      cancelWorkingOrder({
+        userId: seeded.userId,
+        orderId: "n-1",
+        connectedAccountId: seeded.namedId,
+        requireWorkingOrder: true,
+        failClosedWhenUnverified: true,
+        source: "ops"
+      })
+    ).rejects.toBeInstanceOf(OrderCancelPreconditionError);
+    expect(broker.cancelCalls).toEqual([]);
+    // Same call without the ops-only flag keeps the mobile lane's fail-open emergency lever.
+    await cancelWorkingOrder({ userId: seeded.userId, orderId: "n-1", connectedAccountId: seeded.namedId, requireWorkingOrder: true, source: "ops" });
+    expect(broker.cancelCalls).toEqual([{ accountNumber: seeded.namedAccountNumber, orderId: "n-1" }]);
+  });
+
   it("an explicit connectedAccountId that is not this user's is refused, never re-pointed", async () => {
     const seeded = await seed({ selectedOrders: [order("s-1", "NVDA")] });
     const other = await seed({ namedOrders: [order("n-1", "AAPL")] });

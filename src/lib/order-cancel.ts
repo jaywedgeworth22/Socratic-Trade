@@ -70,6 +70,13 @@ export interface CancelWorkingOrderInput {
    */
   requireWorkingOrder?: boolean;
   /**
+   * With `requireWorkingOrder`, refuse (502) instead of failing open when the pre-cancel read is
+   * unavailable.  Set only by the ops account-control route, which promises a verified
+   * working-order check.  The mobile lane leaves it unset and keeps the fail-open emergency-lever
+   * behaviour documented above.
+   */
+  failClosedWhenUnverified?: boolean;
+  /**
    * Act on THIS connected account instead of the user's currently selected one.  Used by the ops
    * account-control route (POST /api/ops/account-control), which names the account explicitly and
    * must never follow the console's selection.  When set, the policy (account number, broker,
@@ -188,12 +195,21 @@ export async function cancelWorkingOrder(input: CancelWorkingOrderInput): Promis
 
   if (input.requireWorkingOrder) {
     if (lookup.unavailable) {
-      // The opt-in strict path (ops) promises a working-order check; an
-      // unavailable read cannot prove membership or working state. The
-      // console's emergency cancel path does not request this gate.
-      throw new OrderCancelPreconditionError(
-        `Could not verify that order is still working in ${accountPhrase}. Nothing was cancelled.`,
-        502
+      if (input.failClosedWhenUnverified) {
+        // The ops path promises a working-order check; an unavailable read cannot prove
+        // membership or working state, so nothing is sent.
+        throw new OrderCancelPreconditionError(
+          `Could not verify that order is still working in ${accountPhrase}. Nothing was cancelled.`,
+          502
+        );
+      }
+      // Nothing was learned, so there is nothing to refuse on. Say so in the receipt rather than
+      // letting a silent fall-through look like a verified cancel.
+      audit(
+        "order_cancel_precheck_unavailable",
+        { accountNumber: policy.accountNumber, orderId, source },
+        userId,
+        policy.connectedAccountId
       );
     } else if (!lookup.order) {
       throw new OrderCancelPreconditionError(

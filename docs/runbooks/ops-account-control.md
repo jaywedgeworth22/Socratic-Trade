@@ -74,9 +74,11 @@ exactly as a console cancel does).
   tombstone, bracket teardown, dust advisory, dashboard event, cache invalidation and audit are
   identical to a console cancel.
 - An id that is not working in the named account's order book is **skipped, never sent**.
-- If the order book cannot be read and no `orderIds` were given, nothing is cancelled (502).  With
-  explicit `orderIds` the cancels still go out (cancelling is the emergency lever, and the cancel
-  itself is scoped to that account's broker login); results say `verified: false`.
+- If the order book cannot be read, nothing is cancelled (502), even with explicit `orderIds`: an
+  unreadable book cannot prove an id is working in this account.  The per-order re-check inside
+  `cancelWorkingOrder` also fails closed for this route (`failClosedWhenUnverified`), while the
+  console and mobile lanes keep their fail-open emergency-lever behaviour.  Use the console cancel
+  when the broker's order list is down but its cancel endpoint works.
 - `dryRun: true`: read-only broker calls only (order book, positions); no cancel is sent.
 - Per-order results plus `summary: {requested, cancelled | wouldCancel, failed, skipped}`.
 

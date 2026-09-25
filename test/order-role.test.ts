@@ -71,6 +71,13 @@ describe("classifyOrderRole — protective_stop", () => {
     expect(result.role).toBe("protective_stop");
   });
 
+  it("does not refer to an unknown level when the tracked price is missing", () => {
+    const result = orderRole.classifyOrderRole(order({ clientOrderId: "protstop-local-APCA-BAC-1" }), NO_CTX);
+    expect(result.role).toBe("protective_stop");
+    expect(result.whyResting).toBe("Protective stop for 24 BAC; rests until it fills at the broker.");
+    expect(result.whyResting).not.toContain("that level");
+  });
+
   it("a stop protecting a SHORT (exits with buy/cover) rests until price RISES, not falls", () => {
     const result = orderRole.classifyOrderRole(order({ symbol: "KO", side: "buy", quantity: 10 }), {
       appPlaced: true,
@@ -148,6 +155,14 @@ describe("classifyOrderRole — bracket_take_profit / bracket_stop_loss / entry 
   it("an OCO order_class also matches the bracket family", () => {
     const result = orderRole.classifyOrderRole(order({ side: "sell", type: "limit", orderClass: "oco" }), NO_CTX);
     expect(result.role).toBe("bracket_take_profit");
+  });
+
+  it("an OCO exit pending cancellation remains an exit even when its sibling is no longer working", () => {
+    const result = orderRole.classifyOrderRole(order({ side: "buy", type: "stop_market", orderClass: "oco", state: "pending_cancel" }), {
+      appPlaced: true,
+      bracketSiblingWorkingCount: 0
+    });
+    expect(result.role).toBe("bracket_stop_loss");
   });
 
   // Regression: src/lib/broker-side.ts's toBrokerSide maps a SHORT entry to a raw "sell" and a
@@ -369,6 +384,19 @@ describe("attachOrderRoles", () => {
     const result = orderRole.attachOrderRoles([takeProfitLeg, stopLossLeg], "local", accountNumber);
     expect(result.find((o) => o.id === "short-tp-1")?.role).toBe("bracket_take_profit");
     expect(result.find((o) => o.id === "short-sl-1")?.role).toBe("bracket_stop_loss");
+  });
+
+  it("a lone pending_cancel OCO leg remains a stop-loss exit in the Orders batch", () => {
+    const accountNumber = freshAccountNumber();
+    const remainingExit = order({
+      id: "oco-pending-cancel",
+      side: "buy", // covers a short, so raw broker side alone suggests entry
+      type: "stop_market",
+      orderClass: "oco",
+      state: "pending_cancel"
+    });
+    const result = orderRole.attachOrderRoles([remainingExit], "local", accountNumber);
+    expect(result[0]?.role).toBe("bracket_stop_loss");
   });
 
   it("end to end: a real SHORT bracket's still-resting entry (lone working bracket order for the symbol) classifies as entry", () => {

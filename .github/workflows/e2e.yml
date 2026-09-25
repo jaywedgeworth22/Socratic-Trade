@@ -119,17 +119,17 @@ jobs:
         shell: bash
         run: |
           if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
-            echo "::error::Fork PRs cannot run this job (it installs deps with a private-repo deploy key secret)."
+            echo "::error::Fork PRs cannot run this job."
             exit 1
           fi
           actor="${{ github.actor }}"
           if printf '%s' "$actor" | grep -Eq '\[bot\]$'; then
             case "$actor" in
-              'cursor[bot]'|'dependabot[bot]')
+              'cursor[bot]'|'dependabot[bot]'|'sentry[bot]'|'codex[bot]'|'chatgpt-codex-connector[bot]')
                 echo "Trusted same-repo bot: $actor"
                 ;;
               *)
-                echo "::error::Bot PRs cannot run package installs with this secret (untrusted bot: $actor)."
+                echo "::error::Bot PRs cannot run this job (untrusted bot: $actor)."
                 exit 1
                 ;;
             esac

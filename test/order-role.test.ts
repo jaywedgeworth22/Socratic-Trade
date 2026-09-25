@@ -149,6 +149,41 @@ describe("classifyOrderRole — bracket_take_profit / bracket_stop_loss / entry 
     const result = orderRole.classifyOrderRole(order({ side: "sell", type: "limit", orderClass: "oco" }), NO_CTX);
     expect(result.role).toBe("bracket_take_profit");
   });
+
+  // Regression: src/lib/broker-side.ts's toBrokerSide maps a SHORT entry to a raw "sell" and a
+  // COVER exit to a raw "buy" -- the exact inverse of a LONG bracket's buy-to-open/sell-to-close.
+  // isOpeningSide(order.side) alone therefore gets a SHORT bracket's entry/exit legs backwards;
+  // bracketSiblingWorkingCount is the side-agnostic fix (see OrderRoleContext's own doc comment).
+  it("a SHORT bracket's still-resting entry (broker-reported side=sell, no working siblings) is still entry, not an exit leg", () => {
+    const result = orderRole.classifyOrderRole(order({ side: "sell", type: "market", orderClass: "bracket" }), {
+      appPlaced: true,
+      bracketSiblingWorkingCount: 0
+    });
+    expect(result.role).toBe("entry");
+  });
+
+  it("a SHORT bracket's cover-side exit legs (broker-reported side=buy, one working sibling each) are exit legs, not entry", () => {
+    const takeProfit = orderRole.classifyOrderRole(order({ side: "buy", type: "limit", orderClass: "bracket" }), {
+      appPlaced: true,
+      bracketSiblingWorkingCount: 1
+    });
+    expect(takeProfit.role).toBe("bracket_take_profit");
+    const stopLoss = orderRole.classifyOrderRole(order({ side: "buy", type: "stop_market", orderClass: "bracket" }), {
+      appPlaced: true,
+      bracketSiblingWorkingCount: 1
+    });
+    expect(stopLoss.role).toBe("bracket_stop_loss");
+  });
+
+  it("without batch context (bracketSiblingWorkingCount undefined), falls back to isOpeningSide -- correct for LONG, inverted for SHORT (documented limitation)", () => {
+    // LONG bracket, no batch context: still correct.
+    const longEntry = orderRole.classifyOrderRole(order({ side: "buy", type: "market", orderClass: "bracket" }), NO_CTX);
+    expect(longEntry.role).toBe("entry");
+    // SHORT bracket, no batch context: the documented fallback limitation -- a still-resting
+    // short entry (side=sell) is misread as an exit leg absent sibling-count context.
+    const shortEntryNoContext = orderRole.classifyOrderRole(order({ side: "sell", type: "market", orderClass: "bracket" }), NO_CTX);
+    expect(shortEntryNoContext.role).toBe("bracket_stop_loss");
+  });
 });
 
 describe("classifyOrderRole — entry / exit (generic app-tracked)", () => {
@@ -214,7 +249,7 @@ describe("loadOrderRoleContexts — DB-backed", () => {
       status: "resting",
       kind: "fixed"
     });
-    const contexts = orderRole.loadOrderRoleContexts([{ id: "broker-order-1", clientOrderId: undefined }], {
+    const contexts = orderRole.loadOrderRoleContexts([{ id: "broker-order-1", clientOrderId: undefined, symbol: "BAC" }], {
       userId: "local",
       accountNumber
     });
@@ -237,7 +272,7 @@ describe("loadOrderRoleContexts — DB-backed", () => {
       status: "triggered",
       lastAttemptRefId: "sstop-abc-123"
     });
-    const contexts = orderRole.loadOrderRoleContexts([{ id: "order-2", clientOrderId: "sstop-abc-123" }], {
+    const contexts = orderRole.loadOrderRoleContexts([{ id: "order-2", clientOrderId: "sstop-abc-123", symbol: "T" }], {
       userId: "local",
       accountNumber
     });
@@ -254,7 +289,7 @@ describe("loadOrderRoleContexts — DB-backed", () => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(randomUUID(), "local", accountNumber, "stale-order-1", "repl-ref-1", "replacement_submitted", "new-order-1", now, now);
-    const contexts = orderRole.loadOrderRoleContexts([{ id: "new-order-1", clientOrderId: undefined }], {
+    const contexts = orderRole.loadOrderRoleContexts([{ id: "new-order-1", clientOrderId: undefined, symbol: "MSFT" }], {
       userId: "local",
       accountNumber
     });
@@ -270,7 +305,7 @@ describe("loadOrderRoleContexts — DB-backed", () => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(randomUUID(), "local", accountNumber, "stale-order-2", "repl-ref-2", "cancel_requested", now, now);
-    const contexts = orderRole.loadOrderRoleContexts([{ id: "stale-order-2", clientOrderId: "repl-ref-2" }], {
+    const contexts = orderRole.loadOrderRoleContexts([{ id: "stale-order-2", clientOrderId: "repl-ref-2", symbol: "MSFT" }], {
       userId: "local",
       accountNumber
     });
@@ -278,7 +313,7 @@ describe("loadOrderRoleContexts — DB-backed", () => {
   });
 
   it("returns an empty map when accountNumber is empty, without querying the DB", () => {
-    const contexts = orderRole.loadOrderRoleContexts([{ id: "x", clientOrderId: undefined }], {
+    const contexts = orderRole.loadOrderRoleContexts([{ id: "x", clientOrderId: undefined, symbol: "X" }], {
       userId: "local",
       accountNumber: ""
     });
@@ -307,6 +342,47 @@ describe("attachOrderRoles", () => {
     expect(result.find((o) => o.id === "working-1")?.whyResting).toBeDefined();
     expect(result.find((o) => o.id === "filled-1")?.role).toBeUndefined();
     expect(result.find((o) => o.id === "filled-1")?.whyResting).toBeUndefined();
+  });
+
+  it("end to end: a real SHORT bracket's 2 working exit legs (post-fill OCO pair) classify correctly from the batch alone", () => {
+    // No broker_protective_stops / synthetic_trailing_stops / order_replacements rows and no
+    // app-minted client_order_id prefix -- purely proving the bracketSiblingWorkingCount signal
+    // loadOrderRoleContexts derives from the batch itself, the same shape attachOrderRoles
+    // receives in production from gateway.getEquityOrders().
+    const accountNumber = freshAccountNumber();
+    const takeProfitLeg = order({
+      id: "short-tp-1",
+      symbol: "KO",
+      side: "buy", // covers the short -- toBrokerSide maps cover -> buy
+      type: "limit",
+      orderClass: "bracket",
+      state: "new"
+    });
+    const stopLossLeg = order({
+      id: "short-sl-1",
+      symbol: "KO",
+      side: "buy",
+      type: "stop_market",
+      orderClass: "bracket",
+      state: "new"
+    });
+    const result = orderRole.attachOrderRoles([takeProfitLeg, stopLossLeg], "local", accountNumber);
+    expect(result.find((o) => o.id === "short-tp-1")?.role).toBe("bracket_take_profit");
+    expect(result.find((o) => o.id === "short-sl-1")?.role).toBe("bracket_stop_loss");
+  });
+
+  it("end to end: a real SHORT bracket's still-resting entry (lone working bracket order for the symbol) classifies as entry", () => {
+    const accountNumber = freshAccountNumber();
+    const shortEntry = order({
+      id: "short-entry-1",
+      symbol: "PYPL",
+      side: "sell", // opens the short -- toBrokerSide maps short -> sell
+      type: "market",
+      orderClass: "bracket",
+      state: "new"
+    });
+    const result = orderRole.attachOrderRoles([shortEntry], "local", accountNumber);
+    expect(result.find((o) => o.id === "short-entry-1")?.role).toBe("entry");
   });
 
   it("returns the orders unchanged when accountNumber is empty", () => {

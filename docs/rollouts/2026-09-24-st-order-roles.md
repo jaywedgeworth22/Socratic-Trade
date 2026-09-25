@@ -74,6 +74,32 @@ cap).
 
 ## 3. Decisions & Trade-offs
 
+- **Found and fixed a real short-side bracket misclassification bug in the inherited draft
+  during review.**  `src/lib/broker-side.ts`'s `toBrokerSide` maps a SHORT entry to a raw `"sell"`
+  and a COVER exit to a raw `"buy"` — the exact inverse of a LONG bracket's buy-to-open /
+  sell-to-close — and the app's own strategy prompt explicitly tells the LLM to attach a
+  `bracketStopLoss`/`bracketTakeProfit` to every SHORT opening proposal too
+  (`src/lib/strategy-prompts.ts`), so this is a reachable, not theoretical, case. The original
+  `isOpeningSide(order.side)` heuristic therefore got a short bracket's entry and exit legs
+  backwards. Fixed with a side-agnostic signal instead: `loadOrderRoleContexts` now counts, per
+  symbol, how many OTHER working orders in the same batch share a bracket-family `orderClass`
+  (`OrderRoleContext.bracketSiblingWorkingCount`) — a real Alpaca bracket has exactly 1 working
+  bracket-class order (the entry) before the entry fills, and exactly 2 (the OCO exit pair)
+  after, regardless of long/short side. `classifyOrderRole` uses that count when the caller
+  supplies batch context, falling back to the old side heuristic (correct for LONG brackets only)
+  when it doesn't (e.g. a unit test calling `classifyOrderRole` directly with no batch). New
+  regression tests in `test/order-role.test.ts` cover both the unit-level `ctx.bracketSiblingWorkingCount`
+  contract and an end-to-end short-bracket batch through `attachOrderRoles`.
+- **Known residual gap, documented rather than silently left:** the same side-inversion affects
+  the GENERIC (non-bracket) entry/exit fallback (role 5 in `classifyOrderRole`'s precedence
+  doc-comment) — a bare short entry/cover order placed WITHOUT a bracket has no sibling-count-style
+  disambiguator available and can still be mislabeled Entry/Exit backwards. Narrower in practice
+  (the strategy prompt routes most shorts through the bracket path fixed above, since it requires
+  every short to carry a `bracketStopLoss`), but not fully closed. A correct fix needs position
+  context (long/short) or the originating `trade_proposals.proposal.side` (which preserves
+  `"short"`/`"cover"` before broker translation) threaded into `OrderRoleContext` — a larger,
+  separate change intentionally left out of this lane's scope rather than rushed under time
+  pressure. Flagged for a follow-up.
 - **`dashboard.ts` is not in lane E1's listed file ownership**, but the console Orders screen's
   own header comment says its data comes from `GET /api/dashboard`'s `orders` array — without
   wiring `attachOrderRoles` in there, the badge task has no data to render.  This was a

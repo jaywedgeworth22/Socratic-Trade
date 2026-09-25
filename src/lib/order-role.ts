@@ -69,6 +69,17 @@ export interface OrderRoleContext {
    *  attempt, replacement, or protective-stop row). Drives the entry/exit vs. external fallback
    *  once the more specific roles above don't match. */
   appPlaced: boolean;
+  /**
+   * Count of OTHER working orders in the same classification batch that share this order's
+   * symbol AND a bracket-family `orderClass` (bracket/oco/oto) — the side-agnostic signal that
+   * disambiguates a bracket ENTRY leg from its two EXIT legs (see `classifyOrderRole`'s bracket
+   * branch for why `order.side` alone can't: `toBrokerSide` maps a SHORT entry to a raw "sell"
+   * and a COVER exit to a raw "buy", exactly inverted from a LONG bracket's buy-to-open /
+   * sell-to-close). `undefined` when the caller didn't supply batch context (e.g. a unit test
+   * calling `classifyOrderRole` directly) — `isOpeningSide` is the fallback, which is only
+   * guaranteed correct for LONG brackets.
+   */
+  bracketSiblingWorkingCount?: number;
 }
 
 export interface OrderRoleClassification {
@@ -127,8 +138,19 @@ function clientOrderIdPrefix(order: ClassifiableOrder): string {
  *   2. synthetic_stop — synthetic_trailing_stops row (or sstop- prefix).
  *   3. replacement — a live order_replacements row's replacement leg.
  *   4. bracket_take_profit / bracket_stop_loss / entry — order_class is a bracket family and the
- *      order is the not-yet-filled entry (opening side) or one of the two exit legs.
- *   5. entry / exit — any other app-tracked order (isAppPlacedBrokerOrder), by opening/closing side.
+ *      order is the not-yet-filled entry or one of the two exit legs. Disambiguated by
+ *      `ctx.bracketSiblingWorkingCount` when the caller supplied batch context (>=1 sibling means
+ *      this IS one of a real OCO exit pair, since Alpaca creates both exit legs together only
+ *      after the entry fills — the still-resting entry is always alone); falls back to
+ *      `isOpeningSide(order.side)` otherwise, which is correct for LONG brackets only (a SHORT
+ *      bracket's entry is broker-reported as "sell" and its exit legs as "buy" —
+ *      src/lib/broker-side.ts's `toBrokerSide` — the exact inverse of a long bracket).
+ *   5. entry / exit — any other app-tracked order (isAppPlacedBrokerOrder), by opening/closing
+ *      side. NOTE: same `isOpeningSide` limitation as the bracket fallback above — this path has
+ *      no sibling-count-style disambiguator, so a non-bracket SHORT entry/cover order can still
+ *      be mislabeled. Narrower in practice (the strategy prompt requires every short to carry a
+ *      bracketStopLoss, which routes most shorts through the bracket path above instead), but a
+ *      known residual gap — see the rollout note.
  *   6. external — nothing above matched.
  */
 export function classifyOrderRole(order: ClassifiableOrder, ctx: OrderRoleContext): OrderRoleClassification {
@@ -168,7 +190,11 @@ export function classifyOrderRole(order: ClassifiableOrder, ctx: OrderRoleContex
   }
 
   if (isBracketOrderClass(order.orderClass)) {
-    if (isOpeningSide(order.side)) {
+    const isExitLeg =
+      typeof ctx.bracketSiblingWorkingCount === "number"
+        ? ctx.bracketSiblingWorkingCount >= 1
+        : !isOpeningSide(order.side);
+    if (!isExitLeg) {
       return {
         role: "entry",
         whyResting: `Entry leg of a bracket order for ${subject}; rests until the market reaches its price.`
@@ -224,11 +250,23 @@ interface ReplacementRow {
  * and losing the whole snapshot.
  */
 export function loadOrderRoleContexts(
-  orders: ReadonlyArray<Pick<EquityOrder, "id" | "clientOrderId">>,
+  orders: ReadonlyArray<Pick<EquityOrder, "id" | "clientOrderId" | "symbol" | "orderClass">>,
   lookup: AppPlacedLookup
 ): Map<string, OrderRoleContext> {
   const contexts = new Map<string, OrderRoleContext>();
   if (orders.length === 0 || !lookup.accountNumber) return contexts;
+
+  // Side-agnostic bracket entry-vs-exit-leg signal (see OrderRoleContext.bracketSiblingWorkingCount
+  // and classifyOrderRole's bracket branch): count, per symbol, how many of THESE working orders
+  // are bracket-family. A real Alpaca bracket only ever has 1 working bracket-class order for a
+  // symbol before the entry fills, and exactly 2 (the OCO exit pair) after — so "how many bracket
+  // siblings does this order have" tells entry from exit regardless of long/short side semantics.
+  const bracketWorkingCountBySymbol = new Map<string, number>();
+  for (const order of orders) {
+    if (!isBracketOrderClass(order.orderClass)) continue;
+    const key = order.symbol;
+    bracketWorkingCountBySymbol.set(key, (bracketWorkingCountBySymbol.get(key) ?? 0) + 1);
+  }
 
   let protectiveStopRows: ProtectiveStopRow[] = [];
   let syntheticStopRows: SyntheticStopRow[] = [];
@@ -287,7 +325,10 @@ export function loadOrderRoleContexts(
         : undefined,
       syntheticStop: syntheticRow ? { trailPercent: syntheticRow.trail_percent ?? undefined } : undefined,
       replacement: replacementRow ? { status: replacementRow.status } : undefined,
-      appPlaced
+      appPlaced,
+      bracketSiblingWorkingCount: isBracketOrderClass(order.orderClass)
+        ? (bracketWorkingCountBySymbol.get(order.symbol) ?? 1) - 1
+        : undefined
     });
   }
   return contexts;

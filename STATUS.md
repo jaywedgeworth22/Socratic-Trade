@@ -1,6 +1,6 @@
 # Current Status
 
-## 2026-09-24 CLAUDE — Ops-token account control (board 687a5fb4, lane F1)
+## 2026-09-24 CLAUDE — Ops-token account control (board 687a5fb4, lane F1, PR #3754)
 
 New `POST /api/ops/account-control` (ops-token gated) acts on an explicit `connectedAccountId`,
 never the console's selected account: `list_working_orders`, `cancel_working_orders` (optional
@@ -11,7 +11,7 @@ Why: the owner asked an agent to cancel the Tradier Sandbox's four open orders a
 automation, and every mutating route was session-gated to the selected account.  Security
 trade-off: the diagnostic token can now cancel orders and change trading state (audited as
 `ops_account_control`).  Wrapper `scripts/ops/account-control.sh`; runbook
-`docs/runbooks/ops-account-control.md`.  Branch `claude/st-ops-account-control`, PR pending.
+`docs/runbooks/ops-account-control.md`.  Branch `claude/st-ops-account-control`, PR #3754 (auto-merge not armed; review stage arms it).
 Rollout: `docs/rollouts/2026-09-24-st-ops-account-control.md`.
 
 ## 2026-09-24 MUSE — LLM stats console review-findings sweep (PR #3452)

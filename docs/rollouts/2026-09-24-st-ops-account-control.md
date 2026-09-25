@@ -1,4 +1,4 @@
-# 2026-09-24 CLAUDE — Ops-Token Account Control (Lane F1, Board 687a5fb4)
+# 2026-09-24 CLAUDE — Ops-Token Account Control (Lane F1, Board 687a5fb4, PR #3754)
 
 ## 1. Context & Objective
 
@@ -100,7 +100,23 @@ npm test
 npm run build
 ```
 
-Results: see the "Gate Results" section below (filled in at commit time).
+Results (shared dev box at load average 250 to 735 from parallel lanes):
+
+- Targeted: `ops-account-control` 24/24, `strategy-enable-route` 4/4.
+- Adjacent suites 31/31 (three first-test 60s timeouts under load re-ran green with
+  `--testTimeout=400000`).
+- `npm run lint`: exit 0, 0 errors, 830 warnings (repo backlog, none from this diff).
+- `npx tsc --noEmit`: clean.
+- `npm test`: 8299 passed, 51 skipped, 1 failed — `test/nasdaq-calendar-provider.test.ts`
+  "retries a failed date after its (short) negative-cache TTL elapses", a timing test untouched by
+  this diff that passes 15/15 when re-run alone.  Load flake.
+- `npm run build`: exit 0; `/api/ops/account-control` present in the route table.
+- `scripts/land.sh`: tsc clean, but its `npm test` step ended with no vitest summary (the process
+  died mid-run under load), so the branch was pushed and PR #3754 opened directly; CI `verify` is
+  the binding gate.
+- `scripts/ops/account-control.sh`: `bash -n` clean, pure ASCII, exercised under `/bin/bash` 3.2
+  against a local echo server (token header delivered, body correct, exit 0 on 2xx, 2 on 409,
+  1 on usage errors).
 
 ## 5. Next Steps & Blockers
 

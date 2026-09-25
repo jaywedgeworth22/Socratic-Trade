@@ -421,8 +421,9 @@ async function cancelWorkingOrders(
   const userId = account.userId;
   const policy = peekPolicy(userId, account.id);
   const read = await readWorkingOrders(account, policy, userId);
-  if (!policy.accountNumber || (!read.ok && !request.orderIds)) {
-    // Default "cancel everything" needs the order book; without it nothing is cancelled.
+  if (!policy.accountNumber || !read.ok) {
+    // Even explicit ids need a working-order read. A failed read cannot prove
+    // that the id is working in this account, so never send it to the broker.
     const error = read.ok ? "That connected account has no broker account number." : read.error;
     const outcome = {
       status: policy.accountNumber ? 502 : 409,

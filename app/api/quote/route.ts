@@ -84,7 +84,7 @@ export async function GET(request: Request) {
       }
     );
     const fastPromise: Promise<EnrichmentOutcome> = (async (): Promise<EnrichmentOutcome> => {
-      const yahooQuotePromise = fetchYahooFinanceQuote(symbol).catch(() => undefined);
+      const yahooQuotePromise = fetchYahooFinanceQuote(symbol, { userId }).catch(() => undefined);
       const liveQuotePromise = (async (): Promise<BrokerQuote | undefined> => {
         if (!userId) return undefined;
         try {

@@ -55,8 +55,9 @@ Files:
   background workers; fire-and-forget, wrapped, never blocks boot.
 - `test/stall-profiler.test.ts`, `test/cpuprofile-summary.test.ts`,
   `test/helpers/cpuprofile-fixture.ts` (new).
-- `node_modules` (tracked symlink removed with `git rm --cached`; it was committed by accident in
-  b583b2c65 / #3452 and made every fresh `npm ci` show ` D node_modules`).
+- `node_modules`: the tracked symlink committed by accident in b583b2c65 / #3452 was removed with
+  `git rm --cached` on this branch, but `origin/main` dropped it independently before merge, so
+  the final PR diff no longer carries that change.
 - Docs: this note, `STATUS.md`, `docs/EFFORT-LOG.md`.
 
 Knobs (all optional): `STALL_PROFILER=0|1` (default ON only when `NODE_ENV=production`, always
@@ -154,7 +155,26 @@ npm test
 npm run build
 ```
 
-Results: see the PR body and the commit message for the final gate tails.
+Results (2026-09-25, Node v24.21.0, this Mac at load average 250-700 from parallel fleet work):
+
+- Targeted: `test/stall-profiler.test.ts`, `test/cpuprofile-summary.test.ts`,
+  `test/lane-deadline-stall-attribution.test.ts` — 3 files, 55 tests passed.
+- `npm run lint` — exit 0, `830 problems (0 errors, 830 warnings)` (grandfathered warnings; the
+  files this lane touched add none — the one warning in `instrumentation.ts` is the pre-existing
+  Sentry `any`).
+- `npx tsc --noEmit` — clean.
+- `npm test` (via `scripts/land.sh`) — `Test Files 756 passed | 1 skipped (757)`,
+  `Tests 8311 passed | 51 skipped (8362)`.  The first land attempt failed ONE unrelated test,
+  `test/data-providers.test.ts` "keeps FMP_MAX_SYMBOLS as an explicit operator throttle", at
+  72,417 ms against the 60 s `testTimeout` under load ~700; it passed in isolation
+  (`npx vitest run test/data-providers.test.ts -t FMP_MAX_SYMBOLS`) and on the re-run.
+- `npm run build` (`next build --webpack`, via `scripts/land.sh`) — clean.
+- Empirical bridge check (scratch script, not committed): 303 MB heap with 20k compiled
+  functions — first `Profiler.start` 903 ms, plain restart 659 ms, bridged start 0.02-0.04 ms,
+  `Profiler.consoleProfileStarted` synchronous.
+
+PR #3756.  `scripts/land.sh` arms auto-merge by default; it was disarmed immediately
+(`gh pr merge 3756 --disable-auto`) because this sweep's review stage arms it.
 
 ## 5. Next Steps & Blockers
 

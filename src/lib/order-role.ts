@@ -90,7 +90,10 @@ export interface OrderRoleClassification {
   whyResting: string;
 }
 
-type ClassifiableOrder = Pick<EquityOrder, "symbol" | "side" | "type" | "quantity" | "orderClass" | "clientOrderId">;
+type ClassifiableOrder = Pick<
+  EquityOrder,
+  "symbol" | "side" | "type" | "state" | "quantity" | "orderClass" | "clientOrderId" | "limitPrice" | "stopPrice"
+>;
 
 function isOpeningSide(side: string): boolean {
   return side === "buy" || side === "short";
@@ -127,6 +130,11 @@ function subjectPhrase(order: ClassifiableOrder): string {
   return symbol;
 }
 
+/** " at $45.00" when the broker reported a positive level, else "" -- never invents a level. */
+function levelClause(level: number | undefined): string {
+  return typeof level === "number" && Number.isFinite(level) && level > 0 ? ` at ${formatMoney(level)}` : "";
+}
+
 function clientOrderIdPrefix(order: ClassifiableOrder): string {
   return String(order.clientOrderId ?? "").trim().toLowerCase();
 }
@@ -141,7 +149,8 @@ function clientOrderIdPrefix(order: ClassifiableOrder): string {
  *      order is the not-yet-filled entry or one of the two exit legs. Disambiguated by
  *      `ctx.bracketSiblingWorkingCount` when the caller supplied batch context (>=1 sibling means
  *      this IS one of a real OCO exit pair, since Alpaca creates both exit legs together only
- *      after the entry fills — the still-resting entry is always alone); falls back to
+ *      after the entry fills — the still-resting entry is always alone; a lone leg already in
+ *      pending_cancel is the survivor of that pair settling after its mate filled); falls back to
  *      `isOpeningSide(order.side)` otherwise, which is correct for LONG brackets only (a SHORT
  *      bracket's entry is broker-reported as "sell" and its exit legs as "buy" —
  *      src/lib/broker-side.ts's `toBrokerSide` — the exact inverse of a long bracket).
@@ -195,9 +204,16 @@ export function classifyOrderRole(order: ClassifiableOrder, ctx: OrderRoleContex
     // An OCO order is already an exit leg, even if its mate has filled or
     // disappeared while this leg remains pending_cancel. Sibling count alone
     // would mistake that single remaining leg for a new entry.
+    // The same settlement window exists for an app-placed BRACKET: its split exit legs keep
+    // order_class "bracket" (EquityOrder.orderClass), so once one leg fills the other sits alone
+    // in pending_cancel with a sibling count of 0.  A lone bracket-family order that is already
+    // being cancelled is read as that settling exit leg.  Trade-off: an unfilled entry the owner
+    // cancels would read as an exit leg for the same brief window; it is leaving the book either
+    // way, while the settling exit is routine every time a bracket exit fills.
+    const isPendingCancel = String(order.state ?? "").trim().toLowerCase() === "pending_cancel";
     const isExitLeg = order.orderClass?.trim().toLowerCase() === "oco" ||
       (typeof ctx.bracketSiblingWorkingCount === "number"
-        ? ctx.bracketSiblingWorkingCount >= 1
+        ? ctx.bracketSiblingWorkingCount >= 1 || isPendingCancel
         : !isOpeningSide(order.side));
     if (!isExitLeg) {
       return {
@@ -206,14 +222,20 @@ export function classifyOrderRole(order: ClassifiableOrder, ctx: OrderRoleContex
       };
     }
     if (order.type === "limit") {
+      const atClause = levelClause(order.limitPrice);
       return {
         role: "bracket_take_profit",
-        whyResting: `Take-profit leg of a bracket order for ${subject}; rests until price reaches that level.`
+        whyResting: atClause
+          ? `Take-profit leg of a bracket order for ${subject}${atClause}; rests until price reaches that level.`
+          : `Take-profit leg of a bracket order for ${subject}; rests until it fills at the broker.`
       };
     }
+    const atClause = levelClause(order.stopPrice);
     return {
       role: "bracket_stop_loss",
-      whyResting: `Stop-loss leg of a bracket order for ${subject}; rests until price ${moveVerb(order.side)} to that level.`
+      whyResting: atClause
+        ? `Stop-loss leg of a bracket order for ${subject}${atClause}; rests until price ${moveVerb(order.side)} to that level.`
+        : `Stop-loss leg of a bracket order for ${subject}; rests until it fills at the broker.`
     };
   }
 

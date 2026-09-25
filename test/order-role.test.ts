@@ -147,9 +147,41 @@ describe("classifyOrderRole — bracket_take_profit / bracket_stop_loss / entry 
   });
 
   it("classifies a bracket exit stop leg as bracket_stop_loss", () => {
-    const result = orderRole.classifyOrderRole(order({ side: "sell", type: "stop_market", orderClass: "bracket" }), NO_CTX);
+    const result = orderRole.classifyOrderRole(order({ side: "sell", type: "stop_market", orderClass: "bracket", stopPrice: 38.5 }), NO_CTX);
     expect(result.role).toBe("bracket_stop_loss");
     expect(result.whyResting).toContain("rests until price falls to that level");
+  });
+
+  it("states a bracket exit leg's own broker-reported level, and never refers to an unknown one", () => {
+    const withLevels = { appPlaced: false, bracketSiblingWorkingCount: 1 };
+    const takeProfit = orderRole.classifyOrderRole(order({ side: "sell", type: "limit", orderClass: "bracket", limitPrice: 45 }), withLevels);
+    expect(takeProfit.whyResting).toBe("Take-profit leg of a bracket order for 24 BAC at $45.00; rests until price reaches that level.");
+    const stopLoss = orderRole.classifyOrderRole(order({ side: "sell", type: "stop_market", orderClass: "bracket", stopPrice: 38.5 }), withLevels);
+    expect(stopLoss.whyResting).toBe("Stop-loss leg of a bracket order for 24 BAC at $38.50; rests until price falls to that level.");
+
+    const takeProfitNoLevel = orderRole.classifyOrderRole(order({ side: "sell", type: "limit", orderClass: "bracket" }), withLevels);
+    expect(takeProfitNoLevel.whyResting).toBe("Take-profit leg of a bracket order for 24 BAC; rests until it fills at the broker.");
+    const stopLossNoLevel = orderRole.classifyOrderRole(order({ side: "sell", type: "stop_market", orderClass: "bracket" }), withLevels);
+    expect(stopLossNoLevel.whyResting).toBe("Stop-loss leg of a bracket order for 24 BAC; rests until it fills at the broker.");
+    for (const result of [takeProfitNoLevel, stopLossNoLevel]) expect(result.whyResting).not.toContain("that level");
+  });
+
+  // Sentry review, PR #3755: an app-placed bracket's split exit legs keep order_class "bracket"
+  // (not "oco") -- see EquityOrder.orderClass in src/lib/types.ts.  Once one leg fills, the other
+  // sits ALONE in pending_cancel while Alpaca settles the OCO group, so its working-sibling count
+  // reads 0.  The count alone would mislabel that settling exit as a new entry.
+  it("a lone bracket-class exit leg left pending_cancel after its sibling filled stays an exit, not entry", () => {
+    const settling = { appPlaced: false, bracketSiblingWorkingCount: 0 };
+    const shortStopLoss = orderRole.classifyOrderRole(
+      order({ side: "buy", type: "stop_market", orderClass: "bracket", state: "pending_cancel" }),
+      settling
+    );
+    expect(shortStopLoss.role).toBe("bracket_stop_loss");
+    const longTakeProfit = orderRole.classifyOrderRole(
+      order({ side: "sell", type: "limit", orderClass: "bracket", state: "pending_cancel" }),
+      settling
+    );
+    expect(longTakeProfit.role).toBe("bracket_take_profit");
   });
 
   it("an OCO order_class also matches the bracket family", () => {
@@ -397,6 +429,30 @@ describe("attachOrderRoles", () => {
     });
     const result = orderRole.attachOrderRoles([remainingExit], "local", accountNumber);
     expect(result[0]?.role).toBe("bracket_stop_loss");
+  });
+
+  it("end to end: after a bracket's take-profit fills, the stop-loss leg left pending_cancel is still a stop-loss exit", () => {
+    const accountNumber = freshAccountNumber();
+    const filledTakeProfit = order({
+      id: "brk-tp-filled",
+      symbol: "KO",
+      side: "buy", // covers the short -- toBrokerSide maps cover -> buy
+      type: "limit",
+      orderClass: "bracket",
+      state: "filled",
+      filledQuantity: 24
+    });
+    const settlingStopLoss = order({
+      id: "brk-sl-pending-cancel",
+      symbol: "KO",
+      side: "buy",
+      type: "stop_market",
+      orderClass: "bracket",
+      state: "pending_cancel"
+    });
+    const result = orderRole.attachOrderRoles([filledTakeProfit, settlingStopLoss], "local", accountNumber);
+    expect(result.find((o) => o.id === "brk-sl-pending-cancel")?.role).toBe("bracket_stop_loss");
+    expect(result.find((o) => o.id === "brk-tp-filled")?.role).toBeUndefined();
   });
 
   it("end to end: a real SHORT bracket's still-resting entry (lone working bracket order for the symbol) classifies as entry", () => {

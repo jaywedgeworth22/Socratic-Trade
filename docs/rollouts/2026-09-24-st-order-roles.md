@@ -121,6 +121,14 @@ cap).
   exists to surface, so painting it as a warning would undercut the point.
 - **iOS parity not done** — `ios/**` untouched per the task's hard limit; native iOS still shows
   a bare "open order" for these rows.  Noted as a follow-up below.
+- **Sentry review follow-up (2026-09-25):** an app-placed bracket's split exit legs keep
+  `order_class` "bracket", not "oco", so the earlier OCO-only guard missed the real case.  A lone
+  bracket-family order already in `pending_cancel` (its mate just filled) is now read as the
+  settling exit leg, not a new entry.  Trade-off: an unfilled entry the owner cancels reads as an
+  exit leg for that same brief window.  Bracket take-profit and stop-loss copy now states the
+  leg's own broker-reported level, and says "rests until it fills at the broker" when none is
+  reported, so no sentence points at "that level" without naming it.  Tests:
+  `test/order-role.test.ts` (bracket-class pending_cancel unit + end-to-end, leg level copy).
 
 ## 4. Verification State
 

@@ -69,8 +69,17 @@ export interface CancelWorkingOrderInput {
    * and their own broker credentials.
    */
   requireWorkingOrder?: boolean;
+  /**
+   * Act on THIS connected account instead of the user's currently selected one.  Used by the ops
+   * account-control route (POST /api/ops/account-control), which names the account explicitly and
+   * must never follow the console's selection.  When set, the policy (account number, broker,
+   * credentials) is resolved from this account's own live state; an id that is not one of this
+   * user's connected accounts is refused, never re-pointed at the selected account.  Omitted by
+   * the console and mobile lanes, whose behaviour is unchanged.
+   */
+  connectedAccountId?: string;
   /** Receipt-only label for where the cancel came from. */
-  source?: "console" | "mobile";
+  source?: "console" | "mobile" | "ops";
 }
 
 interface CancelLookup {
@@ -125,8 +134,19 @@ async function lookupCancelContext(
 
 export async function cancelWorkingOrder(input: CancelWorkingOrderInput): Promise<CancelWorkingOrderResult> {
   const { userId, source = "console" } = input;
-  const policy = getPolicy(userId);
-  if (!policy.accountNumber) throw new OrderCancelPreconditionError("No selected account.", 400);
+  const explicitAccountId = input.connectedAccountId?.trim() || undefined;
+  const policy = explicitAccountId ? getPolicy(userId, explicitAccountId) : getPolicy(userId);
+  if (explicitAccountId && policy.connectedAccountId !== explicitAccountId) {
+    // getPolicy falls back to the user-level policy when the id does not resolve for this user.
+    // Refuse rather than let a cancel land on whatever that fallback points at.
+    throw new OrderCancelPreconditionError("That connected account was not found for this user.", 404);
+  }
+  // Wording only: the console and mobile lanes act on "the selected account"; an explicit caller
+  // names one.  Every behaviour below is identical for both.
+  const accountPhrase = explicitAccountId ? "that account" : "the selected account";
+  if (!policy.accountNumber) {
+    throw new OrderCancelPreconditionError(explicitAccountId ? "That connected account has no broker account number." : "No selected account.", 400);
+  }
   const orderId = String(input.orderId ?? "").trim();
   if (!orderId) throw new OrderCancelPreconditionError("orderId is required.", 400);
   // Account isolation, enforced unconditionally: the cancel is scoped to the account currently
@@ -178,7 +198,7 @@ export async function cancelWorkingOrder(input: CancelWorkingOrderInput): Promis
       );
     } else if (!lookup.order) {
       throw new OrderCancelPreconditionError(
-        "That order is not open in the selected account.  It may have already filled, or been cancelled elsewhere.",
+        `That order is not open in ${accountPhrase}.  It may have already filled, or been cancelled elsewhere.`,
         404
       );
     } else if (!isWorkingOrderState(lookup.order.state)) {
@@ -252,7 +272,14 @@ export async function cancelWorkingOrder(input: CancelWorkingOrderInput): Promis
       policy.connectedAccountId
     );
   }
-  audit("order_cancel", { accountNumber: policy.accountNumber, orderId, result, source }, userId);
+  // Console/mobile receipts keep their historical shape (no connected-account column); an explicit
+  // caller attributes the receipt to the account it named.
+  audit(
+    "order_cancel",
+    { accountNumber: policy.accountNumber, orderId, result, source },
+    userId,
+    explicitAccountId ? policy.connectedAccountId : undefined
+  );
 
   if (cancelledSymbol) {
     const { listOpenBracketOrders, enqueueTeardownForAllOpenBrackets } = await import("./db-api-keys");

@@ -119,6 +119,19 @@ re-walk the heap (measured 3.4-56 s on a 575-631 MB heap), so each rotation is b
 keepalive `console.profile()` (~5 ms); a missing keepalive or a slow start self-disables.
 **Next:** after deploy, on the next stall read the newest `.top.json` (command in the rollout).
 Rollout: `docs/rollouts/2026-09-24-st-stall-profiler.md`.
+## 2026-09-24 CLAUDE — Ops-token account control (board 687a5fb4, lane F1)
+
+New `POST /api/ops/account-control` (ops-token gated) acts on an explicit `connectedAccountId`,
+never the console's selected account: `list_working_orders`, `cancel_working_orders` (optional
+`orderIds`, `dryRun`) through the console's own `cancelWorkingOrder`, and `set_system_state`
+(`active | close_only | halted`, `dryRun`) with the console Start checks (now shared in
+`src/lib/autonomy-arming.ts`) and a `nextEligibleRun` statement of what the scheduler will do.
+Why: the owner asked an agent to cancel the Tradier Sandbox's four open orders and restart its
+automation, and every mutating route was session-gated to the selected account.  Security
+trade-off: the diagnostic token can now cancel orders and change trading state (audited as
+`ops_account_control`).  Wrapper `scripts/ops/account-control.sh`; runbook
+`docs/runbooks/ops-account-control.md`.  Branch `claude/st-ops-account-control`, PR pending.
+Rollout: `docs/rollouts/2026-09-24-st-ops-account-control.md`.
 
 ## 2026-09-24 MUSE — LLM stats console review-findings sweep (PR #3452)
 

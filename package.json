@@ -32,7 +32,8 @@
     "eval:rag-shadow-benchmarks": "tsx scripts/eval/rag-shadow-benchmarks.ts",
     "eval:generate-universe": "tsx scripts/eval/generate-universe-manifest.ts",
     "eval:validate-universe": "tsx scripts/eval/validate-rag-universe.ts",
-    "ops:snapshot": "bash scripts/fetch-prod-ops-snapshot.sh"
+    "ops:snapshot": "bash scripts/fetch-prod-ops-snapshot.sh",
+    "ops:performance": "bash scripts/fetch-prod-ops-performance.sh"
   },
   "dependencies": {
     "@alpacahq/alpaca-trade-api": "^3.1.3",

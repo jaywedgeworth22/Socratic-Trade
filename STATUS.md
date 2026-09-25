@@ -1,5 +1,13 @@
 # Current Status
 
+## 2026-09-25 CLAUDE — PR #3756 re-synced with main
+
+Merged `origin/main` into `claude/st-stall-profiler` to pick up #3761, #3774, #3778 (no file
+overlap with this lane besides `STATUS.md`/`docs/EFFORT-LOG.md`, both sides kept).  Re-verified
+on the merged tree: `npx tsc --noEmit` clean, `npm run lint` 0 errors, targeted
+`stall-profiler`/`cpuprofile-summary`/`lane-deadline-stall-attribution` vitest files (55 tests)
+pass.  Hold label kept; auto-merge not armed.  Detail: `docs/rollouts/2026-09-24-st-stall-profiler.md`.
+
 ## 2026-09-24 CLAUDE — Order correctness: no accidental shorts, clamp exits, closing orders carry no brackets
 
 **What.**  A position invariant at the single placement choke point (`getBrokerGateway` ->
@@ -17,15 +25,6 @@ Alpaca Paper (a stale-exit remediation cancelled a held take-profit leg and mark
 account never held), its 2.5 months of refused covers, and the 2026-09-21 VZ 403 fractional
 oversell.  Board `687a5fb4`, lane D, branch `claude/st-order-correctness`.
 Rollout: `docs/rollouts/2026-09-24-st-order-correctness.md`.
-## 2026-09-25 CLAUDE — PR #3756 re-synced with main
-
-Merged `origin/main` into `claude/st-stall-profiler` to pick up #3761, #3774, #3778 (no file
-overlap with this lane besides `STATUS.md`/`docs/EFFORT-LOG.md`, both sides kept).  Re-verified
-on the merged tree: `npx tsc --noEmit` clean, `npm run lint` 0 errors, targeted
-`stall-profiler`/`cpuprofile-summary`/`lane-deadline-stall-attribution` vitest files (55 tests)
-pass.  Hold label kept; auto-merge not armed.  Detail: `docs/rollouts/2026-09-24-st-stall-profiler.md`.
-
-## 2026-09-24 CLAUDE — Stall-triggered CPU profiler (Lane A, board 687a5fb4)
 
 ## 2026-09-24 CLAUDE — Warnings crash, rotation failover, exit de-risk default (lane C, board 687a5fb4)
 

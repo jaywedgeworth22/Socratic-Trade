@@ -28,7 +28,7 @@ vi.mock("../src/lib/vector-db", async (importOriginal) => {
   // exercise the same classification production does, and only stub the provider-calling
   // storeDocument.
   const actual = await importOriginal<typeof import("../src/lib/vector-db")>();
-  return { ...actual, storeDocument: vi.fn() };
+  return { ...actual, storeDocument: vi.fn(), hasIngestTextBudget: vi.fn(actual.hasIngestTextBudget) };
 });
 
 describe("SEC Ingestion Worker and State Machine (P5)", () => {
@@ -1002,6 +1002,51 @@ describe("embed_queued FTS slice + durable resume", () => {
     expect(after.status).toBe("retry_wait");
     expect(after.lastErrorType).toBe("wu_exhausted_deferred");
     expect(after.lastError).toMatch(/Qdrant daily point/i);
+  });
+
+  it("parks embed_queued before any embed when the daily text budget is already spent", async () => {
+    const { getSecIngestTask } = await import("../src/lib/db-rag-ingest");
+    const { storeDocument, hasIngestTextBudget } = await import("../src/lib/vector-db");
+    vi.mocked(storeDocument).mockClear();
+    vi.mocked(hasIngestTextBudget).mockReturnValueOnce(false);
+
+    const accession = "0000320193-26-000403";
+    const { task } = await seedEmbedQueued({ accession, chunks: 10 });
+    const worker = new SecIngestWorker();
+    await worker.processTask(task);
+
+    const after = getSecIngestTask(task.id)!;
+    expect(vi.mocked(storeDocument)).not.toHaveBeenCalled();
+    expect(after.checkpoint).toBe("embed_queued");
+    expect(after.status).toBe("retry_wait");
+    expect(after.lastErrorType).toBe("wu_exhausted_deferred");
+    expect(after.lastError).toMatch(/text embed budget/i);
+  });
+
+  it("defers embed_queued when storeDocument reports ingestTextBudgetExhausted", async () => {
+    const { getSecIngestTask } = await import("../src/lib/db-rag-ingest");
+    const { storeDocument } = await import("../src/lib/vector-db");
+    vi.mocked(storeDocument).mockClear();
+    vi.mocked(storeDocument).mockResolvedValue({
+      skipped: true,
+      attempted: 10,
+      indexed: 0,
+      budgetSkipped: 10,
+      ingestTextBudgetExhausted: true,
+      ingestTextBudgetExhaustedUntil: "2026-09-18T12:00:00.000Z",
+      documentComplete: false
+    } as any);
+
+    const accession = "0000320193-26-000404";
+    const { task } = await seedEmbedQueued({ accession, chunks: 10 });
+    const worker = new SecIngestWorker();
+    await worker.processTask(task);
+
+    const after = getSecIngestTask(task.id)!;
+    expect(after.checkpoint).toBe("embed_queued");
+    expect(after.status).toBe("retry_wait");
+    expect(after.lastErrorType).toBe("wu_exhausted_deferred");
+    expect(after.lastError).toMatch(/text embed budget/i);
   });
 
 });

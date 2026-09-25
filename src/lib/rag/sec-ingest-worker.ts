@@ -11,14 +11,14 @@ import {
 } from "../db-rag-ingest";
 import { pineconeWuExhaustedUntil } from "../pinecone-wu-breaker";
 import { pineconeBackfillPaceGate } from "../pinecone-monthly-pace";
-import { hasRagIngestPointsBudget, ragIngestPointsBudgetDeferUntil } from "../rag-metering";
+import { hasRagIngestPointsBudget, ragIngestPointsBudgetDeferUntil, ragIngestTextBudgetDeferUntil } from "../rag-metering";
 import { vectorWriteBackend } from "../vector-store/qdrant-write";
 import { politeFetchText } from "../web-sources/http";
 import { timeSync, yieldEventLoop } from "../slow-sync-guard";
 import { shouldDeferRagIngestDuringRth } from "../sqlite-event-loop";
 import { parseFilingHtml } from "../web-sources/sec-parser";
 import { ingestCompanyFacts, parseAndSaveForm4 } from "../web-sources/sec-facts";
-import { storeDocument, classifyEmbedFailure } from "../vector-db";
+import { storeDocument, classifyEmbedFailure, hasIngestTextBudget } from "../vector-db";
 import { readLocalArtifact, writeLocalArtifact } from "../web-sources/sec-filings";
 import { insertDocumentChunkFtsBatch, countDocumentChunkFts, ftsMirrorResumeOffset, getDb } from "../db";
 import { hasInFlightStrategyWork } from "../db-execution";
@@ -440,6 +440,23 @@ export class SecIngestWorker {
           return;
         }
       }
+      // Rolling 24h text embed budget (RAG_INGEST_MAX_TEXTS_PER_DAY): park BEFORE spending any
+      // embed tokens when the budget is already spent. Without this gate, the task is re-claimed
+      // on the next tick, hits the spent budget inside storeDocument, gets a 1h deferral from
+      // the budgetSkipped branch below — but the Sentry cooldown still fires once per 30 min
+      // window for each task. A clean pre-flight deferral here stops the churn entirely.
+      if (!storeAlreadyDone && !hasIngestTextBudget("local")) {
+        const until = ragIngestTextBudgetDeferUntil();
+        deferSecIngestTask({
+          taskId: task.id,
+          owner,
+          leaseToken,
+          deferUntil: until,
+          reasonType: "wu_exhausted_deferred",
+          reason: `Daily text embed budget (RAG_INGEST_MAX_TEXTS_PER_DAY) spent; deferred until ${until}`
+        });
+        return;
+      }
       let doc: ReturnType<typeof buildSecDocument> | undefined;
       if (!storeAlreadyDone) {
         const rawContent = await readLocalArtifact(task.cik, task.accession, sequence, `raw-${documentName}`);
@@ -495,6 +512,17 @@ export class SecIngestWorker {
                 deferUntil: res.ingestPointsBudgetExhaustedUntil ?? ragIngestPointsBudgetDeferUntil(),
                 reasonType: "wu_exhausted_deferred",
                 reason: `Qdrant daily point ingest fuse spent mid-store; deferred until ${res.ingestPointsBudgetExhaustedUntil ?? "next check"}`
+              });
+              return;
+            }
+            if (res.ingestTextBudgetExhausted) {
+              deferSecIngestTask({
+                taskId: task.id,
+                owner,
+                leaseToken,
+                deferUntil: res.ingestTextBudgetExhaustedUntil ?? ragIngestTextBudgetDeferUntil(),
+                reasonType: "wu_exhausted_deferred",
+                reason: `Daily text embed budget spent mid-store; deferred until ${res.ingestTextBudgetExhaustedUntil ?? "next check"}`
               });
               return;
             }

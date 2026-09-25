@@ -1035,7 +1035,12 @@ class AlpacaBrokerGateway implements BrokerGateway {
           orderOptions.notional = effectiveNotional;
         }
 
-        if (input.limitPrice) orderOptions.limit_price = roundAlpacaPrice(input.limitPrice);
+        // limit_price is only legal on limit-family order types — Alpaca rejects a market order that
+        // carries one with HTTP 422 "market orders require no stop or limit price" (the PG cover,
+        // 2026-07-16 and 07-22: a market buy-to-cover still wearing the proposal's limitPrice).
+        if (input.limitPrice && (input.type === "limit" || input.type === "stop_limit")) {
+          orderOptions.limit_price = roundAlpacaPrice(input.limitPrice);
+        }
         // stop_price is only legal on stop-family order types — Alpaca rejects a limit order that
         // carries one with HTTP 422 40010001 "limit orders require no stop price" (proposals may
         // carry a protective stopPrice idea; that intent rides the bracket stop_loss /
@@ -1096,9 +1101,12 @@ class AlpacaBrokerGateway implements BrokerGateway {
     if (effectiveQty != null) orderArgs.qty = String(effectiveQty);
     else if (effectiveNotional != null) orderArgs.notional = String(effectiveNotional);
 
-    if (input.limitPrice) orderArgs.limit_price = String(roundAlpacaPrice(input.limitPrice));
-    // Same constraint as the REST path: stop_price only on stop-family types (Alpaca 422s a
-    // limit order carrying one).
+    // Same constraints as the REST path: limit_price only on limit-family types (Alpaca 422s a
+    // market order carrying one), stop_price only on stop-family types (Alpaca 422s a limit order
+    // carrying one).
+    if (input.limitPrice && (input.type === "limit" || input.type === "stop_limit")) {
+      orderArgs.limit_price = String(roundAlpacaPrice(input.limitPrice));
+    }
     if (input.stopPrice && (input.type === "stop_market" || input.type === "stop_limit")) {
       orderArgs.stop_price = String(roundAlpacaPrice(input.stopPrice));
     }

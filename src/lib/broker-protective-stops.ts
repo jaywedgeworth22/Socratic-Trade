@@ -1608,6 +1608,9 @@ export async function reconcileBrokerProtectiveStops(args: {
         trailPercent: symKind === "trailing" && nativeTrailing ? trailPct : undefined,
         timeInForce: "gtc",
         marketHours: "regular_hours",
+        // This tick's broker position read: the placement choke point's fallback if its own fresh
+        // read fails, so a protective stop of a verified quantity is never blocked by a read blip.
+        verifiedPositionQuantity: pos.quantity,
         refId
       });
       if (isRejectedOrCanceledState(exec.state)) {

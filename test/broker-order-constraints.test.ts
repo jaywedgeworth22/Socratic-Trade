@@ -54,6 +54,10 @@ const FIXTURES: Record<string, { violating: EquityOrderInput; passing: EquityOrd
     violating: order({ type: "limit", stopPrice: 24 }),
     passing: order({ type: "stop_limit", stopPrice: 24 })
   },
+  "alpaca:alpaca-limit-price-only-on-limit-orders": {
+    violating: order({ side: "cover", type: "market", limitPrice: 150.1 }),
+    passing: order({ type: "stop_limit", stopPrice: 24 })
+  },
   "alpaca:alpaca-extended-hours-exit-requeue": {
     violating: order({ side: "sell", type: "market", limitPrice: undefined, marketHours: "extended_hours" }),
     passing: order({ side: "sell", type: "limit", marketHours: "extended_hours" })
@@ -81,6 +85,10 @@ const FIXTURES: Record<string, { violating: EquityOrderInput; passing: EquityOrd
   "tradier:tradier-bracket-legs-require-limitable-entry": {
     violating: order({ type: "market", limitPrice: undefined, bracketStopLoss: 25 }),
     passing: order({ type: "limit", bracketStopLoss: 25 })
+  },
+  "tradier:tradier-limit-price-only-on-limit-orders": {
+    violating: order({ side: "cover", type: "stop_market", stopPrice: 155, limitPrice: 150 }),
+    passing: order({ side: "sell", type: "stop_market", limitPrice: undefined, stopPrice: 140 })
   }
 };
 

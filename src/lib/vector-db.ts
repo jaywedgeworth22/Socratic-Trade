@@ -5930,7 +5930,7 @@ export async function purgePrivateVectorRecordsForUser(options: {
     }
     // Local receipt IDs may have been omitted by an eventually consistent scroll.
     for (const [name, localIds] of [["managed", [...localManagedIds]], ["default", [...localLegacyIds]]] as const) {
-      for (const idBatch of chunks(localIds, batchSize)) {
+      for (const idBatch of chunks([...localIds], batchSize)) {
         assertVectorStoreLease(options.leaseGuard);
         await qdrantDeleteByIds({ namespace: vectorNamespaceName(name, undefined, options.userId), ids: idBatch });
       }
@@ -5962,7 +5962,7 @@ export async function purgePrivateVectorRecordsForUser(options: {
       }
       for (const [name, localIds] of [["managed", [...localManagedIds]], ["default", [...localLegacyIds]]] as const) {
         const namespace = vectorNamespaceName(name, undefined, options.userId);
-        for (const idBatch of chunks(localIds, batchSize)) {
+        for (const idBatch of chunks([...localIds], batchSize)) {
           assertVectorStoreLease(options.leaseGuard);
           if ((await qdrantRetrieveByPcIds({ namespace, ids: idBatch })).length) residual = true;
         }

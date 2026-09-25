@@ -91,6 +91,16 @@ const stripBracketLegs = (input: EquityOrderInput): { input: EquityOrderInput; c
   return { input: next, changedFields };
 };
 
+/** A limit price is legal only on limit-family orders (limit / stop_limit). */
+const carriesStrayLimitPrice = (input: EquityOrderInput): boolean =>
+  (input.type === "market" || input.type === "stop_market") && input.limitPrice != null;
+
+const stripLimitPrice = (input: EquityOrderInput): { input: EquityOrderInput; changedFields: string[] } => {
+  const next = { ...input };
+  delete next.limitPrice;
+  return { input: next, changedFields: ["limitPrice"] };
+};
+
 export const BROKER_ORDER_CONSTRAINTS: Record<ConstraintBrokerId, OrderConstraintRow[]> = {
   alpaca: [
     {
@@ -135,6 +145,18 @@ export const BROKER_ORDER_CONSTRAINTS: Record<ConstraintBrokerId, OrderConstrain
         delete next.stopPrice;
         return { input: next, changedFields: ["stopPrice"] };
       }
+    },
+    {
+      id: "alpaca-limit-price-only-on-limit-orders",
+      description: "market/stop orders must not carry a limit_price.",
+      note:
+        "Alpaca 422 'market orders require no stop or limit price' — twice on the PG buy-to-cover " +
+        "(2026-07-16, 2026-07-22): a MARKET cover still wearing the proposal's limitPrice. The adapter " +
+        "now gates limit_price by type; this row makes the drop explicit and audited. Reshape: the " +
+        "order type is the intent, a stray limitPrice on a market/stop order is not.",
+      remedy: "reshape",
+      violates: carriesStrayLimitPrice,
+      reshape: stripLimitPrice
     },
     {
       id: "alpaca-extended-hours-exit-requeue",
@@ -228,6 +250,17 @@ export const BROKER_ORDER_CONSTRAINTS: Record<ConstraintBrokerId, OrderConstrain
       remedy: "reshape",
       violates: (input) => input.type === "market" && hasBracketLegs(input),
       reshape: stripBracketLegs
+    },
+    {
+      id: "tradier-limit-price-only-on-limit-orders",
+      description: "market/stop orders carry no `price` (Tradier `price` is the limit price).",
+      note:
+        "tradier.ts used to send `price` whenever limitPrice was set, whatever the type — the same " +
+        "stray-limit shape that 422'd the PG market cover on Alpaca. The adapter now gates `price` by " +
+        "type; this row is the audited choke-point receipt.",
+      remedy: "reshape",
+      violates: carriesStrayLimitPrice,
+      reshape: stripLimitPrice
     }
   ],
   test: []

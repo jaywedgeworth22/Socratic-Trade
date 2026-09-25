@@ -276,10 +276,13 @@ export function buildPromptLines(input: {
   ];
   if (input.shortAllowed) {
     lines.push(
-      "SHORT SELLING IS ENABLED on this account.  In addition to buy/sell you MAY open SHORT positions (side='short') and close them with side='cover'."
+      "SHORT SELLING IS ENABLED on this account.  In addition to buy/sell you MAY open SHORT positions (side='short') and close them with side='cover' (never 'sell' — a sell adds to a short)."
     );
   } else {
-    lines.push("SHORT SELLING IS DISABLED on this account.  Propose long-only: side is buy or sell.  Do not propose short or cover.");
+    lines.push(
+      "SHORT SELLING IS DISABLED on this account.  Propose long-only: side is buy or sell.  Do not propose short.  " +
+        "The one use of cover: a position listed with side 'short' (negative quantity) is an unintended short — close it with side='cover' for its held quantity, never 'sell' (a sell adds to a short) and never a bracketed 'buy'."
+    );
   }
   if (!input.caps.optionsOrders) {
     lines.push(

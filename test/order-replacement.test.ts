@@ -488,6 +488,18 @@ describe("held-leg + position-backed guards — 2026-07-08 PG/T naked-short regr
     });
   });
 
+  it("never cancels a tiny fractional exit when there is no backing position", async () => {
+    const { replaceStaleLimitOrderWithMarket } = await import("../src/lib/order-replacement");
+    const original = order({ id: "tiny-exit", symbol: "T", side: "sell", quantity: 0.0000005, filledQuantity: 0 });
+    const gateway = gatewayMock({ orders: [[original]], positions: [] });
+    await expect(replaceStaleLimitOrderWithMarket({
+      userId: "local", policy: paperPolicy(), activeAccount: account("paper"), gateway,
+      orderId: original.id, cancelSettleMs: 0
+    })).rejects.toMatchObject({ name: "MarketReplacePreconditionError", status: 409 });
+    expect(gateway.cancelEquityOrder).not.toHaveBeenCalled();
+    expect(gateway.placeEquityOrder).not.toHaveBeenCalled();
+  });
+
   it("skips the replacement when the position is smaller than the order's remaining quantity", async () => {
     const { replaceStaleLimitOrderWithMarket } = await import("../src/lib/order-replacement");
     const { latestAuditByKind } = await import("../src/lib/db");
@@ -628,6 +640,31 @@ describe("manual-path held-leg, post-cancel TOCTOU, and in-flight guards — adv
       backingQuantity: 1,
       reason: "position_shrank_below_remaining"
     });
+  });
+
+  it("allows manual replacement of a standalone order beside an unrelated opposite-side bracket order", async () => {
+    const { replaceStaleLimitOrderWithMarket } = await import("../src/lib/order-replacement");
+    const original = order({ id: "manual-standalone", symbol: "MU", side: "buy", orderClass: undefined,
+      createdAt: "2026-01-01T00:00:00.000Z" });
+    const unrelated = order({ id: "unrelated-bracket", symbol: "MU", side: "sell", orderClass: "bracket",
+      createdAt: "2026-01-01T00:00:01.000Z" });
+    const canceled = order({ ...original, state: "canceled" });
+    const gateway = gatewayMock({ orders: [[original, unrelated], [canceled, unrelated]] });
+    const result = await replaceStaleLimitOrderWithMarket({
+      userId: "local", policy: paperPolicy(), activeAccount: account("paper"), gateway,
+      orderId: original.id, cancelSettleMs: 0
+    });
+    expect(result).toMatchObject({ status: "replaced" });
+    expect(gateway.cancelEquityOrder).toHaveBeenCalledWith("APCA-PAPER", original.id);
+  });
+
+  it("keeps the bracket-sibling heuristic as an automatic-remediation fence", async () => {
+    const { autoReplaceProvenanceSkipReason } = await import("../src/lib/order-provenance");
+    const original = order({ id: "possible-leg", symbol: "MU", side: "sell", orderClass: undefined,
+      createdAt: "2026-01-01T00:00:00.000Z" });
+    const sibling = order({ id: "bracket", symbol: "MU", side: "buy", orderClass: "bracket",
+      createdAt: "2026-01-01T00:00:01.000Z" });
+    expect(autoReplaceProvenanceSkipReason(original, { userId: "local", accountNumber: "APCA-PAPER" }, [original, sibling])).toBe("bracket_leg");
   });
 
   it("blocks concurrent replacement of the same order via the shared in-flight set — second entrant gets 409", async () => {

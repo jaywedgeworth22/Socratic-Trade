@@ -506,9 +506,10 @@ async function setSystemState(
 ): Promise<OpsAccountControlOutcome> {
   const userId = account.userId;
   const target: SystemState = request.systemState;
-  // dryRun reads without seeding account_strategy_state; a real change uses the same effective
-  // policy the console's writers read.
-  const policy = request.dryRun ? peekPolicy(userId, account.id) : getPolicy(userId, account.id);
+  // Read without seeding account_strategy_state. A real change takes its
+  // authoritative getPolicy snapshot inside the transaction below: a failed
+  // arming check or a later rollback must not leave a seeded policy row behind.
+  const policy = peekPolicy(userId, account.id);
   const from = policy.systemState;
 
   const refuse = (status: number, error: string, extra: Record<string, unknown> = {}): OpsAccountControlOutcome => {

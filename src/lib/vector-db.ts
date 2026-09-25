@@ -36,7 +36,7 @@ import { RetrievalStageTrace, type RetrievalTraceSnapshot } from "./rag/retrieva
 import { dedupeSimilar, type DedupeSimilarReport } from "./rag/dedupe-similar";
 import { getCachedQueryEmbedding, setCachedQueryEmbedding } from "./rag/query-embed-cache";
 import { recordRagOperation, shouldDegradeForBudget } from "./rag/run-budget";
-import { auditRagIngestPointsGateSkip, estimateRagDispatchCost, getRagUsageSummary, hasRagIngestPointsBudget, hashQuery, meterEmbed, meterPineconeQuery, meterPineconeUpsert, meterRerank, ragIngestPointsBudgetDeferUntil, ragMaxDailyIngestPoints, recordRetrievalQuality, retrievalTelemetryEnabled, usedRagUpsertPointsLast24h, type RagEmbedRerankProvider } from "./rag-metering";
+import { auditRagIngestPointsGateSkip, estimateRagDispatchCost, getRagUsageSummary, hasRagIngestPointsBudget, hashQuery, meterEmbed, meterPineconeQuery, meterPineconeUpsert, meterRerank, ragIngestPointsBudgetDeferUntil, ragIngestTextBudgetDeferUntil, ragMaxDailyIngestPoints, recordRetrievalQuality, retrievalTelemetryEnabled, usedRagUpsertPointsLast24h, type RagEmbedRerankProvider } from "./rag-metering";
 import {
   EMBED_REQUEST_TOKEN_BUDGET,
   embedRequestFits,
@@ -266,6 +266,12 @@ export interface StoreContextsResult {
   ingestPointsBudgetExhausted?: boolean;
   /** ISO instant producers should retry after a Qdrant daily-point fuse park (typically +1h). */
   ingestPointsBudgetExhaustedUntil?: string;
+  /** Set with skipped when the rolling 24h text embed budget (RAG_INGEST_MAX_TEXTS_PER_DAY) is
+   *  fully spent and zero documents were embedded. Producers should treat this as a clean deferral
+   *  until `ingestTextBudgetExhaustedUntil`, not a failure. */
+  ingestTextBudgetExhausted?: boolean;
+  /** ISO instant producers should retry after a text embed budget park (typically +1h). */
+  ingestTextBudgetExhaustedUntil?: string;
   /**
    * The real embed-api-failed text (e.g. an HTTP 400/429 body) from the LAST rejected batch,
    * even on the non-throwing success path — a batch-isolated embed failure just drops that
@@ -3623,7 +3629,18 @@ async function storeContextsImpl(
       };
       setInternalSetting(LAST_INGEST_KEY, lastIngest);
       audit("vector_store", { ok: true, attempted: validDocuments.length, indexed: 0, budgetSkipped }, userId);
-      return { attempted: validDocuments.length, indexed: 0, skipped: true, budgetSkipped };
+      // When the budget is fully spent (allowed === 0), signal a clean deferral so producers
+      // can park without re-attempting on the next tick.  Mirrors the ingestPointsBudgetExhausted
+      // pattern used by the Qdrant daily-point fuse (StoreContextsResult type).
+      const fullyExhausted = budget.allowed === 0;
+      const exhaustedUntil = fullyExhausted ? ragIngestTextBudgetDeferUntil() : undefined;
+      return {
+        attempted: validDocuments.length,
+        indexed: 0,
+        skipped: true,
+        budgetSkipped,
+        ...(fullyExhausted ? { ingestTextBudgetExhausted: true, ingestTextBudgetExhaustedUntil: exhaustedUntil } : {})
+      };
     }
   }
 

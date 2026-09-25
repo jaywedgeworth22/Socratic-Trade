@@ -358,6 +358,15 @@ export function ragIngestPointsBudgetDeferUntil(nowMs: number = Date.now()): str
 }
 
 /**
+ * ISO deferral target when the rolling 24h text embed budget (RAG_INGEST_MAX_TEXTS_PER_DAY)
+ * is spent.  Parks producers for 1h — matching the Qdrant point and Pinecone WU fuse
+ * conventions — so they retry once a slice of the 24h window has rolled.
+ */
+export function ragIngestTextBudgetDeferUntil(nowMs: number = Date.now()): string {
+  return new Date(nowMs + 60 * 60_000).toISOString();
+}
+
+/**
  * Audit that the Qdrant daily-point gate skipped work, at most once per UTC day.
  * Producers still park/defer on every call; this only stops audit_events / console spam
  * (Datadog showed ~148k daily-budget skip warns when the fuse was spent).

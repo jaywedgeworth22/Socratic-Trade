@@ -125,7 +125,7 @@ jobs:
           actor="${{ github.actor }}"
           if printf '%s' "$actor" | grep -Eq '\[bot\]$'; then
             case "$actor" in
-              'cursor[bot]'|'dependabot[bot]'|'sentry[bot]'|'codex[bot]')
+              'cursor[bot]'|'dependabot[bot]'|'sentry[bot]'|'codex[bot]'|'chatgpt-codex-connector[bot]')
                 echo "Trusted same-repo bot: $actor"
                 ;;
               *)

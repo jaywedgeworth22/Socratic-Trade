@@ -13,15 +13,18 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_POLICY } from "../src/lib/defaults";
-import {
-  OrderValidationError,
-  type EquityOrderInput,
-  type EquityPosition,
-  type TradeProposal,
-  type TradingPolicy
-} from "../src/lib/types";
+import type { EquityOrderInput, EquityPosition, TradeProposal, TradingPolicy } from "../src/lib/types";
+
+// Warm the transform cache once (the module graph pulls in db.ts); every test re-imports after
+// vi.resetModules, so class identity checks must use the SAME fresh module instance — import
+// OrderValidationError dynamically next to the module under test, never statically.
+beforeAll(async () => {
+  process.env.DATABASE_URL = `file:${join(tmpdir(), `agentic-position-invariant-warm-${randomUUID()}.db`)}`;
+  await import("../src/lib/order-position-invariant");
+  await import("../src/lib/broker");
+}, 240_000);
 
 beforeEach(() => {
   vi.resetModules();
@@ -48,6 +51,7 @@ function position(patch: Partial<EquityPosition> = {}): EquityPosition {
 describe("applyPositionInvariant — pure rules", () => {
   it("refuses a SELL when the account holds no long (the PG short)", async () => {
     const { applyPositionInvariant, OrderPositionInvariantError } = await import("../src/lib/order-position-invariant");
+    const { OrderValidationError } = await import("../src/lib/types");
     let caught: unknown;
     try {
       applyPositionInvariant(order(), { signedQuantity: 0 });
@@ -202,6 +206,7 @@ describe("withPositionInvariant — placement choke point", () => {
 
   it("refuses the PG market SELL 12 with zero PG held — nothing reaches the adapter", async () => {
     const { withPositionInvariant } = await import("../src/lib/order-position-invariant");
+    const { OrderValidationError } = await import("../src/lib/types");
     const { seen, gateway } = stubGateway([position({ symbol: "AAPL", quantity: 3 })]);
     const wrapped = withPositionInvariant(gateway as never, policy(), "local");
     await expect(wrapped.placeEquityOrder({ ...order(), refId: "92d9e66d" })).rejects.toBeInstanceOf(OrderValidationError);
@@ -252,6 +257,37 @@ describe("withPositionInvariant — placement choke point", () => {
     const wrapped = withPositionInvariant(gateway as never, policy(), "local");
     await expect(wrapped.placeEquityOrder({ ...order(), refId: "sell-1" })).rejects.toThrow(/could not verify/i);
     expect(seen).toHaveLength(0);
+  });
+
+  it("fails OPEN on a read failure where the broker's close verb is explicit (Tradier)", async () => {
+    const { withPositionInvariant } = await import("../src/lib/order-position-invariant");
+    const { seen, gateway } = stubGateway(async () => {
+      throw new Error("tradier positions 503");
+    });
+    const wrapped = withPositionInvariant(gateway as never, policy({ activeBroker: "tradier" }), "local");
+    await wrapped.placeEquityOrder({ ...order(), refId: "tr-sell-1" });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ side: "sell", quantity: 12 });
+    const failed = await auditKinds("order_position_read_failed");
+    expect(failed).toEqual([expect.objectContaining({ refId: "tr-sell-1", fallback: "broker_enforces_close_verb" })]);
+  });
+
+  it("never reads positions for a Robinhood buy (Robinhood cannot hold a short)", async () => {
+    const { withPositionInvariant } = await import("../src/lib/order-position-invariant");
+    const { seen, gateway } = stubGateway([]);
+    const wrapped = withPositionInvariant(gateway as never, policy({ activeBroker: "robinhood" }), "local");
+    await wrapped.placeEquityOrder({ ...order({ side: "buy", type: "limit", limitPrice: 150 }), refId: "rh-buy-1" });
+    expect(gateway.getEquityPositions).not.toHaveBeenCalled();
+    expect(seen).toHaveLength(1);
+  });
+
+  it("never reads positions for an intended SHORT entry", async () => {
+    const { withPositionInvariant } = await import("../src/lib/order-position-invariant");
+    const { seen, gateway } = stubGateway([]);
+    const wrapped = withPositionInvariant(gateway as never, policy(), "local");
+    await wrapped.placeEquityOrder({ ...order({ side: "short", bracketStopLoss: 160 }), refId: "short-1" });
+    expect(gateway.getEquityPositions).not.toHaveBeenCalled();
+    expect(seen[0]).toMatchObject({ side: "short", bracketStopLoss: 160 });
   });
 
   it("does not read positions or reshape for brokers outside the invariant's scope", async () => {
@@ -352,5 +388,32 @@ describe("normalizeExitSideForHeldPosition — the correct verb for closing a sh
       expect.objectContaining({ symbol: "PG", quantity: -12, side: "short" }),
       expect.objectContaining({ symbol: "AAPL", quantity: 3, side: "long" })
     ]);
+  });
+});
+
+describe("strategist prompt — the correct verb for a held short", () => {
+  it("long-only accounts are still told to close an unintended short with cover, never sell", async () => {
+    const { buildBullSystem } = await import("../src/lib/strategy-prompts");
+    const text = buildBullSystem({
+      shortAllowed: false,
+      executionMode: "broker/paper",
+      executionModeClarification: "",
+      strategyPrompt: "",
+      hasTaxContext: false
+    } as never);
+    expect(text).toContain("SHORT SELLING IS DISABLED");
+    expect(text).toMatch(/side 'short'.*close it with side='cover'/);
+    expect(text).toMatch(/never 'sell'/);
+
+    const { buildPromptLines, emptyCapabilities } = await import("../src/lib/venue-contract-pure");
+    const lines = buildPromptLines({
+      brokerLabel: "Alpaca",
+      shortAllowed: false,
+      caps: emptyCapabilities({ equityTrading: true }),
+      orderTypes: ["market", "limit"],
+      marketHours: ["regular_hours"]
+    });
+    const disabled = lines.find((line) => line.includes("SHORT SELLING IS DISABLED")) ?? "";
+    expect(disabled).toMatch(/close it with side='cover'/);
   });
 });

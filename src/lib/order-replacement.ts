@@ -218,7 +218,7 @@ export async function replaceStaleLimitOrderWithMarket(input: MarketReplaceInput
   const maxLoops = 10;
   let loops = 0;
   while (row && !isTerminalState(row.status) && loops < maxLoops) {
-    await stepReplacementState(row, input, original);
+    await stepReplacementState(row, input, original, orders);
     row = getReplacementRecord(id);
     loops++;
   }
@@ -277,15 +277,23 @@ function isTerminalState(status: string) {
   return status === 'replacement_confirmed' || status === 'failed' || status === 'aborted';
 }
 
-async function stepReplacementState(row: OrderReplacementRow, input: MarketReplaceInput, original?: EquityOrder) {
+async function stepReplacementState(
+  row: OrderReplacementRow,
+  input: MarketReplaceInput,
+  original?: EquityOrder,
+  /** The broker listing `original` came from — lets the provenance check recognise a class-less bracket leg. */
+  listing: readonly EquityOrder[] = []
+) {
   const db = getDb();
   const userId = input.userId ?? "local";
 
   let originalOrder: EquityOrder;
+  let siblings: readonly EquityOrder[] = listing;
   if (original) {
     originalOrder = original;
   } else {
     const orders = await input.gateway.getEquityOrders(input.policy.accountNumber);
+    siblings = orders;
     const found = orders.find((o) => o.id === row.original_order_id);
     if (found) {
       originalOrder = found;
@@ -354,10 +362,11 @@ async function stepReplacementState(row: OrderReplacementRow, input: MarketRepla
         audit("stale_exit_remediation_skipped_held", { orderId: originalOrder.id, symbol, side: originalOrder.side, state: originalOrder.state }, userId, input.policy.connectedAccountId);
         throw new MarketReplacePreconditionError(errStr, 409);
       }
-      const provenanceSkip = autoReplaceProvenanceSkipReason(originalOrder, {
-        userId,
-        accountNumber: input.policy.accountNumber
-      });
+      const provenanceSkip = autoReplaceProvenanceSkipReason(
+        originalOrder,
+        { userId, accountNumber: input.policy.accountNumber },
+        siblings
+      );
       // A manual replace (owner explicitly clicked) may proceed past the provenance
       // reasons that only exist to fence AUTOMATED remediation: an owner-placed order
       // ("not_app_placed") and a symbol the owner previously manually cancelled a
@@ -472,9 +481,11 @@ async function stepReplacementState(row: OrderReplacementRow, input: MarketRepla
 
       // Re-verify backing position
       const isExit = originalOrder.side === "sell" || originalOrder.side === "cover";
+      let verifiedPositionQuantity: number | undefined;
       if (isExit) {
         const positionsNow = await input.gateway.getEquityPositions(input.policy.accountNumber);
         const { signedQuantity, backingQuantity } = exitBackingQuantity(positionsNow, symbol, originalOrder.side);
+        verifiedPositionQuantity = signedQuantity;
         if (backingQuantity + POSITION_EPSILON < remainingQuantity) {
           const reason = backingQuantity <= POSITION_EPSILON ? "no_position_after_cancel" : "position_shrank_below_remaining";
           const errStr = `${symbol} ${originalOrder.side} replacement aborted after cancel: the backing position shrank to ${signedQuantity} before the market order could be placed (order remaining ${remainingQuantity}). The original order is now CANCELED and was NOT replaced — no market order was placed. Review the position and place a fresh exit manually if one is still needed.`;
@@ -498,7 +509,9 @@ async function stepReplacementState(row: OrderReplacementRow, input: MarketRepla
         type: "market",
         quantity: remainingQuantity,
         timeInForce: "gfd",
-        marketHours: "regular_hours"
+        marketHours: "regular_hours",
+        // Just-read position: the placement choke point's fallback if its own fresh read fails.
+        ...(verifiedPositionQuantity !== undefined ? { verifiedPositionQuantity } : {})
       };
       
       const review = await input.gateway.reviewEquityOrder(marketOrder);
@@ -799,10 +812,11 @@ export async function autoRemediateStaleExitOrders(input: {
       if (String(item.order.state ?? "").trim().toLowerCase() === "held") continue;
 
       const symbol = normalizeSymbol(item.order.symbol);
-      const provenanceSkip = autoReplaceProvenanceSkipReason(item.order, {
-        userId,
-        accountNumber: input.policy.accountNumber
-      });
+      const provenanceSkip = autoReplaceProvenanceSkipReason(
+        item.order,
+        { userId, accountNumber: input.policy.accountNumber },
+        orders
+      );
       if (provenanceSkip) {
         out.deferred++;
         audit(

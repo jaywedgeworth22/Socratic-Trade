@@ -1,7 +1,7 @@
 import { audit, getInternalSetting, setInternalSetting } from "./db";
 import { DEFAULT_POLICY } from "./defaults";
-import { isBracketOrderClass } from "./broker-side";
 import { isWorkingOrderState } from "./broker-held-orders";
+import { isContingentOrderLeg } from "./order-provenance";
 import { normalizeSymbol } from "./money";
 import { shortOrderLabel } from "./order-labels";
 import { sendNotification } from "./notifications";
@@ -40,6 +40,13 @@ export function listStaleLimitOrders(
     // Bracket exits are created with the entry order but only activate when the entry fills.
     // Broker updates the order (bumping updatedAt) on state change (e.g., held -> new).
     // So updatedAt accurately measures how long the exit has been WORKING.
+    // An ACTIVATED contingent leg (bracket/OCO/OTO member, not held) with no updatedAt has an
+    // unknown activation time: its createdAt is the PARENT's placement time, not its activation,
+    // so never guess it stale from createdAt (the 2026-07-08 PG take-profit leg was flagged stale
+    // 15 minutes after the unfilled entry was placed).  Held legs stay listed (order-replacement
+    // needs to see them to return the held-leg 409); the alert and auto path skip them.
+    const isHeld = String(order.state ?? "").trim().toLowerCase() === "held";
+    if (!isHeld && !order.updatedAt && isContingentOrderLeg(order, orders)) return [];
     const createdMs = order.updatedAt ? Date.parse(order.updatedAt) : Date.parse(order.createdAt);
     if (!Number.isFinite(createdMs) || createdMs > nowMs) return [];
 
@@ -70,9 +77,10 @@ export async function notifyStaleLimitOrders(input: {
   for (const item of stale) {
     // Never alert on an unactivated bracket exit leg — see isHeldExitLeg. (The leg stays in the
     // listing for order-replacement's held-leg 409; only the owner-facing alert is suppressed.)
-    // Activated bracket legs (orderClass bracket/oco/oto) are also not actionable auto-replace
-    // targets — suppress the misleading "cancel/reprice before replacing with market" alert.
-    if (isHeldExitLeg(item.order) || isBracketOrderClass(item.order.orderClass)) continue;
+    // Activated bracket legs (orderClass bracket/oco/oto, or a class-less leg recognised by its
+    // bracket-class sibling in this same listing) are also not actionable auto-replace targets —
+    // suppress the misleading "cancel/reprice before replacing with market" alert.
+    if (isHeldExitLeg(item.order) || isContingentOrderLeg(item.order, input.orders)) continue;
     const key = staleLimitOrderAlertKey(userId, input.policy, item);
     if (await sqliteYieldRetry(() => getInternalSetting(key))) continue;
 

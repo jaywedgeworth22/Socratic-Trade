@@ -123,6 +123,7 @@ import { fetchDailyOHLC } from "./history";
 import { expireStalePendingProposals, revalidatePendingProposals } from "./proposal-revalidation";
 import { getTaxSummary, getUserWashSaleLockProvenance, overlayAccountTaxationType } from "./tax";
 import { getBrokerGateway } from "./broker";
+import { normalizeExitSidesForHeldPositions, withPositionSides } from "./order-position-invariant";
 import { describeBrokerMinimumOrderBlock, planBrokerMinimumBump, shouldAlertBrokerMinimumOrderBlock } from "./broker-minimum-guard";
 import { brokerHeldExitBlockReason, evaluateBrokerHeldExitAvailability } from "./broker-held-orders";
 import { notifyStaleLimitOrders } from "./stale-limit-orders";
@@ -2308,7 +2309,15 @@ export async function runStrategyOnce(
           : {})
       });
       lockGuard.assertOwned();
-      llmProposals = proposed.proposals;
+      // Closing a short is "cover": an LLM "sell" of a symbol held short (which would ADD to the
+      // short) or a bracketed "buy" of at most the short is rewritten to a cover BEFORE sizing,
+      // Red Team, and policy (the PG short: 12 buy-to-cover 422s + 7 policy-blocked sells).
+      llmProposals = normalizeExitSidesForHeldPositions(proposed.proposals, workingPositions, {
+        userId,
+        connectedAccountId,
+        lane: "autopilot",
+        runId
+      });
       llmSteps = proposed.llmSteps;
       adversaryContext = proposed.adversaryContext;
       // Only complete prompt evidence earns outcome attribution/usefulness credit. Truncated rows
@@ -5687,7 +5696,8 @@ async function proposeTrades(input: {
         }
       : {}),
     portfolio: input.portfolio,
-    positions: input.positions,
+    // side long/short beside the signed quantity: a short must read as a short (close with cover).
+    positions: withPositionSides(input.positions),
     recentOrders: input.recentOrders,
     allowedSymbols: allowedSymbolsForPrompt,
     marketScan: compactPromptMarketScan,

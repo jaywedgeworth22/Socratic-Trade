@@ -201,6 +201,15 @@ function mapTradierSideRead(raw: unknown): OrderSide {
   }
 }
 
+/** Tradier `price` is legal only on limit-family orders; `stop` only on stop-family orders. */
+function carriesLimitPrice(type: OrderType): boolean {
+  return type === "limit" || type === "stop_limit";
+}
+
+function carriesStopPrice(type: OrderType): boolean {
+  return type === "stop_market" || type === "stop_limit";
+}
+
 // OrderType -> Tradier `type` (WRITE). Tradier's wire word for a stop-market is "stop".
 function mapTradierTypeWrite(type: OrderType): string {
   return type === "stop_market" ? "stop" : type;
@@ -870,8 +879,8 @@ class TradierBrokerGateway implements BrokerGateway {
         "quantity[0]": String(wholeQty),
         "type[0]": mapTradierTypeWrite(input.type)
       };
-      if (input.limitPrice != null) bracketForm["price[0]"] = roundCents(input.limitPrice);
-      if (input.stopPrice != null) bracketForm["stop[0]"] = roundCents(input.stopPrice);
+      if (input.limitPrice != null && carriesLimitPrice(input.type)) bracketForm["price[0]"] = roundCents(input.limitPrice);
+      if (input.stopPrice != null && carriesStopPrice(input.type)) bracketForm["stop[0]"] = roundCents(input.stopPrice);
 
       let legIndex = 1;
       if (hasTakeProfit) {
@@ -926,8 +935,10 @@ class TradierBrokerGateway implements BrokerGateway {
       duration: durationFor(input),
       tag: sanitizeTag(input.refId)
     };
-    if (input.limitPrice != null) form.price = input.limitPrice;
-    if (input.stopPrice != null) form.stop = input.stopPrice;
+    // A market order carries no price/stop (and a stop carries no price): a stray limitPrice/stopPrice
+    // on the input (e.g. a market cover still wearing the proposal's limit) must never reach Tradier.
+    if (input.limitPrice != null && carriesLimitPrice(input.type)) form.price = input.limitPrice;
+    if (input.stopPrice != null && carriesStopPrice(input.type)) form.stop = input.stopPrice;
 
     let body: { order?: Record<string, unknown> };
     try {

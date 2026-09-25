@@ -61,3 +61,15 @@ export function canonicalModelId(model: string | null | undefined): string {
 
   return name;
 }
+
+/**
+ * True when two model ids name the SAME model line once canonicalized — a catalog display id, an
+ * OpenRouter wire slug and a namespaced policy id (`openrouter/google/gemini-flash-latest`) of one
+ * model all match.  Used to keep a proposer from reviewing its own opening (the Red Team must be a
+ * different model: src/lib/model-rotation.ts `planRotationImplicitFallbacks`, src/lib/red-team.ts
+ * fallback attempts).  Blank ids never match anything.
+ */
+export function isSameModelLine(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = canonicalModelId(a);
+  return left !== "" && left === canonicalModelId(b);
+}

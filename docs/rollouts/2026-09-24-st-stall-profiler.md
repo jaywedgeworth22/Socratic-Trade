@@ -78,7 +78,10 @@ the next `Profiler.start` builds a new one that walks the entire heap to log exi
 | 603-631 MB of objects + 20k compiled functions (two runs) | 8,077-55,943 ms | 3,873-32,071 ms | ~1-241 ms |
 
 The Mac was at load average ~600 from parallel fleet work during these runs, so absolute numbers
-swing between runs; the ratio (seconds vs milliseconds) does not.  A plain `Profiler.stop` on the
+swing between runs; the ratio (seconds vs milliseconds) does not.  Re-verified after the restart
+(2026-09-25, Node 24.21, 303 MB heap with 20k compiled functions): first `Profiler.start` 903 ms,
+plain stop+start 659 ms, bridged start 0.02-0.04 ms (whole bridged rotation 0.1-0.9 ms), and
+`Profiler.consoleProfileStarted` arrived synchronously inside `console.profile()` every time.  A plain `Profiler.stop` on the
 function-heavy heap also cost 328-607 ms, because it disposes the profiler and its code map.
 
 Rotating the naive way would inject multi-second-to-minute blocks every 60s into the process we
@@ -125,8 +128,12 @@ what keeps the per-minute cost at milliseconds instead of seconds.
 `v8::CpuProfiler`, created once at addon init with EAGER logging and sampling at 99 Hz; dd-trace
 profiling is off (`DD_PROFILING_ENABLED=false` default in `src/lib/datadog-server.ts`).  V8
 supports several `CpuProfiler`s per isolate, each with its own sampler, so there is no conflict.
-This module opens exactly one session per process, pinned on `globalThis` against Next.js module
-duplication.
+Sentry's only other `node:inspector` use is `inspector.url()` (no session); its LocalVariables
+integration (which would open a `Debugger` session and pause on every exception) is gated on
+`includeLocalVariables: true`, which `sentry.server.config.ts` does not set.  Keep it that way:
+with pause-on-exception, an exception flood such as the suspected Zod error flood would itself be
+a stall source.  This module opens exactly one session per process, pinned on `globalThis`
+against Next.js module duplication.
 
 **The lag sampler now starts at boot.**  `startStallProfiler` calls the idempotent
 `startEventLoopLagSampler()`; previously it started on the first safety-lane tick.  No lane

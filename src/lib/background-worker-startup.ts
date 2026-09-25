@@ -99,5 +99,17 @@ export async function startServerBackgroundWorkers(
   starters.startServerKnobSupervisor();
   starters.startStreams();
   starters.startSecIngestWorker(); // loop parks/resumes itself per the SEC_INGEST_WORKER_ENABLED server knob
+
+  // Startup token probe: validate CONGRESS_TRADE_TOKEN against App A on every boot so a
+  // drifted/rotated token is surfaced immediately (Sentry + health log) rather than waiting
+  // for the next nightly batch run. Fire-and-forget; never blocks startup.
+  void import("./congress-share").then(({ probeCongressShareToken, congressTradeToken }) => {
+    if (congressTradeToken()) {
+      probeCongressShareToken().catch((err) => {
+        console.warn("[background-workers] congress-share startup probe error:", err instanceof Error ? err.message : err);
+      });
+    }
+  });
+
   return decision;
 }

@@ -76,9 +76,13 @@ Files:
   what would happen (order book for cancel; `getAccounts` and the health probe for `active`).
   `close_only` and `halted` make no broker call at all.
 - **Explicit `orderIds` are membership-checked.**  An id not working in the named account's order
-  book is skipped and never sent.  If the order book is unreadable, the default "cancel all" does
-  nothing (502); explicit ids still go out (cancelling is the emergency lever, and each cancel is
-  scoped to that account's own broker login), marked `verified: false`.
+  book is skipped and never sent.  If the order book is unreadable, nothing is cancelled (502),
+  explicit ids included (review-stage change on this PR).  The per-order re-check in
+  `cancelWorkingOrder` fails closed only for this route, via the ops-only
+  `failClosedWhenUnverified` flag; the mobile lane keeps its fail-open behaviour (a first cut made
+  `requireWorkingOrder` itself fail closed, which changed the mobile lane and broke
+  `test/mobile-order-cancel.test.ts`).  Set-state reads use `peekPolicy`, so a refused arming leaves
+  no seeded `account_strategy_state` row (review-stage change).
 - **Events.**  Cancels emit exactly what a console cancel emits.  State changes emit what the
   console emits (the `policy_change` audit and snapshot-cache invalidation inside `setPolicy`)
   plus one `dirty` dashboard event so an open console refreshes after an out-of-band change.

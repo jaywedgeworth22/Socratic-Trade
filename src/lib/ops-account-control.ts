@@ -406,8 +406,6 @@ interface CancelResult {
   state?: string;
   dryRun?: true;
   wouldCancel?: boolean;
-  /** False when the order book could not be read, so membership was not confirmed before the (dry) cancel. */
-  verified?: boolean;
   skipped?: true;
   dustWarning?: string;
   error?: string;
@@ -432,13 +430,13 @@ async function cancelWorkingOrders(
     auditOpsCall(account, request, outcome, { error: outcome.body.error });
     return outcome;
   }
-  const working = read.ok ? new Map(read.orders.map((order) => [order.id, order])) : undefined;
-  const targets = request.orderIds ?? [...(working?.keys() ?? [])];
+  const working = new Map(read.orders.map((order) => [order.id, order]));
+  const targets = request.orderIds ?? [...working.keys()];
   const results: CancelResult[] = [];
 
   for (const orderId of targets) {
-    const known = working?.get(orderId);
-    if (working && !known) {
+    const known = working.get(orderId);
+    if (!known) {
       // Never send a cancel for an id that is not working in THIS account's own order book.
       results.push({
         orderId,
@@ -448,22 +446,28 @@ async function cancelWorkingOrders(
       });
       continue;
     }
-    const describe = known ? { symbol: known.symbol, side: known.side, type: known.type, state: known.state } : {};
+    const describe = { symbol: known.symbol, side: known.side, type: known.type, state: known.state };
     if (request.dryRun) {
-      results.push({ orderId, ok: true, dryRun: true, wouldCancel: true, verified: Boolean(known), ...describe });
+      results.push({ orderId, ok: true, dryRun: true, wouldCancel: true, ...describe });
       continue;
     }
     try {
       // The console's cancel path, pointed at THIS account.  requireWorkingOrder re-checks
       // membership at cancel time (an order that filled since the read above is refused).
-      const result = await cancelWorkingOrder({ userId, orderId, connectedAccountId: account.id, requireWorkingOrder: true, source: "ops" });
+      const result = await cancelWorkingOrder({
+        userId,
+        orderId,
+        connectedAccountId: account.id,
+        requireWorkingOrder: true,
+        failClosedWhenUnverified: true,
+        source: "ops"
+      });
       results.push({
         orderId,
         ok: true,
         ...describe,
-        symbol: result.symbol ?? known?.symbol,
+        symbol: result.symbol ?? known.symbol,
         state: result.state,
-        verified: Boolean(known),
         ...(result.dustWarning ? { dustWarning: result.dustWarning } : {})
       });
     } catch (error) {
@@ -492,7 +496,6 @@ async function cancelWorkingOrders(
       action: request.action,
       dryRun: request.dryRun,
       account: accountSummary(account),
-      ...(read.ok ? {} : { orderBookReadError: read.error }),
       summary,
       results
     }

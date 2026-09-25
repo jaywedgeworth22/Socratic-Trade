@@ -15,11 +15,17 @@ beforeAll(() => {
 
 const mocks = vi.hoisted(() => ({
   storeContexts: vi.fn().mockResolvedValue({ attempted: 0, indexed: 0 }),
+  hasIngestTextBudget: vi.fn().mockReturnValue(true),
 }));
 
 vi.mock("../src/lib/vector-db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/lib/vector-db")>();
-  return { ...actual, managedVectorLedgerAuthority: vi.fn(), storeContexts: mocks.storeContexts };
+  return {
+    ...actual,
+    managedVectorLedgerAuthority: vi.fn(),
+    storeContexts: mocks.storeContexts,
+    hasIngestTextBudget: mocks.hasIngestTextBudget,
+  };
 });
 
 vi.mock("../src/lib/db", async (importOriginal) => {
@@ -152,6 +158,21 @@ describe("embedDisclosures() — flag OFF", () => {
     const { embedDisclosures } = await import("../src/lib/web-sources/disclosure-rag");
     const result = await embedDisclosures([singleTrade], [singleFiling]);
     expect(result.skipped).toBe(true);
+    expect(mocks.storeContexts).not.toHaveBeenCalled();
+  });
+});
+
+describe("embedDisclosures() — daily text embed budget spent", () => {
+  beforeEach(() => {
+    process.env.RAG_EMBED_DISCLOSURES = "on";
+    mocks.storeContexts.mockClear();
+    mocks.hasIngestTextBudget.mockReturnValueOnce(false);
+  });
+
+  it("skips without calling storeContexts", async () => {
+    const { embedDisclosures } = await import("../src/lib/web-sources/disclosure-rag");
+    const result = await embedDisclosures([singleTrade], [singleFiling]);
+    expect(result).toMatchObject({ indexed: 0, skipped: true });
     expect(mocks.storeContexts).not.toHaveBeenCalled();
   });
 });

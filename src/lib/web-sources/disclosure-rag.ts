@@ -113,6 +113,15 @@ export async function embedDisclosures(
     return { attempted: 0, indexed: 0 };
   }
 
+  // Pre-flight: skip the storeContexts call entirely when the daily text embed budget is
+  // already spent — mirroring the hasIngestTextBudget() check in ingestFiling() (sec-filings.ts).
+  // Without this check the scheduler invokes storeContexts every ~30 min and triggers a
+  // cooldown-gated Sentry warning on every tick for the rest of the 24h budget window.
+  const { hasIngestTextBudget } = await import("../vector-db");
+  if (!hasIngestTextBudget(userId)) {
+    return { attempted: docs.length, indexed: 0, skipped: true };
+  }
+
   try {
     const { storeContexts } = await import("../vector-db");
     // R10 (2026-07-01 RAG backlog): content_hash dedup, gated on the same

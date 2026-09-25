@@ -176,6 +176,16 @@ Results (2026-09-25, Node v24.21.0, this Mac at load average 250-700 from parall
 PR #3756.  `scripts/land.sh` arms auto-merge by default; it was disarmed immediately
 (`gh pr merge 3756 --disable-auto`) because this sweep's review stage arms it.
 
+**Re-sync (2026-09-25):** merged `origin/main` again to pick up #3761 (warnings/rotation), #3774
+(CI bot trust), #3778 (Qdrant scroll bound) — none touch this lane's files (checked via
+`git diff --name-only` against the merged-in commits); only `STATUS.md`/`docs/EFFORT-LOG.md`
+overlapped and both sides' entries were kept.  Re-ran on the merged tree: `npx tsc --noEmit`
+clean; `npm run lint` exit 0, `836 problems (0 errors, 836 warnings)`; targeted
+`npx vitest run test/stall-profiler.test.ts test/cpuprofile-summary.test.ts
+test/lane-deadline-stall-attribution.test.ts` — 3 files, 55 tests passed.  Full `npm test`/
+`npm run build` left to the required `verify` CI check per this sweep's load-aware protocol.
+Hold label `do-not-automerge` kept; auto-merge not armed.
+
 ## 5. Next Steps & Blockers
 
 After this deploys (merges auto-deploy after the RTH latch), on the next stall:

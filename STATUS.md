@@ -129,8 +129,10 @@ synthetic_stop | replacement | external` + a one-sentence `whyResting`, reusing
 `order-provenance.ts` read-only.  Wired into `GET /api/dashboard` (`dashboard.ts`, via
 `attachOrderRoles`) for the console Orders screen's role badge + `scripts/fetch-prod-ops-snapshot.sh
 OPS_SNAPSHOT_ORDERS_DETAIL=1`) for a per-working-order detail array (capped 100/account, no
-account numbers or raw client-order-ids).  iOS untouched (follow-up).
-Branch `claude/st-order-roles`, worktree `~/apps/trading-claude-st-order-roles`.
+account numbers or raw client-order-ids).  iOS untouched (follow-up).  Also found and fixed a
+real SHORT-bracket entry/exit misclassification bug during review (side-agnostic
+`bracketSiblingWorkingCount` fix — see the rollout note).
+PR #3755, branch `claude/st-order-roles`, worktree `~/apps/trading-claude-st-order-roles`.
 Rollout: `docs/rollouts/2026-09-24-st-order-roles.md`.
 
 ## 2026-09-24 MUSE — LLM stats console review-findings sweep (PR #3452)

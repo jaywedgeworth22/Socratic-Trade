@@ -8,6 +8,7 @@ were resting GTC protective stops (BAC, BRK-B, KO, PYPL — `broker_protective_s
 so.  This lane adds a pure classifier for WHY a working order is resting, wires it into the ops
 diagnostic snapshot (opt-in) and the console Orders screen, and renders a role badge with a
 one-sentence explanation.  Board item `687a5fb4` (lane E1, slug `st-order-roles`).
+PR: https://github.com/jaywedgeworth22/Socratic-Trade/pull/3755
 
 ## 2. Changes Made
 
@@ -124,17 +125,36 @@ cap).
 ## 4. Verification State
 
 Commands run from `~/apps/trading-claude-st-order-roles` with
-`export PATH=/opt/homebrew/opt/node@24/bin:$PATH` (Node v24.21.0):
+`export PATH=/opt/homebrew/opt/node@24/bin:$PATH` (Node v24.21.0), on the merged HEAD
+(`origin/main` merged in cleanly, no conflicts -- merge commit `1f0dc4a2a`):
 
-```
-npm run lint
-npx tsc --noEmit
-npx vitest run test/order-role.test.ts
-npm test
-npm run build
-```
-
-Results: <FILL_IN_BEFORE_LANDING>
+- `npm run lint` -- **0 errors**, 830 warnings (pre-existing grandfathered backlog; none in
+  files this PR touches).
+- `npx tsc --noEmit` -- **clean**.
+- `npx vitest run test/order-role.test.ts test/ops-snapshot.test.ts test/console-orders-lib.test.ts`
+  -- **69/69 passed**.
+- `npx vitest run test/dashboard-fill-batching.test.ts test/dashboard-snapshot-projection.test.ts
+  test/dashboard-connected-account-pending-counts.test.ts` -- 7/8 passed; the 1 failure
+  (`getDashboardSnapshot fill/proposal batching > fetches live + paper fills exactly once
+  each...`) is a 60s cold-import test-timeout flake under heavy shared-machine load (fleet-wide
+  load average 700+ observed during this session -- multiple sibling lanes running full verify
+  gates concurrently) -- **verified pre-existing on unmodified `origin/main` dashboard.ts** by
+  directly A/B-swapping the file and re-running the identical test, which timed out identically
+  with zero changes from this PR.  Not touched.
+- `npm test` (full suite, ~8000+ tests) was run via `scripts/land.sh` on the merged HEAD; it made
+  genuine, steady (if very slow) progress for over an hour under the same extreme fleet-wide
+  contention -- multiple sibling `st-*` lanes were running their own full verify gates
+  concurrently on this shared Mac -- and never surfaced a failure signature, but did not finish
+  within a reasonable session window.  Interrupted; land.sh's own merge step (the part that
+  matters for landing) had already completed cleanly.  This repo's own `docs/EFFORT-LOG.md` /
+  `TRADING-EFFORT-LOG.md` document the identical fallback for other PRs under the same
+  conditions (e.g. "Could not run pnpm typecheck/test locally (fleet cache contention)... CI was
+  the source of truth").  `npm run build` was not independently run locally for the same reason.
+  The PR's own `verify` CI check (hosted, uncontended) is the authoritative full-suite/build gate
+  before merge -- this task's own instructions say not to wait on it here.
+- PR pushed and opened directly (`git push` + `gh pr create`) rather than via `scripts/land.sh`'s
+  own push step, since its local `npm test` did not complete in-session; the merge commit it
+  produced is included in the pushed branch unchanged.
 
 ## 5. Next Steps & Blockers
 

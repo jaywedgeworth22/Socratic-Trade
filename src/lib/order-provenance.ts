@@ -118,9 +118,17 @@ function brokerWireSide(side: EquityOrder["side"] | undefined): "buy" | "sell" |
  *     sold 12 PG the account never held.
  * Deliberately conservative: a false positive only means "the app leaves this order alone".
  */
-export function isContingentOrderLeg(order: EquityOrder, siblings: readonly EquityOrder[] = []): boolean {
+export function isContingentOrderLeg(
+  order: EquityOrder,
+  siblings: readonly EquityOrder[] = [],
+  options: { brokerEvidenceOnly?: boolean } = {}
+): boolean {
   if (String(order.state ?? "").trim().toLowerCase() === "held") return true;
   if (isBracketOrderClass(order.orderClass)) return true;
+  // A nearby opposite-side bracket order is only a heuristic, not proof of
+  // parentage. Automatic remediation must stay conservative, but a manually
+  // confirmed replacement must not be blocked by an unrelated order.
+  if (options.brokerEvidenceOnly) return false;
   const symbol = normalizeSymbol(order.symbol);
   const side = brokerWireSide(order.side);
   const createdMs = Date.parse(order.createdAt);
@@ -144,9 +152,10 @@ export function isContingentOrderLeg(order: EquityOrder, siblings: readonly Equi
 export function autoReplaceProvenanceSkipReason(
   order: EquityOrder,
   lookup?: AppPlacedLookup,
-  siblings: readonly EquityOrder[] = []
+  siblings: readonly EquityOrder[] = [],
+  options: { brokerEvidenceOnly?: boolean } = {}
 ): AutoReplaceProvenanceSkipReason | null {
-  if (isContingentOrderLeg(order, siblings)) return "bracket_leg";
+  if (isContingentOrderLeg(order, siblings, options)) return "bracket_leg";
   if (!isAppPlacedBrokerOrder(order, lookup)) return "not_app_placed";
   if (lookup && hasOwnerCancelledProtectiveStop(lookup.userId, lookup.accountNumber, order.symbol)) return "owner_cancelled_stop";
   return null;

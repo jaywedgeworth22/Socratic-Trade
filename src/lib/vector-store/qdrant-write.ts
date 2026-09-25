@@ -433,6 +433,49 @@ export async function qdrantRetrieveByPcIds(options: {
   return [...new Set(existing)].sort();
 }
 
+/** Stream Qdrant inventory one page at a time. Account erasure uses this rather than the
+ * reconciliation-only 50k materialized inventory. Do not collect pages in this helper. */
+export async function qdrantVisitInventoryPages(options: {
+  namespace?: string | null;
+  batchSize?: number;
+  signal?: AbortSignal;
+  visit: (rows: QdrantInventoryRow[]) => Promise<boolean | void>;
+}): Promise<void> {
+  const batchSize = Math.max(1, Math.min(1_000, Math.floor(options.batchSize ?? DEFAULT_SCROLL_LIMIT)));
+  const collection = encodeURIComponent(qdrantCollectionName());
+  const filter = qdrantTenantFilter(pineconeNamespaceToQdrantTenant(options.namespace));
+  let offset: unknown = null;
+  do {
+    options.signal?.throwIfAborted();
+    const body: Record<string, unknown> = { filter, limit: batchSize, with_payload: true, with_vector: false };
+    if (offset != null) body.offset = offset;
+    const response = await qdrantRequest(`/collections/${collection}/points/scroll`, {
+      method: "POST", body: JSON.stringify(body), signal: options.signal
+    });
+    options.signal?.throwIfAborted();
+    const parsed = (await response.json()) as {
+      result?: { points?: Array<{ payload?: unknown }>; next_page_offset?: unknown };
+    };
+    options.signal?.throwIfAborted();
+    const points = Array.isArray(parsed.result?.points) ? parsed.result.points : [];
+    const rows: QdrantInventoryRow[] = [];
+    for (const point of points) {
+      options.signal?.throwIfAborted();
+      const payload = point?.payload && typeof point.payload === "object" && !Array.isArray(point.payload)
+        ? point.payload as Record<string, unknown> : undefined;
+      const { pcId, metadata } = metadataFromPayload(payload);
+      if (pcId) rows.push({ id: pcId, metadata });
+    }
+    if (await options.visit(rows) === false) return;
+    options.signal?.throwIfAborted();
+    offset = parsed.result?.next_page_offset ?? null;
+    if (offset != null && offset !== "") {
+      await yieldEventLoop();
+      options.signal?.throwIfAborted();
+    }
+  } while (offset != null && offset !== "");
+}
+
 export async function qdrantInventoryByMetadata(options: {
   namespace?: string | undefined | null;
   prefix?: string;

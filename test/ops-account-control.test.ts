@@ -332,6 +332,18 @@ describe("cancel_working_orders", () => {
     expect(res.body.summary).toMatchObject({ requested: 2, cancelled: 1, skipped: 1 });
   });
 
+  it("fails closed even with explicit order ids when the named account's order book is unavailable", async () => {
+    const seeded = await seed({ namedOrders: [order("n-1", "AAPL")] });
+    broker.readThrows.add(seeded.namedAccountNumber);
+    for (const dryRun of [false, true]) {
+      const res = await call({ action: "cancel_working_orders", connectedAccountId: seeded.namedId, orderIds: ["n-1"], dryRun });
+      expect(res.status).toBe(502);
+      expect(res.body.ok).toBe(false);
+      expect(JSON.stringify(res.body)).not.toContain(seeded.namedAccountNumber);
+    }
+    expect(broker.cancelCalls).toEqual([]);
+  });
+
   it("fails closed (no cancel) when the named account's order book cannot be read and no ids were given", async () => {
     const seeded = await seed({ namedOrders: [order("n-1", "AAPL")] });
     broker.readThrows.add(seeded.namedAccountNumber);

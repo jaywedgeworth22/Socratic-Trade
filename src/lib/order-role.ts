@@ -171,7 +171,9 @@ export function classifyOrderRole(order: ClassifiableOrder, ctx: OrderRoleContex
       typeof info?.stopPrice === "number" && info.stopPrice > 0 ? ` at ${formatMoney(info.stopPrice)}` : "";
     return {
       role: "protective_stop",
-      whyResting: `Protective stop for ${subject}${atClause}; rests until price ${moveVerb(order.side)} to that level.`
+      whyResting: atClause
+        ? `Protective stop for ${subject}${atClause}; rests until price ${moveVerb(order.side)} to that level.`
+        : `Protective stop for ${subject}; rests until it fills at the broker.`
     };
   }
 
@@ -190,10 +192,13 @@ export function classifyOrderRole(order: ClassifiableOrder, ctx: OrderRoleContex
   }
 
   if (isBracketOrderClass(order.orderClass)) {
-    const isExitLeg =
-      typeof ctx.bracketSiblingWorkingCount === "number"
+    // An OCO order is already an exit leg, even if its mate has filled or
+    // disappeared while this leg remains pending_cancel. Sibling count alone
+    // would mistake that single remaining leg for a new entry.
+    const isExitLeg = order.orderClass?.trim().toLowerCase() === "oco" ||
+      (typeof ctx.bracketSiblingWorkingCount === "number"
         ? ctx.bracketSiblingWorkingCount >= 1
-        : !isOpeningSide(order.side);
+        : !isOpeningSide(order.side));
     if (!isExitLeg) {
       return {
         role: "entry",

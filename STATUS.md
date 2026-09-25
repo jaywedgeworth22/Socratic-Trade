@@ -95,6 +95,18 @@ are index-covered and row-capped; whole snapshot cached in-process 60s, single-f
 `scripts/fetch-prod-ops-performance.sh` + `npm run ops:performance` mirror the existing
 `fetch-prod-ops-snapshot.sh`.  Docs: `docs/runbooks/ops-performance-endpoint.md`.
 Rollout: `docs/rollouts/2026-09-24-st-ops-performance.md`.
+## 2026-09-24 CLAUDE — Detect IRA withdrawals and deposits so drawdown math is not fooled (board 687a5fb4, lane F2)
+
+**What.**  The Roth IRA HWM recompute found zero transfers after ~$96 was withdrawn: the ledger
+read sent an `activity_types` filter containing `DIVTX` (not an Alpaca type) and swallowed any
+non-2xx as `[]`, and the recompute then silently reset the HWM to equity.  Ledger reads now use
+`category=non_trade_activity` with client-side classification (IRA contributions, distributions,
+`WH` withholding, `ACATC`, journals); failures are explicit (`flowsUnavailable`), unknown types
+are audited, the recompute replays Alpaca daily closes and returns 409 instead of guessing, and
+the breaker holds an opted-in hard action one run on an unexplained ≥ 20% fall.  New read-only
+`GET /api/ops/account-activity`.  **Next:** after deploy, run the diagnostic then the recompute
+for the Roth account (exact commands in the rollout).  Branch `claude/st-cashflow-detection`.
+Rollout: `docs/rollouts/2026-09-24-st-cashflow-detection.md`.
 
 ## 2026-09-24 MUSE — LLM stats console review-findings sweep (PR #3452)
 

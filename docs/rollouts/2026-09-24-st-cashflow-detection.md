@@ -149,7 +149,7 @@ Node 24 (`/opt/homebrew/opt/node@24/bin`).
   test/alpaca-activity-ledger.test.ts test/risk-breaker.test.ts test/ops-hwm-recompute.test.ts
   test/ops-account-activity.test.ts test/alpaca-account-insights.test.ts
   test/strategy-moneypath-drawdown-flip.test.ts test/guard-enablement.test.ts
-  test/drawdown-breaker-action-api.test.ts` — all pass.
+test/drawdown-breaker-action-api.test.ts` — all pass.
 - Full gate, run in order on this branch (machine load average ~250-300 from parallel lanes):
   - `npm run lint` — 0 errors, 830 warnings (grandfathered backlog; the only warnings in touched
     files are pre-existing ones in `src/lib/strategy.ts`).

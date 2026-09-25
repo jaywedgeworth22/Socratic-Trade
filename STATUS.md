@@ -42,6 +42,29 @@ integration tests time out on a clean `origin/main` checkout too (reproduced bef
 session's changes) — unrelated to this PR.
 
 Rollout: `docs/rollouts/2026-09-24-st-rotation-warnings.md`.
+## 2026-09-25 CLAUDE — Ops performance endpoint: review-round fix (follow-up to merged PR #3750, board 687a5fb4)
+
+Independent review of PR #3750 raised one P1 in the landed code (the PR merged to main —
+commit `57927f682` — while this fix-up was starting, so this lands as a NEW PR off fresh
+`origin/main` rather than a push to the now-closed #3750): `buildOpsPerformanceSnapshot` ran
+every account's full-ledger `listFillEvents` + FIFO `calculatePnl` walk back to back in ONE
+synchronous stretch with no scheduling point, so an unfiltered request (the endpoint's own
+documented default — `scripts/fetch-prod-ops-performance.sh` sends no `account` unless
+`OPS_PERFORMANCE_ACCOUNT` is set) multiplied that per-account cost across every connected
+account in one request, on a process with a documented history of exactly this event-loop-stall
+class.  Confirmed real: `days` never bounds the fill fetch/FIFO walk (only in-memory windowing
+afterward — `db-fills.ts`'s own doc comment says windowing the ledger read would corrupt the
+walk), and the shipped query-cost test only covered a single filtered account, never the
+unfiltered multi-account path.  Fixed by making `buildOpsPerformanceSnapshot` `async` and
+calling `yieldEventLoop()` (`src/lib/slow-sync-guard.ts` — this codebase's own established fix
+for this incident class) once per account processed, so the total work is unchanged but can
+never monopolize the event loop.  New test-first regression:
+`test/ops-performance.test.ts` "unfiltered, multi-account path" (4 synthetic accounts x 500
+fills, no `account` filter, spies `yieldEventLoop` and asserts >= 1 call/account).  Gate: lint 0
+errors, tsc clean, full test suite + build results in the fix commit / rollout doc.  Rollout:
+`docs/rollouts/2026-09-24-st-ops-performance.md` ("Review round 1" section).  Auto-merge NOT
+armed (per this run's instructions — a later review stage arms it).
+
 ## 2026-09-24 CLAUDE — Ops performance endpoint (lane E2, board 687a5fb4)
 
 Added `GET /api/ops/performance` — token-gated (same `OPS_DIAGNOSTIC_TOKEN` gate as

@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 beforeAll(() => {
   process.env.DATABASE_URL = `file:${join(tmpdir(), `agentic-ops-performance-${randomUUID()}.db`)}`;
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("GET /api/ops/performance — auth", () => {
@@ -184,7 +188,7 @@ describe("ops performance snapshot — shape and math", () => {
     });
 
     const { buildOpsPerformanceSnapshot } = await import("../src/lib/ops-performance");
-    const snapshot = buildOpsPerformanceSnapshot({ connectedAccountId: accountId, days: 30 });
+    const snapshot = await buildOpsPerformanceSnapshot({ connectedAccountId: accountId, days: 30 });
 
     expect(snapshot.accounts).toHaveLength(1);
     const account = snapshot.accounts[0];
@@ -252,7 +256,7 @@ describe("ops performance snapshot — shape and math", () => {
     });
 
     const { buildOpsPerformanceSnapshot } = await import("../src/lib/ops-performance");
-    const snapshot = buildOpsPerformanceSnapshot({ connectedAccountId: accountId });
+    const snapshot = await buildOpsPerformanceSnapshot({ connectedAccountId: accountId });
     expect(snapshot.accounts).toHaveLength(1);
     const account = snapshot.accounts[0];
     expect(account.accountNumber).toBeNull();
@@ -276,9 +280,9 @@ describe("ops performance snapshot — shape and math", () => {
     });
 
     const { buildOpsPerformanceSnapshot } = await import("../src/lib/ops-performance");
-    expect(buildOpsPerformanceSnapshot({ connectedAccountId: accountId, days: -5 }).windowDays).toBe(1);
-    expect(buildOpsPerformanceSnapshot({ connectedAccountId: accountId, days: 999999 }).windowDays).toBe(3650);
-    expect(buildOpsPerformanceSnapshot({ connectedAccountId: accountId, days: Number.NaN }).windowDays).toBe(90);
+    expect((await buildOpsPerformanceSnapshot({ connectedAccountId: accountId, days: -5 })).windowDays).toBe(1);
+    expect((await buildOpsPerformanceSnapshot({ connectedAccountId: accountId, days: 999999 })).windowDays).toBe(3650);
+    expect((await buildOpsPerformanceSnapshot({ connectedAccountId: accountId, days: Number.NaN })).windowDays).toBe(90);
   });
 
   it("serves the GET route end to end and honors the account filter", async () => {
@@ -463,7 +467,7 @@ describe("ops performance snapshot — query cost against a synthetic DB", () =>
     }
 
     const startedAt = Date.now();
-    const snapshot = buildOpsPerformanceSnapshot({ connectedAccountId: accountId, days: 90 });
+    const snapshot = await buildOpsPerformanceSnapshot({ connectedAccountId: accountId, days: 90 });
     const elapsedMs = Date.now() - startedAt;
 
     expect(snapshot.accounts).toHaveLength(1);
@@ -474,4 +478,99 @@ describe("ops performance snapshot — query cost against a synthetic DB", () =>
     // eslint-disable-next-line no-console
     console.log(`[ops-performance query-cost] 300 round trips / 500 proposals / 200 snapshots -> ${elapsedMs}ms`);
   });
+});
+
+describe("ops performance snapshot — unfiltered, multi-account path (event-loop safety)", () => {
+  it(
+    "yields between accounts on the endpoint's own default (unfiltered) request, so a realistic " +
+      "multi-account, multi-thousand-fill build cannot monopolize the event loop for its whole duration",
+    async () => {
+      const db = await import("../src/lib/db");
+      const { buildOpsPerformanceSnapshot, resetOpsPerformanceCacheForTests } = await import("../src/lib/ops-performance");
+      const yieldSpy = vi.spyOn(await import("../src/lib/slow-sync-guard"), "yieldEventLoop");
+      resetOpsPerformanceCacheForTests();
+
+      const runId = randomUUID();
+      const ACCOUNT_COUNT = 4;
+      const ROUND_TRIPS_PER_ACCOUNT = 250; // 500 fills/account — realistic multi-thousand-fill total
+      const accountIds: string[] = [];
+      const now = Date.now();
+
+      for (let a = 0; a < ACCOUNT_COUNT; a++) {
+        const userId = `ops-perf-unfiltered-${runId}-${a}`;
+        const accountId = `acct-unfiltered-${runId}-${a}`;
+        const accountNumber = `UNFILTERED-${runId}-${a}`;
+        accountIds.push(accountId);
+        db.upsertConnectedAccount({
+          id: accountId,
+          userId,
+          broker: "alpaca",
+          environment: "paper",
+          accountNumber,
+          label: `Unfiltered Load Test ${a}`,
+          isActive: true
+        });
+        for (let i = 0; i < ROUND_TRIPS_PER_ACCOUNT; i++) {
+          const filledAtBuy = new Date(now - (ROUND_TRIPS_PER_ACCOUNT - i) * 3 * 60 * 60 * 1000).toISOString();
+          const filledAtSell = new Date(now - (ROUND_TRIPS_PER_ACCOUNT - i) * 3 * 60 * 60 * 1000 + 60 * 60 * 1000).toISOString();
+          const symbol = `UNF${i % 20}`;
+          db.insertFillEvent({
+            accountNumber,
+            source: "paper",
+            symbol,
+            side: "buy",
+            quantity: 1,
+            price: 100,
+            notional: 100,
+            status: "filled",
+            userId,
+            filledAt: filledAtBuy
+          });
+          db.insertFillEvent({
+            accountNumber,
+            source: "paper",
+            symbol,
+            side: "sell",
+            quantity: 1,
+            price: i % 3 === 0 ? 90 : 110,
+            notional: i % 3 === 0 ? 90 : 110,
+            status: "filled",
+            userId,
+            filledAt: filledAtSell
+          });
+        }
+      }
+
+      const startedAt = Date.now();
+      // No `connectedAccountId` — this is the endpoint's own documented default
+      // (scripts/fetch-prod-ops-performance.sh sends no `account` param unless
+      // OPS_PERFORMANCE_ACCOUNT is set), which iterates every connected account across every
+      // user in one request, not just the one this test seeded.
+      const snapshot = await buildOpsPerformanceSnapshot({ days: 90 });
+      const elapsedMs = Date.now() - startedAt;
+
+      const built = snapshot.accounts.filter((account) => accountIds.includes(account.connectedAccountId));
+      expect(built).toHaveLength(ACCOUNT_COUNT);
+      for (const account of built) {
+        expect(account.error).toBeUndefined();
+        expect(account.tradeStats.tradeCount).toBeGreaterThan(0);
+      }
+
+      // The regression this guards against: buildOpsPerformanceSnapshot used to run every
+      // account's full-ledger FIFO replay back to back in ONE synchronous stretch with no
+      // scheduling point in between, so an unfiltered request's cost scaled with (accounts x
+      // ledger size) while never giving the process a chance to serve /api/health or any other
+      // queued request in between. yieldEventLoop() (this codebase's own fix for this exact
+      // class of incident — see slow-sync-guard.ts, sec-ingest-worker.ts, db-learning.ts) must
+      // be called at least once per account processed here.
+      expect(yieldSpy.mock.calls.length).toBeGreaterThanOrEqual(ACCOUNT_COUNT);
+
+      // Generous smoke bound, not a micro-benchmark — matches the single-account query-cost test above.
+      expect(elapsedMs).toBeLessThan(15_000);
+      // eslint-disable-next-line no-console
+      console.log(
+        `[ops-performance query-cost] unfiltered, ${ACCOUNT_COUNT} accounts x ${ROUND_TRIPS_PER_ACCOUNT} round trips -> ${elapsedMs}ms, ${yieldSpy.mock.calls.length} yields`
+      );
+    }
+  );
 });

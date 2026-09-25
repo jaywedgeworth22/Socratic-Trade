@@ -50,7 +50,8 @@
     "riskReceipts": true,
     "volTargeting": true,
     "targetPortfolioVolPct": 25,
-    "portfolioHeatBudgetPct": 10
+    "portfolioHeatBudgetPct": 10,
+    "deRiskExitsOnAdversaryUnavailable": true
   },
   "marketScanCandidateLimit": 30,
   "marketScanOutlierReserve": 8,

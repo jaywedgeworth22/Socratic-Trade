@@ -177,6 +177,42 @@ describe("gatherStrategyMarket", () => {
     expect(mockNewestPersisted).toHaveBeenCalledWith("local", "roth-1");
   });
 
+  // Regression for the prod crash "k.warnings is not iterable": `withLastGoodWarning` used to
+  // spread `...scan.warnings` unconditionally. A `strategy_run` audit's marketScan is a bounded
+  // `{ omitted: true, ... }` summary with NO `warnings` field (audit-bounded-run.ts) — before
+  // market-scan-freshness.ts's `extractScan` validated/normalized this, `newestPersistedMarketScan`
+  // could hand back exactly that shape, and the spread threw. Defends the spread site directly
+  // (belt-and-suspenders with the extractScan-level fix) regardless of what the mocked/real
+  // `newestPersistedMarketScan` returns.
+  it("does not throw when the last-good scan is missing `warnings` — defaults to [] and still appends the fallback note", async () => {
+    vi.useFakeTimers();
+    const seed = lastGoodScan();
+    const { warnings: _omit, ...seedWithoutWarnings } = seed;
+    mockScanMarket.mockImplementation(
+      (_symbols: unknown, _positions: unknown, _weights: unknown, _userId: unknown, _universes: unknown, options: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          options.signal?.addEventListener("abort", () => {
+            reject(options.signal?.reason ?? new Error("aborted"));
+          });
+        })
+    );
+    mockNewestPersisted.mockReturnValue({
+      scan: seedWithoutWarnings as unknown as MarketScan,
+      entry: { id: "audit-2", createdAt: seed.generatedAt }
+    });
+    mockFetchFreshQuotesCascade.mockResolvedValue({
+      MSFT: { symbol: "MSFT", price: 402, asOf: "2026-08-21T19:08:00.000Z", provider: "alpaca" }
+    });
+
+    const pending = gatherStrategyMarket(gatherArgs());
+    await vi.advanceTimersByTimeAsync(100);
+    const result = await pending;
+
+    expect(result.usedLastGood).toBe(true);
+    expect(Array.isArray(result.marketScan.warnings)).toBe(true);
+    expect(result.marketScan.warnings.some((warning) => warning.includes("last completed scan"))).toBe(true);
+  });
+
   it("still fails the run when gather times out and no last-good tape exists", async () => {
     vi.useFakeTimers();
     mockScanMarket.mockImplementation(() => new Promise(() => undefined));

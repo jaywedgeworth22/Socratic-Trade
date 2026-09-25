@@ -17,6 +17,7 @@ Alpaca Paper (a stale-exit remediation cancelled a held take-profit leg and mark
 account never held), its 2.5 months of refused covers, and the 2026-09-21 VZ 403 fractional
 oversell.  Board `687a5fb4`, lane D, branch `claude/st-order-correctness`.
 Rollout: `docs/rollouts/2026-09-24-st-order-correctness.md`.
+
 ## 2026-09-25 CLAUDE — Ops performance endpoint: review-round fix (follow-up to merged PR #3750, board 687a5fb4)
 
 Independent review of PR #3750 raised one P1 in the landed code (the PR merged to main —

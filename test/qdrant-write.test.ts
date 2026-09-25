@@ -251,6 +251,45 @@ describe("qdrant inventory / payload / collection info", () => {
     expect(rows).toEqual([{ id: "occ:v3:abc", metadata: { symbol: "AAPL" } }]);
   });
 
+  it("aborts a paged inventory before fetching the next page", async () => {
+    const controller = new AbortController();
+    const calls = vi.fn(async () => {
+      controller.abort(new Error("inventory cancelled"));
+      return new Response(JSON.stringify({ result: { points: [{ payload: { pc_id: "one" } }], next_page_offset: 1 } }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", calls);
+    await expect(qdrantInventoryByMetadata({ namespace: "socratic-abc", signal: controller.signal }))
+      .rejects.toThrow("inventory cancelled");
+    expect(calls).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let a caller signal disable the per-request timeout", async () => {
+    process.env.QDRANT_WRITE_TIMEOUT_MS = "5";
+    const calls = vi.fn((_url: unknown, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    }));
+    vi.stubGlobal("fetch", calls);
+    try {
+      await expect(qdrantInventoryByMetadata({ signal: new AbortController().signal }))
+        .rejects.toThrow();
+      expect(calls).toHaveBeenCalledTimes(1);
+    } finally {
+      delete process.env.QDRANT_WRITE_TIMEOUT_MS;
+    }
+  });
+
+  it("keeps the Qdrant inventory at a 50k hard ceiling even if env or caller requests more", async () => {
+    process.env.VECTOR_INVENTORY_MAX_SCANNED = "250000";
+    const calls = vi.fn(async () => new Response(JSON.stringify({
+      result: { points: Array.from({ length: 1000 }, (_, i) => ({ payload: { pc_id: `id-${i}` } })), next_page_offset: 1 }
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", calls);
+    await expect(qdrantInventoryByMetadata({ namespace: "socratic-abc", batchSize: 1000, maxScanned: 250000 }))
+      .rejects.toThrow("Vector inventory scan limit exceeded (50000 records)");
+    expect(calls).toHaveBeenCalledTimes(51);
+    delete process.env.VECTOR_INVENTORY_MAX_SCANNED;
+  });
+
   it("sets payload on uuid5 point ids", async () => {
     const { calls } = stubFetch({ json: { result: { status: "ok" } } });
     await qdrantSetPayload({

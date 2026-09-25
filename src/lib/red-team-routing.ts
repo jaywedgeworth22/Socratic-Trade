@@ -42,14 +42,17 @@ export interface AdversaryUnavailableRouting {
  * flag below.
  *
  * Exits (`sell`/`cover`) are risk-REDUCING. Whether they are held for human review depends on
- * `deRiskExitsOnAdversaryUnavailable` (default false/undefined):
- *  - DEFAULT (false/undefined): hold for human review, same as openings — byte-identical to
- *    today's unconditional `requiresHumanReview.add(proposal)` in strategy.ts regardless of side.
- *  - OPT-IN (true): do NOT hold — blocking a de-risking trade on an adversary outage is itself
- *    unsafe (mirrors the rationale-collapse gate and the in-flow Bear's own "exits must still flow
- *    through" comment). Instead we append a loud rationale note and let the caller emit the parity
- *    audit event, so the human-facing signal is never silently lost even though the order proceeds
- *    without a hold.
+ * `deRiskExitsOnAdversaryUnavailable` (owner ruling 2026-09-24, board 687a5fb4: default flipped
+ * from OFF to ON — `src/lib/defaults.ts`'s `DEFAULT_POLICY.tuning` now sets it `true`, and
+ * `mergePolicy` deep-merges `tuning` so every stored policy that never explicitly set this key
+ * inherits the new default):
+ *  - DEFAULT (true, or undefined for a caller that bypasses the merged policy entirely): do NOT
+ *    hold — blocking a de-risking trade on an adversary outage is itself unsafe (mirrors the
+ *    rationale-collapse gate and the in-flow Bear's own "exits must still flow through" comment).
+ *    Instead we append a loud rationale note and let the caller emit the parity audit event, so
+ *    the human-facing signal is never silently lost even though the order proceeds without a hold.
+ *  - OPT-OUT (explicit `false`): hold for human review, same as openings — the pre-2026-09-24
+ *    behavior, still available per-account for anyone who wants the old, more conservative hold.
  *
  * Side classification is RAW-side (buy/short vs sell/cover), the codebase-wide convention (see
  * strategy.ts's other `isOpening`-style checks) — net-exposure-aware classification (a buy that
@@ -78,17 +81,18 @@ export function routeOnAdversaryUnavailable(
     };
   }
 
-  if (deRiskExitsOnAdversaryUnavailable !== true) {
-    // Default OFF: default behavior is byte-identical to main — exits hold for human review too.
+  if (deRiskExitsOnAdversaryUnavailable === false) {
+    // Explicit per-account opt-OUT: hold for human review, same as an opening.
     return {
       holdForHuman: true,
       note: `\n\n⚠ RED TEAM FAILED (${kindLabel}): review required but unavailable (${reason}); routed to human approval.`
     };
   }
 
-  // Opt-in: the exit is not held. Under `decide` it proceeds (auto-executes); under `propose` it is
-  // still surfaced as a pending-approval card, so word the note accordingly and never claim it is
-  // "proceeding" when it is actually awaiting approval.
+  // Default (true, or undefined — a caller outside the merged policy, e.g. a test): the exit is
+  // not held. Under `decide` it proceeds (auto-executes); under `propose` it is still surfaced as a
+  // pending-approval card, so word the note accordingly and never claim it is "proceeding" when it
+  // is actually awaiting approval.
   return {
     holdForHuman: false,
     note: autoExecutes

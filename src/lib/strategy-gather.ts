@@ -60,9 +60,15 @@ export function throwIfGatherAborted(signal: AbortSignal | undefined, message = 
 function withLastGoodWarning(scan: MarketScan, lastGoodAt: string, deadlineMs: number): MarketScan {
   const warning =
     `Live gather timed out after ${deadlineMs}ms; using the last completed scan from ${lastGoodAt} and a short quote refresh.`;
+  // Defense in depth: `newestPersistedMarketScan` (market-scan-freshness.ts) already validates/
+  // normalizes the persisted payload so `scan.warnings` should always be a real array by the time
+  // it reaches here, but this is the exact spread that threw "scan.warnings is not iterable" in
+  // production when an unvalidated `{ omitted: true, ... }` audit-bounded summary was mistaken for
+  // a full scan — never let a missing/malformed `warnings` array crash a last-good fallback.
+  const existingWarnings = Array.isArray(scan.warnings) ? scan.warnings : [];
   return {
     ...scan,
-    warnings: [...scan.warnings, warning]
+    warnings: [...existingWarnings, warning]
   };
 }
 

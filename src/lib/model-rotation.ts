@@ -113,12 +113,16 @@ function openRouterModelCooldownKey(model: string): string {
 }
 
 /**
- * Record an observed OpenRouter 404 for `model`'s wire slug, starting (or extending) its
- * cooldown.  Called from the two places a 404 is actually observed, immediately after each
- * chain's `recordLlmProviderFailure({...})` block and gated on
- * `attempt.provider === "openrouter" && response.status === 404`: the Bull attempt loop in
- * src/lib/strategy.ts and the Red attempt loop in src/lib/red-team.ts.  A real 404 is the only
- * thing that may put a slug in this map — never a static list.
+ * Record an observed OpenRouter 404 (unknown slug) OR 403 (key/region lacks access to a slug
+ * that otherwise exists) for `model`'s wire slug, starting (or extending) its cooldown.  Called
+ * from the two places these are actually observed, immediately after each chain's
+ * `recordLlmProviderFailure({...})` block and gated on `attempt.provider === "openrouter" &&
+ * (response.status === 404 || response.status === 403)`: the Bull attempt loop in
+ * src/lib/strategy.ts and the Red attempt loop in src/lib/red-team.ts.  Both are PERMANENT for
+ * this key/region right now — a 403 "doesn't have access to this model or region" will not
+ * resolve itself on an immediate retry the way a 429 rate limit does, so it is cooled exactly
+ * like a 404.  NEVER call this for a 429 — that is transient and must not cool the slug.  A real
+ * observed 404/403 is the only thing that may put a slug in this map — never a static list.
  */
 export function recordOpenRouterModelNotFound(model: string): void {
   const key = openRouterModelCooldownKey(model);
@@ -223,16 +227,22 @@ export const ROTATION_REPRESENTED_WEIGHT = 1;
  */
 export const ROTATION_IMPLICIT_GREEN_FAILOVERS = 2;
 
-/** Other rotation-pool models to try after a rotating Green primary, excluding the pick
- *  and any owner-configured fallbacks.  Prefer Gemini Flash / Mistral Medium class
- *  seats; demote slugs OpenRouter cannot serve as a first pick to the tail. */
+/** Other rotation-pool models to try after a rotating primary (Green proposer OR Red reviewer —
+ *  the name predates the Red reuse below but the logic is seat-agnostic), excluding the pick,
+ *  any owner-configured fallbacks, AND any slug currently inside an OpenRouter 404/403 cooldown
+ *  (`recordOpenRouterModelNotFound`) — a model that just told us it 403'd ("doesn't have access
+ *  to this model or region") or 404'd must never be one of the "alternate" picks offered as the
+ *  safety net for that exact failure class.  Prefer Gemini Flash / Mistral Medium class seats;
+ *  demote slugs OpenRouter cannot serve as a first pick to the tail.  `now` is injectable for
+ *  deterministic tests. */
 export function implicitGreenRotationFallbacks(
   pool: readonly string[],
   primary: string,
-  explicit: readonly string[] = []
+  explicit: readonly string[] = [],
+  now: number = Date.now()
 ): string[] {
   const taken = new Set([primary, ...explicit].map((m) => m.trim()).filter(Boolean));
-  const remaining = pool.filter((model) => !taken.has(model));
+  const remaining = pool.filter((model) => !taken.has(model) && !isOpenRouterModelCoolingDown(model, now));
   const preferred = PREFERRED_GREEN_FAILOVER_SEATS.filter((model) => remaining.includes(model));
   const otherReady = remaining.filter(
     (model) => !PREFERRED_GREEN_FAILOVER_SEATS.includes(model) && !isUnservableOpenRouterFirstPick(model)
@@ -443,6 +453,11 @@ export async function resolveModelRotationForRun(input: {
    *  Green seat is rotating and the pool is non-empty — used to append implicit failover
    *  models when `llmFallbackModels` is unset (issue #2577). */
   greenRotationPool?: string[];
+  /** Same eligible pool, present only when the RED seat is rotating and the pool is non-empty —
+   *  used the same way to append implicit failover models to `redTeamFallbackModels` when unset,
+   *  so a Red reviewer's permanent access error (403/404) does not hold every opening for human
+   *  approval under Autopilot (2026-09-24 fix). */
+  redRotationPool?: string[];
   commit: () => void;
 }> {
   const rotateGreen = isModelRotationSentinel(input.policy.llmModel);
@@ -550,6 +565,7 @@ export async function resolveModelRotationForRun(input: {
     return {
       ...out,
       ...(rotateGreen && pool.length > 0 ? { greenRotationPool: pool } : {}),
+      ...(rotateRed && pool.length > 0 ? { redRotationPool: pool } : {}),
       commit: () => {
         for (const runCommit of commits) runCommit();
       }

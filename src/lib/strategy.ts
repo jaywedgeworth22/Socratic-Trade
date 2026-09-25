@@ -560,7 +560,7 @@ export async function runStrategyOnce(
     // gate). A run that aborts before that point (account unavailable, over budget, no candidate
     // cleared the threshold) writes nothing, so it never skews the rotation weights with a run that
     // generated no proposal.
-    const { commit: commitRotation, emptyReason, greenRotationPool, ...rotationOverride } = await resolveModelRotationForRun({ userId, accountId: connectedAccountId, runId, policy });
+    const { commit: commitRotation, emptyReason, greenRotationPool, redRotationPool, ...rotationOverride } = await resolveModelRotationForRun({ userId, accountId: connectedAccountId, runId, policy });
     if (isModelRotationSentinel(policy.llmModel) && !rotationOverride.llmModel) {
       // Do not collapse this into "Choose both team models" — rotation IS the model choice.
       const reason =
@@ -1156,11 +1156,26 @@ export async function runStrategyOnce(
       greenRotationPool && rotationOverride.llmModel && explicitGreenFallbacks.length === 0
         ? implicitGreenRotationFallbacks(greenRotationPool, rotationOverride.llmModel)
         : [];
+    // 2026-09-24 fix (rotation access-error failover, board 687a5fb4): the Red reviewer had NO
+    // equivalent safety net — a rotating Red seat with no owner-configured redTeamFallbackModels
+    // was always a single-model chain, so a permanent OpenRouter access error (403 "doesn't have
+    // access to this model or region", or 404) on the picked model failed the whole review.  An
+    // unavailable Red Team review holds every risk-adding opening for human approval even under
+    // Autopilot (red-team-routing.ts fails opens closed by design), so this is a bigger blast
+    // radius than a missed Green proposal.  Mirrors the Green mechanism exactly, including
+    // "owner-configured fallbacks win unchanged" and excluding any slug currently cooling down
+    // from a recent 404/403 (implicitGreenRotationFallbacks — seat-agnostic despite the name).
+    const explicitRedFallbacks = Array.isArray(gatePolicy.redTeamFallbackModels) ? gatePolicy.redTeamFallbackModels : [];
+    const implicitRedFallbacks =
+      redRotationPool && rotationOverride.redTeamLlmModel && explicitRedFallbacks.length === 0
+        ? implicitGreenRotationFallbacks(redRotationPool, rotationOverride.redTeamLlmModel)
+        : [];
     const runPolicy: RunnablePolicy = {
       ...gatePolicy,
       ...rotationOverride,
       ...runLlmOverride,
-      ...(implicitGreenFallbacks.length > 0 ? { llmFallbackModels: implicitGreenFallbacks } : {})
+      ...(implicitGreenFallbacks.length > 0 ? { llmFallbackModels: implicitGreenFallbacks } : {}),
+      ...(implicitRedFallbacks.length > 0 ? { redTeamFallbackModels: implicitRedFallbacks } : {})
     };
 
     // ── Per-user/day LLM budget ceiling ────────────────────────────────────
@@ -6198,10 +6213,15 @@ async function proposeTrades(input: {
                 userId: input.userId,
                 connectedAccountId: input.policy.connectedAccountId
               });
-              // An OpenRouter 404 is the ONE signal that a wire slug is genuinely unservable right
-              // now.  It cools that slug for a bounded window instead of being frozen into a
-              // hardcoded "dead models" list that no live catalog could ever overrule.
-              if (attempt.provider === "openrouter" && response.status === 404) recordOpenRouterModelNotFound(attempt.model);
+              // An OpenRouter 404 (unknown slug) or 403 (this key/region lacks access to a slug
+              // that otherwise exists — "Your OpenRouter key doesn't have access to this model or
+              // region") are the two signals that a wire slug is genuinely unservable right now.
+              // Both cool that slug for a bounded window instead of being frozen into a hardcoded
+              // "dead models" list that no live catalog could ever overrule, and instead of
+              // silently re-picking the same broken slug on the next rotation sample.
+              if (attempt.provider === "openrouter" && (response.status === 404 || response.status === 403)) {
+                recordOpenRouterModelNotFound(attempt.model);
+              }
               if (!isLast && isFailoverLlmStatus(response.status)) {
                 lastError = new Error(humanizeLlmError(detail, { provider: attempt.provider, status: response.status }));
                 bullLastFailoverReason = `HTTP ${response.status}`;

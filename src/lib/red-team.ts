@@ -11,9 +11,14 @@
 //   forced-tool Messages transport through the SAME shared request builder as every other site.
 // - No model default and no fallback to the Green model: an unchosen Red model resolves to "" and
 //   this function fails closed (`not_configured`) so the caller routes the opening to a human.
-// - No hidden model failover (R11): transient failures get a small bounded same-model retry
-//   (llmFetchCapturing, same soft timeout as Green); a reviewer that still can't answer
-//   declares itself unavailable.
+// - No hidden model failover to a DIFFERENT, unrelated model (R11): transient failures get a
+//   small bounded same-model retry (llmFetchCapturing, same soft timeout as Green); a reviewer
+//   that still can't answer declares itself unavailable UNLESS an explicit chain exists — either
+//   the owner's own `redTeamFallbackModels`, or (2026-09-24 fix) a small implicit alternate-pick
+//   chain the strategy loop appends when the Red seat itself is rotating (mirrors the Green
+//   proposer's issue #2577 fix; see `implicitGreenRotationFallbacks` call for `redRotationPool`
+//   in strategy.ts). Both chains are the reviewer's OWN resolved choice, never a silent
+//   substitution of an unrelated model for an unconfigured seat — R11's actual concern.
 
 import { getPolicy } from "./db";
 import { deriveExecutionState, llmExecutionMode, llmModeClarification } from "./execution-mode";
@@ -496,8 +501,13 @@ export async function debateProposal(
                 userId,
                 connectedAccountId: policy.connectedAccountId
               });
-              // Same bounded per-slug cooldown the Green lane sets — see the note there.
-              if (attempt.provider === "openrouter" && response.status === 404) recordOpenRouterModelNotFound(attempt.model);
+              // Same bounded per-slug cooldown the Green lane sets — see the note there.  A 403
+              // ("doesn't have access to this model or region") is just as permanent for this
+              // key/region as a 404, so it cools the slug the same way (2026-09-24 fix); a 429
+              // rate limit is NOT included here — that is transient and must not cool the slug.
+              if (attempt.provider === "openrouter" && (response.status === 404 || response.status === 403)) {
+                recordOpenRouterModelNotFound(attempt.model);
+              }
               const why = humanizeLlmError(rawDetail, { provider: attempt.provider, status: response.status });
               if (!isLast && isFailoverLlmStatus(response.status)) {
                 lastError = new Error(why);

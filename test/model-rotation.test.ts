@@ -612,6 +612,46 @@ describe("implicitGreenRotationFallbacks", () => {
     expect(fallbacks).toEqual(["gemini-flash-latest", "mistral-medium-latest"]);
     expect(fallbacks).not.toContain("gpt-5.6-sol");
   });
+
+  // 2026-09-24 fix (board 687a5fb4): a model that just told us it 403'd/404'd must never be
+  // offered right back as the "alternate" for that exact failure.
+  it("excludes a slug currently inside an OpenRouter 404/403 cooldown from the alternate picks", async () => {
+    const {
+      clearOpenRouterModelCooldowns,
+      implicitGreenRotationFallbacks,
+      recordOpenRouterModelNotFound
+    } = await import("../src/lib/model-rotation");
+    clearOpenRouterModelCooldowns();
+    try {
+      // Without any cooldown, "a" and "c" would normally be the two alternates after primary "b".
+      expect(implicitGreenRotationFallbacks(["a", "b", "c", "d"], "b")).toEqual(["a", "c"]);
+      recordOpenRouterModelNotFound("a"); // simulates a 403/404 just observed on "a"
+      expect(implicitGreenRotationFallbacks(["a", "b", "c", "d"], "b")).toEqual(["c", "d"]);
+    } finally {
+      clearOpenRouterModelCooldowns();
+    }
+  });
+
+  it("an expired cooldown re-admits the slug as an alternate pick again", async () => {
+    const {
+      clearOpenRouterModelCooldowns,
+      implicitGreenRotationFallbacks,
+      recordOpenRouterModelNotFound,
+      OPENROUTER_MODEL_NOT_FOUND_COOLDOWN_MS
+    } = await import("../src/lib/model-rotation");
+    clearOpenRouterModelCooldowns();
+    try {
+      const now = Date.now();
+      vi.setSystemTime(now);
+      recordOpenRouterModelNotFound("a");
+      expect(implicitGreenRotationFallbacks(["a", "b", "c", "d"], "b", [], now)).toEqual(["c", "d"]);
+      const afterCooldown = now + OPENROUTER_MODEL_NOT_FOUND_COOLDOWN_MS + 1;
+      expect(implicitGreenRotationFallbacks(["a", "b", "c", "d"], "b", [], afterCooldown)).toEqual(["a", "c"]);
+    } finally {
+      vi.useRealTimers();
+      clearOpenRouterModelCooldowns();
+    }
+  });
 });
 
 describe("sentinel handling at the edges", () => {

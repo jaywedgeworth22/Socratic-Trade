@@ -21,6 +21,8 @@ import {
   reconcileManagedVectorRecords,
   storeContexts,
   inventoryVectorRecordsByMetadata,
+  purgePrivateVectorRecordsForUser,
+  vectorNamespaceName,
   getCurrentVectorProviderAuthority,
   hasPineconeWriteBudget
 } from "../src/lib/vector-db";
@@ -206,6 +208,55 @@ describe("retrieveContextDetailed with Qdrant read backend", () => {
     expect(rows).toEqual([
       { id: "occ:v3:inv-1", metadata: { symbol: "AAPL", source: "sec-edgar" } }
     ]);
+  });
+
+  it("erases a private Qdrant namespace above 50k without hitting the reconciliation scan ceiling", async () => {
+    delete process.env.PINECONE_API_KEY;
+    process.env.VECTOR_ERASURE_VERIFY_ATTEMPTS = "1";
+    process.env.VECTOR_ERASURE_VERIFY_CONSECUTIVE_CLEAN = "1";
+    process.env.VECTOR_ERASURE_VERIFY_DELAY_MS = "0";
+    const total = 50_001;
+    let privateScrollPages = 0;
+    let namespaceDeleted = false;
+    const mockFetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const path = String(url);
+      if (path.includes("/points/delete")) {
+        const body = JSON.parse(String(init?.body));
+        const tenant = body.filter?.must?.find((clause: { key: string }) => clause.key === "ns")?.match?.value;
+        if (tenant === vectorNamespaceName("private", undefined, "local")) namespaceDeleted = true;
+        return new Response(JSON.stringify({ result: { status: "ok" } }), { status: 200 });
+      }
+      if (path.includes("/points/scroll")) {
+        const body = JSON.parse(String(init?.body));
+        const tenant = body.filter.must.find((clause: { key: string }) => clause.key === "ns")?.match?.value;
+        const isPrivate = tenant === vectorNamespaceName("private", undefined, "local");
+        const start = Number(body.offset ?? 0);
+        const count = isPrivate && !namespaceDeleted ? Math.min(1000, total - start) : 0;
+        if (isPrivate && !namespaceDeleted) privateScrollPages++;
+        return new Response(JSON.stringify({ result: {
+          points: Array.from({ length: count }, (_, i) => ({ payload: {
+            pc_id: `private-${start + i}`, ns: tenant, content_hash: `hash-${start + i}`
+          } })),
+          next_page_offset: count && start + count < total ? start + count : null
+        } }), { status: 200 });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", mockFetch);
+    try {
+      const result = await purgePrivateVectorRecordsForUser({
+        userId: "local", accountDeletionRequestId: "prepared-request",
+        batchSize: 1000, leaseGuard: { assertOwnership: vi.fn() }
+      });
+      expect(privateScrollPages).toBe(51);
+      expect(namespaceDeleted).toBe(true);
+      expect(result.deleted).toBe(total);
+      expect(result.contentHashes).toHaveLength(total);
+    } finally {
+      delete process.env.VECTOR_ERASURE_VERIFY_ATTEMPTS;
+      delete process.env.VECTOR_ERASURE_VERIFY_CONSECUTIVE_CLEAN;
+      delete process.env.VECTOR_ERASURE_VERIFY_DELAY_MS;
+    }
   });
 
   it("getCurrentVectorProviderAuthority returns a durable/qdrant authority without Pinecone", async () => {

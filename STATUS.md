@@ -12,6 +12,83 @@ the breaker holds an opted-in hard action one run on an unexplained ≥ 20% fall
 `GET /api/ops/account-activity`.  **Next:** after deploy, run the diagnostic then the recompute
 for the Roth account (exact commands in the rollout).  Branch `claude/st-cashflow-detection`.
 Rollout: `docs/rollouts/2026-09-24-st-cashflow-detection.md`.
+## 2026-09-24 CLAUDE — Warnings crash, rotation failover, exit de-risk default (lane C, board 687a5fb4)
+
+**What/why.**  Three related fixes from the same owner-directed trading-performance program.
+(1) `"k.warnings is not iterable"` prod crash: `extractScan` (`market-scan-freshness.ts`) cast an
+audit payload to `MarketScan` without validating it — a `strategy_run` audit's `marketScan` is
+actually `audit-bounded-run.ts`'s bounded `{ omitted: true, ... }` summary (no `warnings`,
+`topCandidates`, etc.) since 2026-08-01, so a last-good fallback fed that shape straight into
+`withLastGoodWarning`'s `[...scan.warnings, ...]` spread.  Hardened `extractScan` to validate
+required MarketScan fields and reject `omitted:true`, defaulted `warnings` for genuinely-usable
+legacy scans, added a defensive fallback at the spread site itself, and fixed the same
+unchecked-cast pattern found by grep in `strategy-tuning.ts`'s `compactMarketScan` (fed by
+`latestDecision.marketScan`, same bounded-summary shape).
+(2) `__rotate__` model rotation had no failover on permanent OpenRouter access errors (403
+"doesn't have access to this model or region") — only 404 was cooled/failed-over, and only Green
+had a rotation-pool fallback chain (issue #2577); Red had none, so an unavailable Red Team holds
+every opening for human approval even under Autopilot.  403 now cools the slug exactly like 404
+(NOT 429, which is transient) and Red gets the same implicit rotation-pool fallback chain Green
+already had (`redRotationPool` -> `redTeamFallbackModels`, up to 2 alternates, excluding
+currently-cooling slugs).
+(3) `deRiskExitsOnAdversaryUnavailable` default flipped OFF -> ON (owner ruling 2026-09-24):
+holding a risk-reducing exit for human approval just because the adversary is unavailable is
+itself the unsafe direction.  Per-account opt-out (`false`) preserved; `mergePolicy` deep-merges
+`tuning` so every already-stored policy inherits the new default on its next read.  Openings still
+unconditionally fail closed (unchanged).
+
+Most of (2) and (3) were partially implemented by a previous interrupted attempt of this same
+lane; this session reviewed that work critically (it was correct), completed the untouched fix
+(1), fixed a dangling test-file reference and a pre-existing test (`test/guard-enablement.test.ts`)
+that would have broken on the new default tuning key, and added the missing regression coverage.
+
+**Touched files:** `src/lib/market-scan-freshness.ts`, `src/lib/strategy-gather.ts`,
+`src/lib/strategy-tuning.ts`, `src/lib/model-rotation.ts`, `src/lib/red-team.ts`,
+`src/lib/red-team-routing.ts`, `src/lib/strategy.ts`, `src/lib/defaults.ts`, `src/lib/types.ts`,
+plus tests (see rollout note for the full list).
+
+**Verification.**  Targeted vitest suites for every touched area pass; full gate (lint / tsc /
+test / build) run before landing — see the rollout note for exact results.  One pre-existing
+failure noted and NOT touched: `test/redteam-failure-routing.test.ts`'s three `runStrategyOnce`
+integration tests time out on a clean `origin/main` checkout too (reproduced before any of this
+session's changes) — unrelated to this PR.
+
+Rollout: `docs/rollouts/2026-09-24-st-rotation-warnings.md`.
+## 2026-09-25 CLAUDE — Ops performance endpoint: review-round fix (follow-up to merged PR #3750, board 687a5fb4)
+
+Independent review of PR #3750 raised one P1 in the landed code (the PR merged to main —
+commit `57927f682` — while this fix-up was starting, so this lands as a NEW PR off fresh
+`origin/main` rather than a push to the now-closed #3750): `buildOpsPerformanceSnapshot` ran
+every account's full-ledger `listFillEvents` + FIFO `calculatePnl` walk back to back in ONE
+synchronous stretch with no scheduling point, so an unfiltered request (the endpoint's own
+documented default — `scripts/fetch-prod-ops-performance.sh` sends no `account` unless
+`OPS_PERFORMANCE_ACCOUNT` is set) multiplied that per-account cost across every connected
+account in one request, on a process with a documented history of exactly this event-loop-stall
+class.  Confirmed real: `days` never bounds the fill fetch/FIFO walk (only in-memory windowing
+afterward — `db-fills.ts`'s own doc comment says windowing the ledger read would corrupt the
+walk), and the shipped query-cost test only covered a single filtered account, never the
+unfiltered multi-account path.  Fixed by making `buildOpsPerformanceSnapshot` `async` and
+calling `yieldEventLoop()` (`src/lib/slow-sync-guard.ts` — this codebase's own established fix
+for this incident class) once per account processed, so the total work is unchanged but can
+never monopolize the event loop.  New test-first regression:
+`test/ops-performance.test.ts` "unfiltered, multi-account path" (4 synthetic accounts x 500
+fills, no `account` filter, spies `yieldEventLoop` and asserts >= 1 call/account).  Gate: lint 0
+errors, tsc clean, full test suite + build results in the fix commit / rollout doc.  Rollout:
+`docs/rollouts/2026-09-24-st-ops-performance.md` ("Review round 1" section).  Auto-merge NOT
+armed (per this run's instructions — a later review stage arms it).
+
+## 2026-09-24 CLAUDE — Ops performance endpoint (lane E2, board 687a5fb4)
+
+Added `GET /api/ops/performance` — token-gated (same `OPS_DIAGNOSTIC_TOKEN` gate as
+`/api/ops/snapshot`), read-only, remote realized-performance diagnostics: per-account
+realized/unrealized P&L, win rate, avg win/loss, profit factor, expectancy, thesis scorecard,
+Red Team efficacy, per-model attribution, proposal status funnel + top block reasons, and a
+downsampled equity curve.  Reuses `getPerformanceSummary`/`calculatePnl`/`getThesisScorecard`/
+`getRedTeamEfficacy` — no P&L math re-implemented.  New queries (proposal funnel, block reasons)
+are index-covered and row-capped; whole snapshot cached in-process 60s, single-flight.  New
+`scripts/fetch-prod-ops-performance.sh` + `npm run ops:performance` mirror the existing
+`fetch-prod-ops-snapshot.sh`.  Docs: `docs/runbooks/ops-performance-endpoint.md`.
+Rollout: `docs/rollouts/2026-09-24-st-ops-performance.md`.
 
 ## 2026-09-24 MUSE — LLM stats console review-findings sweep (PR #3452)
 

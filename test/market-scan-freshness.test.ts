@@ -287,4 +287,62 @@ describe("newestPersistedMarketScan", () => {
     const newest = newestPersistedMarketScan("scope-c");
     expect(newest?.scan.generatedAt).toBe("2026-08-03T09:00:00.000Z");
   });
+
+  // Real persisted shape (2026-09 prod crash: "k.warnings is not iterable"). Every `strategy_run`
+  // audit since 2026-08-01 (audit-bounded-run.ts) stores its marketScan as a bounded
+  // `{ omitted: true, source, generatedAt, scannedSymbols, returnedQuotes, candidateCount,
+  // topSymbols }` summary, NOT the full scan — it has no `warnings`, `topCandidates`,
+  // `sectorBySymbol`, or `quotesBySymbol` at all. A newer such row must never be treated as a
+  // usable last-good scan, and must fall back to an older market_scan row that IS usable.
+  it("never treats a strategy_run's bounded-summary marketScan (omitted:true) as a usable last-good scan", () => {
+    auditAt("market_scan", { scan: makeScan("2026-08-03T09:00:00.000Z") }, "scope-omitted", MONDAY - 60 * 60_000);
+    auditAt(
+      "strategy_run",
+      {
+        runId: "r6",
+        status: "completed",
+        summary: "ok",
+        proposals: [],
+        accountNumber: "ACC",
+        marketScan: {
+          omitted: true,
+          source: "test",
+          generatedAt: "2026-08-03T10:00:00.000Z",
+          scannedSymbols: 500,
+          returnedQuotes: 480,
+          candidateCount: 12,
+          topSymbols: ["AAPL", "MSFT"]
+        }
+      },
+      "scope-omitted",
+      MONDAY
+    );
+    const newest = newestPersistedMarketScan("scope-omitted");
+    expect(newest?.scan.generatedAt).toBe("2026-08-03T09:00:00.000Z");
+    expect(Array.isArray(newest?.scan.warnings)).toBe(true);
+  });
+
+  it("returns undefined (never throws) when the ONLY persisted row is a bounded-summary strategy_run", () => {
+    auditAt(
+      "strategy_run",
+      {
+        runId: "r7",
+        status: "completed",
+        summary: "ok",
+        proposals: [],
+        accountNumber: "ACC",
+        marketScan: { omitted: true, source: "test", generatedAt: "2026-08-03T10:00:00.000Z", scannedSymbols: 500, returnedQuotes: 480, candidateCount: 0, topSymbols: [] }
+      },
+      "scope-omitted-only",
+      MONDAY
+    );
+    expect(newestPersistedMarketScan("scope-omitted-only")).toBeUndefined();
+  });
+
+  it("defaults a legacy/partial scan's missing `warnings` to [] instead of rejecting it outright", () => {
+    const { warnings: _omit, ...legacyScanWithoutWarnings } = makeScan("2026-08-03T09:00:00.000Z");
+    auditAt("market_scan", { scan: legacyScanWithoutWarnings }, "scope-legacy", MONDAY);
+    const newest = newestPersistedMarketScan("scope-legacy");
+    expect(newest?.scan.warnings).toEqual([]);
+  });
 });

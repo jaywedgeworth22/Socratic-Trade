@@ -35,10 +35,41 @@ export function marketScanFreshnessMaxAgeHours(): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_MAX_AGE_HOURS;
 }
 
+/**
+ * True when `candidate` has the shape of a real, usable MarketScan — as opposed to a
+ * `BoundedMarketScanSummary` (audit-bounded-run.ts's `{ omitted: true, ... }` compaction that
+ * EVERY `strategy_run` audit stores in place of the full scan since 2026-08-01, or any other
+ * malformed/partial audit payload). Checks the fields this lane and its callers actually read
+ * (`withLastGoodWarning`'s `scan.warnings` spread, `refreshTopCandidateQuotes`'s
+ * `scan.topCandidates`) — a payload missing any of them is not a scan this lane can safely hand
+ * back as "the last completed scan".
+ */
+function isUsableMarketScan(candidate: unknown): candidate is MarketScan {
+  if (!candidate || typeof candidate !== "object") return false;
+  const c = candidate as Record<string, unknown>;
+  // The bounded-audit marker (audit-bounded-run.ts) — an omitted:true summary is NEVER a usable
+  // last-good scan, even though it happens to also carry `source`/`generatedAt`/etc.
+  if (c.omitted === true) return false;
+  return (
+    typeof c.source === "string" &&
+    typeof c.generatedAt === "string" &&
+    typeof c.scannedSymbols === "number" &&
+    typeof c.returnedQuotes === "number" &&
+    Array.isArray(c.topCandidates) &&
+    Boolean(c.sectorBySymbol) && typeof c.sectorBySymbol === "object" &&
+    Boolean(c.quotesBySymbol) && typeof c.quotesBySymbol === "object"
+  );
+}
+
 function extractScan(payload: unknown): MarketScan | undefined {
   if (!payload || typeof payload !== "object") return undefined;
   const scan = (payload as { scan?: unknown }).scan ?? (payload as { marketScan?: unknown }).marketScan;
-  return scan && typeof scan === "object" ? (scan as MarketScan) : undefined;
+  if (!isUsableMarketScan(scan)) return undefined;
+  // `warnings` is required on MarketScan but some genuinely-usable older persisted rows (pre-dates
+  // the field, or a partial write) still lack it — default rather than reject, and default HERE
+  // (not just at the `withLastGoodWarning` spread site) so every caller of `extractScan` /
+  // `newestPersistedMarketScan` gets a scan whose `warnings` is always a real array.
+  return Array.isArray(scan.warnings) ? scan : { ...scan, warnings: [] };
 }
 
 /**

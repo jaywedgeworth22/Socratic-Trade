@@ -1,5 +1,18 @@
 # Current Status
 
+## 2026-09-24 CLAUDE — Ops performance endpoint (lane E2, board 687a5fb4)
+
+Added `GET /api/ops/performance` — token-gated (same `OPS_DIAGNOSTIC_TOKEN` gate as
+`/api/ops/snapshot`), read-only, remote realized-performance diagnostics: per-account
+realized/unrealized P&L, win rate, avg win/loss, profit factor, expectancy, thesis scorecard,
+Red Team efficacy, per-model attribution, proposal status funnel + top block reasons, and a
+downsampled equity curve.  Reuses `getPerformanceSummary`/`calculatePnl`/`getThesisScorecard`/
+`getRedTeamEfficacy` — no P&L math re-implemented.  New queries (proposal funnel, block reasons)
+are index-covered and row-capped; whole snapshot cached in-process 60s, single-flight.  New
+`scripts/fetch-prod-ops-performance.sh` + `npm run ops:performance` mirror the existing
+`fetch-prod-ops-snapshot.sh`.  Docs: `docs/runbooks/ops-performance-endpoint.md`.
+Rollout: `docs/rollouts/2026-09-24-st-ops-performance.md`.
+
 ## 2026-09-24 MUSE — LLM stats console review-findings sweep (PR #3452)
 
 **Current state.** Branch `minimax/llm-stats-and-held-20260923` rebased past `origin/main` (one

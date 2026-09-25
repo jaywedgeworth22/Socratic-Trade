@@ -26,7 +26,8 @@ export function staleLimitOrderThresholdMinutes(policy: Pick<TradingPolicy, "sta
 export function listStaleLimitOrders(
   orders: EquityOrder[],
   policy: Pick<TradingPolicy, "staleLimitOrderMinutes">,
-  now: Date = new Date()
+  now: Date = new Date(),
+  options: { brokerEvidenceOnly?: boolean } = {}
 ): StaleLimitOrder[] {
   const thresholdMinutes = staleLimitOrderThresholdMinutes(policy);
   if (thresholdMinutes <= 0) return [];
@@ -46,7 +47,7 @@ export function listStaleLimitOrders(
     // 15 minutes after the unfilled entry was placed).  Held legs stay listed (order-replacement
     // needs to see them to return the held-leg 409); the alert and auto path skip them.
     const isHeld = String(order.state ?? "").trim().toLowerCase() === "held";
-    if (!isHeld && !order.updatedAt && isContingentOrderLeg(order, orders)) return [];
+    if (!isHeld && !order.updatedAt && isContingentOrderLeg(order, orders, options)) return [];
     const createdMs = order.updatedAt ? Date.parse(order.updatedAt) : Date.parse(order.createdAt);
     if (!Number.isFinite(createdMs) || createdMs > nowMs) return [];
 

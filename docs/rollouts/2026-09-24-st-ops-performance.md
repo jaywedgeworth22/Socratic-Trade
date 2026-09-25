@@ -152,6 +152,13 @@ None — this lane was implementation-only.
 
 ## Review round 1 (independent reviewers, PR #3750, 2026-09-25)
 
+**Note on landing:** PR #3750 was squash-merged to `main` (commit `57927f682`) while this
+review-round fix-up was starting — the owner merged it before the independent review's finding
+made it back.  The bug below is therefore already live on `main`/production, not just on an open
+PR.  This fix lands as a **new PR** off fresh `origin/main` (the old `claude/st-ops-performance`
+branch was deleted on merge, per this repo's branch-delete-on-merge setting) rather than a push
+to #3750, which is now closed.
+
 **Finding (P1, `src/lib/ops-performance.ts:739` in the reviewed diff)** — `days=` gives a false
 impression of bounding cost; `buildOpsPerformanceSnapshot` ran a full, unbounded FIFO replay
 (`listFillEvents` + `calculatePnl`, twice per account) plus a 500-row Red Team audit scan and two

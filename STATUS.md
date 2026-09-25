@@ -1,8 +1,10 @@
 # Current Status
 
-## 2026-09-25 CLAUDE — Ops performance endpoint: review-round fix (PR #3750, board 687a5fb4)
+## 2026-09-25 CLAUDE — Ops performance endpoint: review-round fix (follow-up to merged PR #3750, board 687a5fb4)
 
-Independent review of PR #3750 (still open) raised one P1: `buildOpsPerformanceSnapshot` ran
+Independent review of PR #3750 raised one P1 in the landed code (the PR merged to main —
+commit `57927f682` — while this fix-up was starting, so this lands as a NEW PR off fresh
+`origin/main` rather than a push to the now-closed #3750): `buildOpsPerformanceSnapshot` ran
 every account's full-ledger `listFillEvents` + FIFO `calculatePnl` walk back to back in ONE
 synchronous stretch with no scheduling point, so an unfiltered request (the endpoint's own
 documented default — `scripts/fetch-prod-ops-performance.sh` sends no `account` unless

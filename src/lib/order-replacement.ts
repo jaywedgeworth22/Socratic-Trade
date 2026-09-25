@@ -147,7 +147,8 @@ export async function replaceStaleLimitOrderWithMarket(input: MarketReplaceInput
   const executionMode: ExecutionMode = executionState.mode;
 
   const orders = await input.gateway.getEquityOrders(input.policy.accountNumber);
-  const stale = listStaleLimitOrders(orders, input.policy).find((item) => item.order.id === input.orderId);
+  const stale = listStaleLimitOrders(orders, input.policy, new Date(), { brokerEvidenceOnly: true })
+    .find((item) => item.order.id === input.orderId);
   const original = orders.find((order) => order.id === input.orderId);
   if (!original) {
     await markReplacementError(id, "Order was not found at the broker.");
@@ -365,7 +366,8 @@ async function stepReplacementState(
       const provenanceSkip = autoReplaceProvenanceSkipReason(
         originalOrder,
         { userId, accountNumber: input.policy.accountNumber },
-        siblings
+        siblings,
+        { brokerEvidenceOnly: input.allowOwnerPlaced === true }
       );
       // A manual replace (owner explicitly clicked) may proceed past the provenance
       // reasons that only exist to fence AUTOMATED remediation: an owner-placed order
@@ -401,7 +403,7 @@ async function stepReplacementState(
         const positions = await input.gateway.getEquityPositions(input.policy.accountNumber);
         const { signedQuantity, backingQuantity } = exitBackingQuantity(positions, symbol, originalOrder.side);
         const remainingQuantity = remainingAfterCancel(originalOrder);
-        if (backingQuantity + POSITION_EPSILON < remainingQuantity) {
+        if (backingQuantity <= 0 || backingQuantity + POSITION_EPSILON < remainingQuantity) {
           const errStr = `${symbol} ${originalOrder.side} order is not backed by the broker position (position ${signedQuantity}, order remaining ${remainingQuantity}). Market replacement skipped; the original order was left untouched.`;
           db.prepare(`UPDATE order_replacements SET status = 'aborted', updated_at = ?, error = ? WHERE id = ?`)
             .run(new Date().toISOString(), errStr, row.id);
@@ -486,7 +488,7 @@ async function stepReplacementState(
         const positionsNow = await input.gateway.getEquityPositions(input.policy.accountNumber);
         const { signedQuantity, backingQuantity } = exitBackingQuantity(positionsNow, symbol, originalOrder.side);
         verifiedPositionQuantity = signedQuantity;
-        if (backingQuantity + POSITION_EPSILON < remainingQuantity) {
+        if (backingQuantity <= 0 || backingQuantity + POSITION_EPSILON < remainingQuantity) {
           const reason = backingQuantity <= POSITION_EPSILON ? "no_position_after_cancel" : "position_shrank_below_remaining";
           const errStr = `${symbol} ${originalOrder.side} replacement aborted after cancel: the backing position shrank to ${signedQuantity} before the market order could be placed (order remaining ${remainingQuantity}). The original order is now CANCELED and was NOT replaced — no market order was placed. Review the position and place a fresh exit manually if one is still needed.`;
           

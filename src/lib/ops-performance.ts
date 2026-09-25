@@ -9,6 +9,7 @@ import {
   type ThesisStat,
   type RedTeamEfficacy
 } from "./performance";
+import { yieldEventLoop } from "./slow-sync-guard";
 import type { FillSource } from "./types";
 
 /**
@@ -34,6 +35,20 @@ import type { FillSource } from "./types";
  * `getPerformanceSummary`'s `live/paperEquityCurve`, which is already sourced
  * from `listDailyPortfolioSnapshots` (one row per calendar day, capped at
  * `DAILY_SNAPSHOT_DAY_CAP` — see `db-fills.ts`) — no new query.
+ *
+ * `days` bounds only the IN-MEMORY windowing of trade stats / the proposal funnel / the equity
+ * curve (thesis/Red-Team/model attribution are lifetime by design, matching the app's own
+ * scorecards).  It deliberately does NOT truncate `listFillEvents` or `calculatePnl`'s FIFO lot
+ * replay — `db-fills.ts`'s own doc comment on `listFillEvents` explains why a windowed ledger
+ * read corrupts the walk (an exit whose entry falls outside the window would find no lot to
+ * close). So per-account cost is bounded by that ACCOUNT's total ledger size, not by `days`, and
+ * the unfiltered request (no `account` param — the endpoint's own documented default; see
+ * `scripts/fetch-prod-ops-performance.sh`) repeats that per-account cost once per connected
+ * account across every user, all inside one request. `buildOpsPerformanceSnapshot` is `async`
+ * and calls `yieldEventLoop()` (this codebase's established fix for exactly this incident class —
+ * see `slow-sync-guard.ts`, `sec-ingest-worker.ts`, `db-learning.ts`) once per account so that
+ * work — however large — is never one unbroken synchronous stretch; it cannot reduce the total
+ * work, only keep this process able to serve `/api/health` and other requests while it runs.
  *
  * No live quotes are fetched (mirrors `/api/connected-accounts/[id]/performance`):
  * `unrealized` P&L is real only when a broker sync recently wrote a portfolio
@@ -267,7 +282,7 @@ export interface BuildOpsPerformanceInput {
   days?: number;
 }
 
-export function buildOpsPerformanceSnapshot(input: BuildOpsPerformanceInput = {}): OpsPerformanceSnapshot {
+export async function buildOpsPerformanceSnapshot(input: BuildOpsPerformanceInput = {}): Promise<OpsPerformanceSnapshot> {
   const windowDays = clampDays(input.days);
   const sinceIso = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
 
@@ -302,6 +317,9 @@ export function buildOpsPerformanceSnapshot(input: BuildOpsPerformanceInput = {}
           proposalFunnel: { windowDays, counts: [], topBlockReasons: [], blockReasonRowsCapped: false },
           equityCurve: []
         });
+        // Give the process a scheduling point between accounts even on this cheap branch, so an
+        // unfiltered request over many never-synced accounts stays uniform with the branch below.
+        await yieldEventLoop();
         continue;
       }
 
@@ -374,6 +392,13 @@ export function buildOpsPerformanceSnapshot(input: BuildOpsPerformanceInput = {}
           error: message
         });
       }
+
+      // The expensive step: a full-ledger listFillEvents + FIFO calculatePnl walk per source,
+      // run above for EVERY account in an unfiltered request. Yield here — after each account,
+      // win or error — so this request can never hold the event loop for its whole duration; see
+      // the module doc comment and `slow-sync-guard.ts` for why this is this codebase's fix for
+      // exactly this incident class. This does not shrink the total work, only breaks it up.
+      await yieldEventLoop();
     }
   }
 
@@ -409,7 +434,7 @@ export async function getOrBuildOpsPerformanceSnapshot(input: BuildOpsPerformanc
 
   const promise = (async () => {
     try {
-      const value = buildOpsPerformanceSnapshot(input);
+      const value = await buildOpsPerformanceSnapshot(input);
       snapshotCache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, value });
       return value;
     } finally {

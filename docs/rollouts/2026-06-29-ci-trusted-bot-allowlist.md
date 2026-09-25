@@ -27,3 +27,20 @@
 
 ## Follow-ups
 - Re-run PR #249 checks after push; expect all three jobs to proceed past the guard.
+
+## Policy update — 2026-09-25
+
+The current same-repository PR workflow actor allowlist is `cursor[bot]`,
+`dependabot[bot]`, `sentry[bot]`, and `codex[bot]` in CI, Playwright Smoke,
+and Security. A bot-authored PR does not need another bot to copy it under a
+human identity: these actors run the ordinary required checks and review rules.
+The workflows check `github.actor` for the event, not an immutable PR-author
+field. Fork PRs still fail before checkout, and unknown `[bot]` actors remain
+blocked until the owner adds them deliberately.
+
+The 2026-06-29 rationale above describes the historical self-hosted runner.
+Today `verify-hosted` and smoke use GitHub-hosted runners, and the dependency
+install is tokenless `npm ci`; congress-trading-shared resolves over public
+HTTPS. The old "private-repo deploy key secret" error text was stale for these
+workflows and has been removed from the active and parked copies. This change does not remove secret scanning,
+required checks, or review requirements.

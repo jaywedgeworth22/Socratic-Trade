@@ -188,13 +188,12 @@ export async function cancelWorkingOrder(input: CancelWorkingOrderInput): Promis
 
   if (input.requireWorkingOrder) {
     if (lookup.unavailable) {
-      // Nothing was learned, so there is nothing to refuse on. Say so in the receipt rather than
-      // letting a silent fall-through look like a verified cancel.
-      audit(
-        "order_cancel_precheck_unavailable",
-        { accountNumber: policy.accountNumber, orderId, source },
-        userId,
-        policy.connectedAccountId
+      // The opt-in strict path (ops) promises a working-order check; an
+      // unavailable read cannot prove membership or working state. The
+      // console's emergency cancel path does not request this gate.
+      throw new OrderCancelPreconditionError(
+        `Could not verify that order is still working in ${accountPhrase}. Nothing was cancelled.`,
+        502
       );
     } else if (!lookup.order) {
       throw new OrderCancelPreconditionError(

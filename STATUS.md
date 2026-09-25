@@ -1,5 +1,48 @@
 # Current Status
 
+## 2026-09-24 CLAUDE — Warnings crash, rotation failover, exit de-risk default (lane C, board 687a5fb4)
+
+**What/why.**  Three related fixes from the same owner-directed trading-performance program.
+(1) `"k.warnings is not iterable"` prod crash: `extractScan` (`market-scan-freshness.ts`) cast an
+audit payload to `MarketScan` without validating it — a `strategy_run` audit's `marketScan` is
+actually `audit-bounded-run.ts`'s bounded `{ omitted: true, ... }` summary (no `warnings`,
+`topCandidates`, etc.) since 2026-08-01, so a last-good fallback fed that shape straight into
+`withLastGoodWarning`'s `[...scan.warnings, ...]` spread.  Hardened `extractScan` to validate
+required MarketScan fields and reject `omitted:true`, defaulted `warnings` for genuinely-usable
+legacy scans, added a defensive fallback at the spread site itself, and fixed the same
+unchecked-cast pattern found by grep in `strategy-tuning.ts`'s `compactMarketScan` (fed by
+`latestDecision.marketScan`, same bounded-summary shape).
+(2) `__rotate__` model rotation had no failover on permanent OpenRouter access errors (403
+"doesn't have access to this model or region") — only 404 was cooled/failed-over, and only Green
+had a rotation-pool fallback chain (issue #2577); Red had none, so an unavailable Red Team holds
+every opening for human approval even under Autopilot.  403 now cools the slug exactly like 404
+(NOT 429, which is transient) and Red gets the same implicit rotation-pool fallback chain Green
+already had (`redRotationPool` -> `redTeamFallbackModels`, up to 2 alternates, excluding
+currently-cooling slugs).
+(3) `deRiskExitsOnAdversaryUnavailable` default flipped OFF -> ON (owner ruling 2026-09-24):
+holding a risk-reducing exit for human approval just because the adversary is unavailable is
+itself the unsafe direction.  Per-account opt-out (`false`) preserved; `mergePolicy` deep-merges
+`tuning` so every already-stored policy inherits the new default on its next read.  Openings still
+unconditionally fail closed (unchanged).
+
+Most of (2) and (3) were partially implemented by a previous interrupted attempt of this same
+lane; this session reviewed that work critically (it was correct), completed the untouched fix
+(1), fixed a dangling test-file reference and a pre-existing test (`test/guard-enablement.test.ts`)
+that would have broken on the new default tuning key, and added the missing regression coverage.
+
+**Touched files:** `src/lib/market-scan-freshness.ts`, `src/lib/strategy-gather.ts`,
+`src/lib/strategy-tuning.ts`, `src/lib/model-rotation.ts`, `src/lib/red-team.ts`,
+`src/lib/red-team-routing.ts`, `src/lib/strategy.ts`, `src/lib/defaults.ts`, `src/lib/types.ts`,
+plus tests (see rollout note for the full list).
+
+**Verification.**  Targeted vitest suites for every touched area pass; full gate (lint / tsc /
+test / build) run before landing — see the rollout note for exact results.  One pre-existing
+failure noted and NOT touched: `test/redteam-failure-routing.test.ts`'s three `runStrategyOnce`
+integration tests time out on a clean `origin/main` checkout too (reproduced before any of this
+session's changes) — unrelated to this PR.
+
+Rollout: `docs/rollouts/2026-09-24-st-rotation-warnings.md`.
+
 ## 2026-09-24 MUSE — LLM stats console review-findings sweep (PR #3452)
 
 **Current state.** Branch `minimax/llm-stats-and-held-20260923` rebased past `origin/main` (one

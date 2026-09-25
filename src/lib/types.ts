@@ -581,12 +581,18 @@ export interface TuningSettings {
    */
   minOosTestDates?: number;
   /**
-   * VESTIGIAL since the 2026-07-07 single-adversary consolidation (§3.5): exits (sell/cover) and
-   * net-risk-reducing trades are now STRUCTURALLY exempt from the Red Team review — they can never
-   * be debate-unavailable because they are never debated — so this opt-in no longer has a
-   * production call site (`routeOnAdversaryUnavailable` still honors it as a pure function). Kept
-   * (rather than deleted) so persisted tuning JSON round-trips unchanged; it may be removed once
-   * the consolidation has soaked.
+   * DEFAULT TRUE as of owner ruling 2026-09-24 (board 687a5fb4; see `defaults.ts`'s
+   * `DEFAULT_POLICY.tuning`) — a de-risking exit must not be held for human approval just because
+   * the adversary is unavailable.  Explicit `false` is a per-account opt-OUT back to the old
+   * hold-for-review behavior.
+   *
+   * Still VESTIGIAL on the live path since the 2026-07-07 single-adversary consolidation (§3.5):
+   * exits (sell/cover) and net-risk-reducing trades are STRUCTURALLY exempt from the Red Team
+   * review — they can never be debate-unavailable because they are never debated — so this flag
+   * has no production call site today (`routeOnAdversaryUnavailable` still honors it as a pure
+   * function, and a future/secondary caller inherits the honest default rather than the old
+   * hold-by-default one). Kept (rather than deleted) so persisted tuning JSON round-trips
+   * unchanged; it may be removed once the consolidation has soaked.
    */
   deRiskExitsOnAdversaryUnavailable?: boolean;
   /**

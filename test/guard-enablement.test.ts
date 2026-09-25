@@ -47,7 +47,10 @@ describe("mergePolicy — tuning deep-merge (db-profiles runtime copy)", () => {
       riskReceipts: true,
       volTargeting: true,
       targetPortfolioVolPct: 25,
-      portfolioHeatBudgetPct: 10
+      portfolioHeatBudgetPct: 10,
+      // Owner ruling 2026-09-24 (board 687a5fb4): deRiskExitsOnAdversaryUnavailable default
+      // flipped ON — see test/model-defaults-derisk-exits.test.ts for dedicated coverage.
+      deRiskExitsOnAdversaryUnavailable: true
     });
   });
 

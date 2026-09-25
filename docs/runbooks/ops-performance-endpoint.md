@@ -60,17 +60,31 @@ under load.  Every query this endpoint adds is bounded:
   runs ONCE per source — the results are threaded through as `PrefetchedFills`/`PrefetchedPnl` so
   `getPerformanceSummary` and `getThesisScorecard` never repeat that O(fills) work for the same
   account.  The fill fetch itself is unbounded (FIFO replay needs the complete ledger — existing,
-  documented constraint in `performance.ts`, not new here).
+  documented constraint in `db-fills.ts`'s `listFillEvents` doc comment, not new here) — **`days`
+  does NOT shrink this fetch or the FIFO walk**, only the in-memory windowing of `tradeStats`/
+  `proposalFunnel`/`equityCurve` afterward, so a single account's cost is driven by that
+  account's total ledger size regardless of the requested window.
+- **Unfiltered requests (no `account` param — the endpoint's own documented default; see Usage
+  below) repeat that per-account cost once per connected account across every user, in one
+  request.**  `buildOpsPerformanceSnapshot` is `async` and calls `yieldEventLoop()`
+  (`src/lib/slow-sync-guard.ts` — this codebase's established fix for the event-loop-stall
+  incident class linked above, already used by the SEC ingest worker and the RAG FTS mirror)
+  once per account processed, so this cannot hold the event loop in one unbroken synchronous
+  stretch no matter how many accounts or how large their ledgers — it does not reduce the total
+  work, only keeps `/api/health` and other requests servable while it runs.  Covered by
+  `test/ops-performance.test.ts`'s "unfiltered, multi-account path" test (4 synthetic accounts x
+  500 fills, asserts `yieldEventLoop` is called at least once per account).
 - The whole snapshot is cached in-process for 60s, single-flight per `(account, days)` key
   (`src/lib/ops-performance.ts`), so a burst of identical probe requests (an uptime monitor, a
   retried curl) does not multiply the DB work.
-- Measured against a synthetic DB (300 closed round trips / 500 proposals / 200 portfolio
-  snapshots, one account) in `test/ops-performance.test.ts`'s query-cost test — see that test's
-  console output / this rollout's Verification section for the measured duration on the seed
-  hardware.  That test ran on a Mac under extreme fleet-wide contention (many parallel lanes'
-  `npm ci`/`vitest`/`build` at once — `uptime` load average peaked around 700), so its measured
-  duration is not a normal-load baseline; the test's own bound is generous (5s) specifically to
-  stay a smoke check under those conditions rather than a strict benchmark.
+- Measured against a synthetic DB in two `test/ops-performance.test.ts` tests: (1) 300 closed
+  round trips / 500 proposals / 200 portfolio snapshots on ONE account, filtered by `account`;
+  (2) 4 accounts x 250 closed round trips (500 fills each), UNFILTERED — the endpoint's own
+  documented default and the more expensive path in practice.  See those tests' console output /
+  this rollout's Verification section for the measured durations on the seed hardware.  Both ran
+  on a Mac under heavy fleet-wide contention at various points, so a measured duration is not a
+  normal-load baseline; each test's own bound is generous specifically to stay a smoke check
+  under those conditions rather than a strict benchmark.
 
 ## Usage
 

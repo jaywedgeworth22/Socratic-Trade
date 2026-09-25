@@ -149,3 +149,89 @@ Results:
 ## 6. Zero-Code Findings
 
 None — this lane was implementation-only.
+
+## Review round 1 (independent reviewers, PR #3750, 2026-09-25)
+
+**Note on landing:** PR #3750 was squash-merged to `main` (commit `57927f682`) while this
+review-round fix-up was starting — the owner merged it before the independent review's finding
+made it back.  The bug below is therefore already live on `main`/production, not just on an open
+PR.  This fix lands as a **new PR** off fresh `origin/main` (the old `claude/st-ops-performance`
+branch was deleted on merge, per this repo's branch-delete-on-merge setting) rather than a push
+to #3750, which is now closed.
+
+**Finding (P1, `src/lib/ops-performance.ts:739` in the reviewed diff)** — `days=` gives a false
+impression of bounding cost; `buildOpsPerformanceSnapshot` ran a full, unbounded FIFO replay
+(`listFillEvents` + `calculatePnl`, twice per account) plus a 500-row Red Team audit scan and two
+more SQL queries, all synchronously, per account, for EVERY connected account across every user
+on the endpoint's own documented default (unfiltered) request — on a process with a documented
+history of event-loop stalls from exactly this class of synchronous SQLite work
+(`docs/rollouts/2026-08-09-event-loop-stall-instrumentation.md`,
+`docs/rollouts/2026-09-12-issue-3221-event-loop-stalls.md`).  The included query-cost test only
+covered ONE account via `connectedAccountId`, never the unfiltered, multi-account path that is
+the tool's own default (`scripts/fetch-prod-ops-performance.sh` sends no `account` unless
+`OPS_PERFORMANCE_ACCOUNT` is set).
+
+**Verified real** against the actual code and this codebase's own architecture before fixing:
+
+- Confirmed `days` never reaches `listFillEvents`/`calculatePnl` — `buildOpsPerformanceSnapshot`
+  always calls `listFillEvents(accountNumber, source, undefined, userId)` (no `limit`) and always
+  runs `calculatePnl` over the full result; `days` only filters the already-computed
+  `ClosedLot[]`/equity-curve points afterward (`computeTradeStats`, `buildEquityCurve`).  So
+  `?days=1` and `?days=3650` cost the same for a given account's total history, exactly as
+  reported.
+- Confirmed the unfiltered path is real and is the tool's own documented default — the module
+  doc comment and `app/api/ops/performance/route.ts` both say `account` narrows to one account
+  and omitting it returns every account `/api/ops/snapshot` covers, iterating
+  `listUsers() x listConnectedAccounts(userId)`.
+- Confirmed the test gap by reading `test/ops-performance.test.ts`'s "query cost against a
+  synthetic DB" test: it calls `buildOpsPerformanceSnapshot({ connectedAccountId: accountId,
+  days: 90 })` — one account, filtered.  No test exercised the unfiltered, multi-account path.
+
+**Fix chosen — reviewer's option (c), not (a) or (b):**
+
+- **Not (a)** (require `account` for the full rollup; unfiltered = metadata only): would break the
+  endpoint's own documented default usage (`fetch-prod-ops-performance.sh` with no
+  `OPS_PERFORMANCE_ACCOUNT` set) and was judged a bigger behavior/contract change than this P1
+  needs.
+- **Not (b)** (push `days` into the fill/snapshot queries): explicitly ruled out by
+  `db-fills.ts`'s own doc comment on `listFillEvents` — FIFO lot matching is a stateful walk from
+  the first fill, and truncating either end corrupts it (an exit whose entry falls outside a
+  windowed read finds no lot to close and its realized P&L vanishes).  That constraint predates
+  this lane and is load-bearing, not a style choice to work around.
+- **Chose (c):** `buildOpsPerformanceSnapshot` is now `async` and calls `yieldEventLoop()`
+  (`src/lib/slow-sync-guard.ts`) once per account processed (every branch — success, per-account
+  error, and the no-`accountNumber` skip).  `yieldEventLoop` is this codebase's own established
+  fix for this exact incident class (already used by `sec-ingest-worker.ts`, `sec-filings.ts`,
+  `db-learning.ts`, `synthetic-stops.ts`, `mirror-fts-bounded.ts`, `qdrant-write.ts`,
+  `sqlite-event-loop.ts`).  This does not reduce total work — an unfiltered request over many
+  accounts with long histories is still expensive — but it can no longer hold the event loop in
+  one unbroken synchronous stretch; `/api/health` and other requests can interleave between
+  accounts.  `getOrBuildOpsPerformanceSnapshot`'s cached wrapper now `await`s it.
+
+**Changes made (this round):**
+- `src/lib/ops-performance.ts` — `buildOpsPerformanceSnapshot` is now `async`/`Promise`-returning;
+  imports and calls `yieldEventLoop()` (from `./slow-sync-guard`) once per account, in every
+  branch; `getOrBuildOpsPerformanceSnapshot` now `await`s it; module doc comment expanded to
+  explain the `days`-does-not-bound-the-ledger-read constraint and the yield fix.
+- `test/ops-performance.test.ts` — all direct `buildOpsPerformanceSnapshot(...)` call sites
+  updated to `await` (four existing tests); new test **"unfiltered, multi-account path (event-loop
+  safety)"**: seeds 4 synthetic accounts x 250 round trips (500 fills each, 2,000 fills total),
+  calls `buildOpsPerformanceSnapshot({ days: 90 })` with NO `connectedAccountId` (the endpoint's
+  own default), spies `yieldEventLoop` (same `vi.spyOn(await import(".../slow-sync-guard"),
+  "yieldEventLoop")` idiom already used in `test/persist-local-complete.test.ts` and
+  `test/sqlite-event-loop-stall.test.ts`), and asserts it was called at least once per account
+  built.  Written FIRST and confirmed failing (`expected 0 to be greater than or equal to 4`)
+  against the pre-fix code before implementing the fix.
+- `docs/runbooks/ops-performance-endpoint.md` — "Query cost / caching" section expanded with the
+  same `days`-does-not-bound / unfiltered-multiplies / yield-fix explanation, and the
+  query-cost-test bullet updated to mention both the single-account and the new unfiltered
+  multi-account test.
+- `STATUS.md`, `docs/EFFORT-LOG.md` — updated (see their own entries for this date).
+
+**Declined:** none — the one reported finding was confirmed real and fixed.
+
+**Verification (this round):** see the top-level Verification State section's commands; this
+round additionally ran `npx vitest run test/ops-performance.test.ts -t "unfiltered"` alone
+against the pre-fix code first to confirm the new test fails
+(`AssertionError: expected 0 to be greater than or equal to 4`, i.e. `yieldEventLoop` was never
+called), then again after the fix (passes, 10/10 in the full file).

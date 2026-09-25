@@ -13,6 +13,7 @@
 // comment on SteadyApiEnrichmentProvider / AlphaVantageRapidApiEnrichmentProvider below and
 // rapidapi-quota.ts for the persisted daily-budget mechanism that keeps it safe.
 
+import { dataSourceFetch, resolveDataSourceProxy } from "./data-source-fetch";
 import { enrichmentPlanForDeadline } from "./gather-budget";
 import { fromAlpacaSymbol, normalizeSymbol, toAlpacaSymbol } from "./money";
 import {
@@ -738,7 +739,10 @@ export async function fetchWithRetry(
       options.durableAttempt?.onDispatch();
       let response: Response;
       try {
-        response = await fetch(url, init);
+        // Data-source egress: per-user proxy -> operator env proxy -> residential
+        // default (see src/lib/data-source-fetch.ts). Internal/excluded services and
+        // loopback/private targets bypass the proxy inside dataSourceFetch.
+        response = await dataSourceFetch(url, init, { userId: options.userId, service: options.service });
       } catch (error) {
         options.durableAttempt?.onTransportError?.(error);
         // Dead keep-alive sockets (`fetch failed` / UND_ERR_SOCKET) are worth one
@@ -1147,7 +1151,7 @@ export function getEnrichmentProvider(userId?: string): MarketEnrichmentProvider
   // Seated just before Yahoo so both participate in wave A; first-wins still prefers earlier paid
   // tiers when they filled a field.
   providers.push(new NasdaqQuoteEnrichmentProvider());
-  providers.push(new YahooFinanceEnrichmentProvider());
+  providers.push(new YahooFinanceEnrichmentProvider(userId));
   // Alpaca's free Benzinga news (one batched call covers all scan symbols) — placed ahead of
   // Finnhub/AV so it supplies headlines/sentiment quickly and prevents rate limit exhaustion.
   // Exactly one instance: apiKey-only still registers (secret optional on this news endpoint).
@@ -2817,7 +2821,9 @@ export class NasdaqQuoteEnrichmentProvider implements MarketEnrichmentProvider {
 // Provides: sector, industry, P/E, EPS, dividend yield, and analyst rating.
 
 interface YfCreds { cookie: string; crumb: string; expiresAt: number; }
-let yfCreds: YfCreds | null = null;
+// Keyed by effective proxy URL: cookie+crumb are issued to the egress IP, so creds
+// fetched through a user's proxy must not be reused for a different egress path.
+const yfCredsByProxy = new Map<string, YfCreds>();
 const YF_CRUMB_TTL_MS = 55 * 60_000; // 55 min (crumbs expire ~1 hr)
 const YF_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36";
 // A single failed cookie/crumb handshake otherwise blanks the ENTIRE Yahoo enrichment batch
@@ -2825,6 +2831,7 @@ const YF_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.3
 const YF_CREDS_RETRY_BACKOFF_MS = 500;
 
 class YahooFinanceEnrichmentProvider implements MarketEnrichmentProvider {
+  constructor(private readonly userId?: string) {}
   readonly name = "yahoo-finance";
   /** Keyless floor — always free-wave under the free-first planner. */
   readonly costTier = "free" as const;
@@ -2869,9 +2876,15 @@ class YahooFinanceEnrichmentProvider implements MarketEnrichmentProvider {
     return result;
   }
 
+  private proxyCacheKey(): string {
+    return resolveDataSourceProxy(this.userId).proxyUrl ?? "direct";
+  }
+
   private async getCreds(): Promise<YfCreds> {
     const now = Date.now();
-    if (yfCreds && yfCreds.expiresAt > now) return yfCreds;
+    const cacheKey = this.proxyCacheKey();
+    const cached = yfCredsByProxy.get(cacheKey);
+    if (cached && cached.expiresAt > now) return cached;
 
     try {
       return await this.fetchCreds(now);
@@ -2884,25 +2897,28 @@ class YahooFinanceEnrichmentProvider implements MarketEnrichmentProvider {
   }
 
   private async fetchCreds(now: number): Promise<YfCreds> {
-    const cookieRes = await fetch("https://fc.yahoo.com", {
+    // Both legs of the handshake go through the same egress path (dataSourceFetch
+    // with this provider's userId) so the cookie and crumb are issued to one IP.
+    const cookieRes = await dataSourceFetch("https://fc.yahoo.com", {
       headers: { "user-agent": YF_UA },
       redirect: "follow"
-    });
+    }, { userId: this.userId });
     const rawCookies: string[] =
       typeof (cookieRes.headers as unknown as { getSetCookie?: () => string[] }).getSetCookie === "function"
         ? (cookieRes.headers as unknown as { getSetCookie: () => string[] }).getSetCookie()
         : [cookieRes.headers.get("set-cookie") ?? ""].filter(Boolean);
     const cookie = rawCookies.map((c) => c.split(";")[0]).filter(Boolean).join("; ");
 
-    const crumbRes = await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", {
+    const crumbRes = await dataSourceFetch("https://query1.finance.yahoo.com/v1/test/getcrumb", {
       headers: { "user-agent": YF_UA, "Cookie": cookie, "accept": "text/plain" }
-    });
+    }, { userId: this.userId });
     if (!crumbRes.ok) throw new Error(`Yahoo Finance crumb failed: ${crumbRes.status}`);
     const crumb = (await crumbRes.text()).trim();
     if (!crumb || crumb.startsWith("{")) throw new Error("Invalid Yahoo Finance crumb");
 
-    yfCreds = { cookie, crumb, expiresAt: now + YF_CRUMB_TTL_MS };
-    return yfCreds;
+    const creds = { cookie, crumb, expiresAt: now + YF_CRUMB_TTL_MS };
+    yfCredsByProxy.set(this.proxyCacheKey(), creds);
+    return creds;
   }
 
   private async fetchSymbol(symbol: string, creds: YfCreds): Promise<SymbolEnrichment> {
@@ -5636,7 +5652,7 @@ export function scoreHeadlines(headlines: string[]): number {
 
 export function clearEnrichmentCache(): void {
   cache.clear();
-  yfCreds = null;
+  yfCredsByProxy.clear();
   avEarningsCalendarCache = null;
   finnhubEarningsCalendarCache = null;
 }

@@ -119,6 +119,18 @@ re-walk the heap (measured 3.4-56 s on a 575-631 MB heap), so each rotation is b
 keepalive `console.profile()` (~5 ms); a missing keepalive or a slow start self-disables.
 **Next:** after deploy, on the next stall read the newest `.top.json` (command in the rollout).
 Rollout: `docs/rollouts/2026-09-24-st-stall-profiler.md`.
+## 2026-09-24 CLAUDE — Detect IRA withdrawals and deposits so drawdown math is not fooled (board 687a5fb4, lane F2)
+
+**What.**  The Roth IRA HWM recompute found zero transfers after ~$96 was withdrawn: the ledger
+read sent an `activity_types` filter containing `DIVTX` (not an Alpaca type) and swallowed any
+non-2xx as `[]`, and the recompute then silently reset the HWM to equity.  Ledger reads now use
+`category=non_trade_activity` with client-side classification (IRA contributions, distributions,
+`WH` withholding, `ACATC`, journals); failures are explicit (`flowsUnavailable`), unknown types
+are audited, the recompute replays Alpaca daily closes and returns 409 instead of guessing, and
+the breaker holds an opted-in hard action one run on an unexplained ≥ 20% fall.  New read-only
+`GET /api/ops/account-activity`.  **Next:** after deploy, run the diagnostic then the recompute
+for the Roth account (exact commands in the rollout).  Branch `claude/st-cashflow-detection`.
+Rollout: `docs/rollouts/2026-09-24-st-cashflow-detection.md`.
 
 ## 2026-09-24 MUSE — LLM stats console review-findings sweep (PR #3452)
 

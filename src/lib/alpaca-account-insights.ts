@@ -34,6 +34,23 @@ function tradingBase(environment: "paper" | "live" = "paper"): string {
   return (raw || fallback).replace(/\/+$/, "");
 }
 
+/**
+ * Hostname (never a credential) the private trading reads use for an environment, and whether
+ * ALPACA_TRADING_BASE_URL overrides it.  The override applies to BOTH environments, so an
+ * override pointed at paper-api would send a live account's reads to the paper host — the ops
+ * account-activity diagnostic surfaces this so a failing read can be told apart from an empty one.
+ */
+export function alpacaTradingHostInfo(environment: "paper" | "live"): { host: string; overridden: boolean } {
+  const overridden = String(process.env.ALPACA_TRADING_BASE_URL ?? "").trim().length > 0;
+  let host = "";
+  try {
+    host = new URL(tradingBase(environment)).host;
+  } catch {
+    host = "invalid-base-url";
+  }
+  return { host, overridden };
+}
+
 function rankAlpacaAccounts(accounts: ConnectedAccount[]): ConnectedAccount[] {
   const ranked = [
     accounts.find((a) => a.isActive && a.environment === "live"),
@@ -259,7 +276,7 @@ export interface AlpacaAccountActivity {
 // Alpaca credential is available or the request fails.
 export async function fetchAlpacaPortfolioHistory(
   userId: string,
-  opts: { period?: string; timeframe?: string; connectedAccountId?: string } = {}
+  opts: { period?: string; timeframe?: string; connectedAccountId?: string; start?: string; end?: string } = {}
 ): Promise<AlpacaPortfolioHistory | undefined> {
   const creds = resolvePrivateAlpacaAccount(userId, opts.connectedAccountId);
   if (!creds) return undefined;
@@ -267,9 +284,60 @@ export async function fetchAlpacaPortfolioHistory(
   const params = new URLSearchParams();
   if (opts.period) params.set("period", opts.period);
   if (opts.timeframe) params.set("timeframe", opts.timeframe);
+  if (opts.start) params.set("start", opts.start);
+  if (opts.end) params.set("end", opts.end);
   const query = params.toString();
   const path = `/v2/account/portfolio/history${query ? `?${query}` : ""}`;
   return getJson<AlpacaPortfolioHistory>(tradingBase(creds.environment), path, SERVICE, creds.apiKey, creds.secretKey, creds.source);
+}
+
+export interface AlpacaDailyEquityPoint {
+  /** America/New_York calendar day of the (left-labeled) daily window. */
+  day: string;
+  /** Alpaca's end-of-day equity for that day. */
+  equity: number;
+}
+
+function newYorkDay(unixSeconds: number): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date(unixSeconds * 1000));
+}
+
+/**
+ * Daily end-of-day equity from Alpaca's own books (GET /v2/account/portfolio/history,
+ * timeframe=1D).  Alpaca's daily equity and its activity `date` come from the same ledger, so a
+ * withdrawal dated D is reflected in D's close — the day-consistent pairing the HWM replay needs
+ * (local portfolio_snapshots are taken at arbitrary run times and can sit on either side of a
+ * transfer).  Returns undefined when the read fails or the body is not the documented shape.
+ */
+export async function fetchAlpacaDailyEquityHistory(
+  userId: string,
+  opts: { connectedAccountId?: string; start: string; end?: string }
+): Promise<AlpacaDailyEquityPoint[] | undefined> {
+  // start + end (two of start/end/period, per Alpaca) so the window is exactly what we asked for.
+  const history = await fetchAlpacaPortfolioHistory(userId, {
+    connectedAccountId: opts.connectedAccountId,
+    timeframe: "1D",
+    start: opts.start,
+    end: opts.end ?? new Date().toISOString()
+  });
+  if (!history || !Array.isArray(history.timestamp) || !Array.isArray(history.equity)) return undefined;
+  if (history.timestamp.length !== history.equity.length) return undefined;
+  const points: AlpacaDailyEquityPoint[] = [];
+  for (let i = 0; i < history.timestamp.length; i += 1) {
+    const ts = Number(history.timestamp[i]);
+    const raw = history.equity[i] as number | string | null | undefined;
+    if (raw === null || raw === undefined || raw === "") continue;
+    const equity = Number(raw);
+    if (!Number.isFinite(ts) || !Number.isFinite(equity)) continue;
+    points.push({ day: newYorkDay(ts), equity });
+  }
+  points.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
+  return points;
 }
 
 // Session open/close and holiday info (GET /v2/calendar). Market-wide reference data, so it
@@ -400,6 +468,45 @@ export async function fetchAlpacaAccountActivitiesDetailed(
   }
 
   return { ok: true, activities: all, pages, truncated, query: queryShape };
+}
+
+/**
+ * Fallback filter for an API that rejects `category`: only codes published in Alpaca's Trading
+ * API account-activities list (never "DIVTX", which is not an Alpaca type).
+ */
+const NON_TRADE_FALLBACK_ACTIVITY_TYPES = [
+  "CSD",
+  "CSW",
+  "ACATC",
+  "ACATS",
+  "JNLC",
+  "JNLS",
+  "DIV",
+  "DIVNRA",
+  "DIVTXEX",
+  "INT",
+  "FEE",
+  "PTC"
+];
+
+/**
+ * Every non-trade activity (deposits, withdrawals, IRA contributions/distributions, withholding,
+ * dividends, fees, journals, …) via `category=non_trade_activity`, so classification happens on
+ * our side and an unanticipated type is surfaced instead of filtered away.  Falls back to an
+ * explicit documented type list only when Alpaca rejects the category parameter itself (400/422).
+ */
+export async function fetchAlpacaNonTradeActivities(
+  userId: string,
+  opts: Omit<AlpacaActivitiesFetchOptions, "activityTypes" | "category"> = {}
+): Promise<AlpacaActivitiesFetchResult & { fallbackFrom?: string }> {
+  const primary = await fetchAlpacaAccountActivitiesDetailed(userId, { ...opts, category: "non_trade_activity" });
+  if (primary.ok || primary.credentialMissing) return primary;
+  if (primary.httpStatus !== 400 && primary.httpStatus !== 422) return primary;
+  const fallback = await fetchAlpacaAccountActivitiesDetailed(userId, {
+    ...opts,
+    activityTypes: NON_TRADE_FALLBACK_ACTIVITY_TYPES
+  });
+  return { ...fallback, fallbackFrom: `category=non_trade_activity rejected (${primary.error ?? "HTTP " + primary.httpStatus})` };
 }
 
 // Back-compat list form: returns an empty array when no Alpaca credential is available or the

@@ -898,6 +898,33 @@ export interface OptionPosition {
   marketValue: number;
 }
 
+/**
+ * Why a broker order exists / is resting, from `src/lib/order-role.ts`'s `classifyOrderRole`.
+ * Computed server-side (needs DB-tracked rows) and attached only to WORKING orders in a
+ * dashboard/ops snapshot — never present on a raw broker-mapped order (`mapAlpacaOrder`, …) or
+ * on a finished/history order.
+ *  - protective_stop: broker-held fixed stop tracked in `broker_protective_stops` (kind "fixed").
+ *  - trailing_stop: broker-held trailing stop tracked in `broker_protective_stops` (kind "trailing").
+ *  - bracket_take_profit / bracket_stop_loss: the limit / stop leg of a bracket order's exit pair.
+ *  - synthetic_stop: the exit order placed when the app's OWN price-triggered synthetic trailing
+ *    stop (`synthetic_trailing_stops`) fired.
+ *  - replacement: the new order an automatic stale-limit cancel-replace submitted.
+ *  - entry / exit: an app-tracked order (a `trade_proposals` row, or a stop-placement intent)
+ *    that opens/adds to, or reduces/closes, a position.
+ *  - external: no app-tracked row and no app-minted `client_order_id` prefix matched — placed
+ *    outside the app's own order-management systems (e.g. directly at the broker).
+ */
+export type OrderRole =
+  | "protective_stop"
+  | "trailing_stop"
+  | "bracket_take_profit"
+  | "bracket_stop_loss"
+  | "entry"
+  | "exit"
+  | "synthetic_stop"
+  | "replacement"
+  | "external";
+
 export interface EquityOrder {
   id: string;
   symbol: string;
@@ -938,6 +965,12 @@ export interface EquityOrder {
    * could stack two real exits on the same shares.
    */
   orderClass?: string;
+  /** See `OrderRole`. Present only when a dashboard/ops snapshot attached it via
+   *  `order-role.ts`'s `attachOrderRoles`/`buildOpsWorkingOrderDetails`. */
+  role?: OrderRole;
+  /** One-sentence, owner-facing explanation of why a `role`-classified order is resting (e.g.
+   *  "Protective trailing stop for 24 BAC; rests until price falls 5%."). Present alongside `role`. */
+  whyResting?: string;
 }
 
 export interface BrokerQuote {

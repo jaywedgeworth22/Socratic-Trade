@@ -119,6 +119,18 @@ re-walk the heap (measured 3.4-56 s on a 575-631 MB heap), so each rotation is b
 keepalive `console.profile()` (~5 ms); a missing keepalive or a slow start self-disables.
 **Next:** after deploy, on the next stall read the newest `.top.json` (command in the rollout).
 Rollout: `docs/rollouts/2026-09-24-st-stall-profiler.md`.
+## 2026-09-24 CLAUDE — Order role classification, ops order detail, console badges (board 687a5fb4, lane E1)
+
+**What/why.**  The owner saw "4 open orders just sitting there" on Alpaca Paper with no way to
+tell why — they were correct, resting GTC protective stops (`broker_protective_stops`), but
+nothing said so.  New `src/lib/order-role.ts`: pure `classifyOrderRole(order, ctx)` ->
+`protective_stop | trailing_stop | bracket_take_profit | bracket_stop_loss | entry | exit |
+synthetic_stop | replacement | external` + a one-sentence `whyResting`, reusing
+`order-provenance.ts` read-only.  Wired into `GET /api/dashboard` (`dashboard.ts`, via
+`attachOrderRoles`) for the console Orders screen's role badge + `scripts/fetch-prod-ops-snapshot.sh
+OPS_SNAPSHOT_ORDERS_DETAIL=1`) for a per-working-order detail array (capped 100/account, no
+account numbers or raw client-order-ids).  iOS untouched (follow-up).  PR: <FILL_IN>.
+Rollout: `docs/rollouts/2026-09-24-st-order-roles.md`.
 
 ## 2026-09-24 MUSE — LLM stats console review-findings sweep (PR #3452)
 

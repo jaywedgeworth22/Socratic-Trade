@@ -10,6 +10,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { ORDER_ROLE_LABELS, type OrderRole } from "@/lib/order-role";
 import type { EquityOrder, EquityPosition } from "@/lib/types";
 import { deriveReality } from "../lib/derive";
 import { cx, fmtExact, fmtMoney, fmtPct, fmtQty, fmtSignedMoney, EM_DASH, SENTENCE_GAP } from "../lib/format";
@@ -226,6 +227,40 @@ const STATE_TONE: Record<string, ChipTone> = {
 
 function stateTone(state: string | undefined): ChipTone {
   return STATE_TONE[String(state ?? "").trim().toLowerCase()] ?? "muted";
+}
+
+/** Tone for the order-role badge — see src/lib/order-role.ts's classifyOrderRole. A protective
+ *  stop (fixed or trailing) is the "correct behavior at rest" case the badge exists for, so it
+ *  gets the calm info tone rather than a warning; bracket_stop_loss and replacement get warn
+ *  since both mean "something is actively guarding against loss right now". */
+const ROLE_TONE: Record<OrderRole, ChipTone> = {
+  protective_stop: "info",
+  trailing_stop: "info",
+  bracket_take_profit: "pos",
+  bracket_stop_loss: "warn",
+  entry: "accent",
+  exit: "accent",
+  synthetic_stop: "info",
+  replacement: "warn",
+  external: "muted"
+};
+
+/** Role badge + one-sentence whyResting, shared by the desktop row and the mobile card. Renders
+ *  nothing when the order carries no `role` (e.g. the snapshot couldn't resolve an account
+ *  number to classify against) — never a placeholder badge for missing data. `flex-wrap` keeps
+ *  the badge and its explanation from overflowing at ~390px widths. */
+function OrderRoleBadge({ order, className }: { order: EquityOrder; className?: string }) {
+  if (!order.role) return null;
+  return (
+    <div className={cx("flex flex-wrap items-center gap-1.5", className)}>
+      <Chip tone={ROLE_TONE[order.role]} title={order.whyResting ?? ORDER_ROLE_LABELS[order.role]}>
+        {ORDER_ROLE_LABELS[order.role]}
+      </Chip>
+      {order.whyResting && (
+        <span className="text-[length:var(--con-fs-xs)] text-[color:var(--con-faint)]">{order.whyResting}</span>
+      )}
+    </div>
+  );
 }
 
 function isExit(side: string): boolean {
@@ -645,6 +680,7 @@ function OpenOrderTr({ row, quotes, positions, fallbackPrices, companyName, halt
         <Chip tone={stateTone(order.state)} title="The order's state as last reported by the broker.">
           {readableState(order.state)}
         </Chip>
+        <OrderRoleBadge order={order} className="mt-1 max-w-[220px]" />
       </td>
       <td className="num con-num" title="Estimated realized P/L if this order's unfilled remainder closed right now at the last known price.">
         {view.estPnl ? (
@@ -696,6 +732,7 @@ function OpenOrderCard({ row, quotes, positions, fallbackPrices, companyName, ha
           </Chip>
         </div>
       </div>
+      <OrderRoleBadge order={order} />
       <div className="grid grid-cols-2 gap-2 text-[length:var(--con-fs-sm)]">
         <div className="rounded-control bg-[color:var(--con-surface-2)] px-1.5 py-0.5" title="Order size as the broker holds it; partial fills shown underneath.">
           <div className="flex justify-between items-baseline gap-0.5">

@@ -341,6 +341,48 @@ describe("broker-health probe timeouts and process stalls", () => {
     expect(getPolicy(userId).systemState).toBe("halted");
   });
 
+  it("a mobile Stop issued on top of an auto-pause is never auto-lifted", async () => {
+    const { applyBrokerOrderPlacementPause, getBrokerPlacementPauseMarker } = await import("../src/lib/broker-health");
+    const db = await import("../src/lib/db");
+    const mobile = await import("../src/lib/mobile-api");
+    const userId = `mobile-stop-auto-pause-${randomUUID()}`;
+    const accountId = `acct-${randomUUID()}`;
+    db.upsertConnectedAccount({
+      id: accountId,
+      userId,
+      broker: "alpaca",
+      environment: "paper",
+      accountNumber: `PAPER-${randomUUID()}`,
+      label: "Auto-pause then Stop",
+      isActive: true
+    });
+    db.setPolicy({ ...db.getPolicy(userId, accountId), systemState: "active", additionalSymbols: ["AAPL"] }, userId, accountId);
+    const halted = await applyBrokerOrderPlacementPause({
+      userId,
+      connectedAccountId: accountId,
+      accountScope: accountId,
+      health: { isHealthy: false, reason: "Broker reports orders cannot be placed", category: "order_capability" },
+      policy: db.getPolicy(userId, accountId)
+    });
+    expect(halted.action).toBe("halted");
+    expect(getBrokerPlacementPauseMarker(userId, accountId)).toBeDefined();
+
+    const stop = mobile.queueMobileCommand({ userId, commandType: "strategy.stop", idempotencyKey: `stop-${randomUUID()}` });
+    const stopped = await mobile.executeProtectiveMobileCommandImmediately(stop.command.id, userId);
+    expect(stopped.status).toBe("succeeded");
+    expect(getBrokerPlacementPauseMarker(userId, accountId)).toBeUndefined();
+
+    const healthy = await applyBrokerOrderPlacementPause({
+      userId,
+      connectedAccountId: accountId,
+      accountScope: accountId,
+      health: { isHealthy: true },
+      policy: db.getPolicy(userId, accountId)
+    });
+    expect(healthy.action).toBe("none");
+    expect(db.getPolicy(userId, accountId).systemState).toBe("halted");
+  });
+
   it("an owner Pause that lands while the probe is in flight is not claimed as an auto-pause", async () => {
     const { applyBrokerOrderPlacementPause, getBrokerPlacementPauseMarker } = await import("../src/lib/broker-health");
     const { getPolicy, setPolicy } = await import("../src/lib/db");

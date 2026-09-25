@@ -83,7 +83,7 @@ Files:
 - `src/lib/strategy.ts` (in-run skip branch only, ~6 lines — shared C/D file, kept minimal)
 - `src/lib/mobile-api.ts` (release marker on `strategy.stop`)
 - `app/api/strategy/pause/route.ts`
-- `test/broker-health-probe-resilience.test.ts` (new, 16 cases)
+- `test/broker-health-probe-resilience.test.ts` (new, 17 cases)
 - `test/strategy-run-restart-retry.test.ts` (new, 14 cases)
 - `test/scheduler-leader-heartbeat.test.ts` (mock the new sweep entry point)
 - `test/persistence-hardening.test.ts` (schema version 91 → 92)
@@ -122,7 +122,8 @@ Files:
 Host load average was 400–700 during this session (parallel lanes), so wall-clock numbers are
 inflated.
 
-- `npx vitest run test/broker-health-probe-resilience.test.ts` — 16 passed.
+- `npx vitest run test/broker-health-probe-resilience.test.ts` — 17 passed (the mobile
+  `strategy.stop`-on-top-of-an-auto-pause case was added in a follow-up commit after the full gate).
 - `npx vitest run test/strategy-run-restart-retry.test.ts` — 14 passed.
 - Regression proof: with the two core fixes reverted in place (streak condition, pre-boot activity
   floor), "does not halt on the first alpaca.getAccount timeout", "does not halt on the first
@@ -134,7 +135,12 @@ inflated.
   strategy-run-status, scheduler-tick-reentrancy, scheduler-leader-heartbeat) — green after pointing
   the heartbeat test's mock at `sweepStaleRunsAndRetry`.
 - `npx tsc --noEmit` clean; eslint on changed files 0 errors.
-- Full gate (`npm run lint` → `npx tsc --noEmit` → `npm test` → `npm run build`): see the PR body.
+- Full gate, in order, on `e9914c424`: `npm run lint` 0 errors / 830 pre-existing warnings;
+  `npx tsc --noEmit` clean; `npm test` 756 files passed / 1 skipped, 8302 tests passed / 51 skipped,
+  0 failed; `npm run build` clean (compiled with the pre-existing middleware-to-proxy warning).
+- `scripts/land.sh` armed auto-merge after pushing; it was disabled immediately
+  (`gh pr merge 3752 --disable-auto`) because this lane is money-path adjacent and the lead reviews
+  first.  PR #3752.
 
 ## 5. Next Steps & Blockers
 

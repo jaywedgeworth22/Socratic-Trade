@@ -149,9 +149,15 @@ Node 24 (`/opt/homebrew/opt/node@24/bin`).
   test/alpaca-activity-ledger.test.ts test/risk-breaker.test.ts test/ops-hwm-recompute.test.ts
   test/ops-account-activity.test.ts test/alpaca-account-insights.test.ts
   test/strategy-moneypath-drawdown-flip.test.ts test/guard-enablement.test.ts
-  test/drawdown-breaker-action-api.test.ts` — see the PR body for the final counts.
-- Full gate (`npm run lint` → `npx tsc --noEmit` → `npm test` → `npm run build`): results in
-  the PR body.
+  test/drawdown-breaker-action-api.test.ts` — all pass.
+- Full gate, run in order on this branch (machine load average ~250-300 from parallel lanes):
+  - `npm run lint` — 0 errors, 830 warnings (grandfathered backlog; the only warnings in touched
+    files are pre-existing ones in `src/lib/strategy.ts`).
+  - `npx tsc --noEmit` — clean.
+  - `VITEST_MAX_THREADS=4 npm test -- --run` — 756 files passed, 1 skipped; 8306 tests passed,
+    51 skipped, 0 failed.
+  - `npm run build` — success; `/api/ops/account-activity` listed as a dynamic route.  The
+    `@sentry/nextjs` "Attempted import error" lines are pre-existing on origin/main.
 
 ## 5. Next Steps & Blockers
 

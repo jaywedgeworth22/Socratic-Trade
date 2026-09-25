@@ -1006,6 +1006,11 @@ export async function runSyntheticStopMonitor(
         limitPrice: routing.limitPrice,
         timeInForce: "gfd",
         marketHours: routing.marketHours,
+        // This tick's broker position read (signed): the placement choke point's fallback if its
+        // own fresh read fails — a protective exit of a verified quantity must still go out.
+        // Only a quantity the broker actually reported counts as verified (posQty falls back to the
+        // stop's stored quantity when the symbol is missing from the read).
+        verifiedPositionQuantity: positions.find((p) => normalizeSymbol(p.symbol) === normalizeSymbol(stop.symbol))?.quantity,
         refId: attemptRefId
       });
       // A non-throwing broker response can still be a synchronous rejection/cancellation (same

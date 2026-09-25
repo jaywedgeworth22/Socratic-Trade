@@ -2,6 +2,7 @@ import { LANE_WAITS, withAccountMutation } from "./account-mutation";
 import { loadApprovalQuoteScan } from "./approval-quote-scan";
 import { repriceStoredLimitProposal } from "./approval-reprice";
 import { getBrokerGateway } from "./broker";
+import { normalizeExitSidesForHeldPositions } from "./order-position-invariant";
 import { evaluateBrokerHeldExitAvailability, brokerHeldExitBlockReason } from "./broker-held-orders";
 import { describeBrokerMinimumOrderBlock, planBrokerMinimumBump, shouldAlertBrokerMinimumOrderBlock } from "./broker-minimum-guard";
 import { hasBrokerReportedFill, hasBrokerReportedPricedFill, isLiveOrderState, isRejectedOrCanceledState } from "./broker-side";
@@ -322,6 +323,28 @@ export async function executeProposal(
     lockGuard.assertOwned();
     await notifyStaleLimitOrders({ userId, policy, orders });
     lockGuard.assertOwned();
+
+    // A stored bracketed "buy" of at most a held SHORT is a cover (same wire direction, so the
+    // owner's approval still describes the order): re-verb it against the fresh positions and drop
+    // its legs before policy, and persist it so the card shows what the broker receives — the PG
+    // short's twelve 422 "bracket orders must be entry orders".  A stored "sell" of a held short
+    // is NOT flipped here (that reverses the direction the owner approved); the placement choke
+    // point refuses it with the correct verb instead.
+    {
+      const [sideNormalized] = normalizeExitSidesForHeldPositions(
+        [proposal],
+        positions,
+        { userId, connectedAccountId: policy.connectedAccountId, lane: "approval", proposalId },
+        { convertSellToCover: false }
+      );
+      if (sideNormalized !== proposal) {
+        proposal = sideNormalized;
+        if (!updatePendingProposalReprice(proposalId, { proposal }, userId)) {
+          const current = getProposal(proposalId, userId)?.status ?? "removed";
+          throw new Error([`Proposal was ${current} before it could be executed.`].join(" "));
+        }
+      }
+    }
 
     // Approval-held protective exits: an extended-hours marketable-limit stored on the card was
     // priced off the generation-time quote and goes stale while it waits for a human — a quote that

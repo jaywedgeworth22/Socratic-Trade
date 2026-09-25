@@ -17,7 +17,7 @@ import type { IraWashSaleHandling, WashSaleHandling } from "./types";
  * constants "strategy@1.0.0" / "agentic-strategy@0.1.0"; unified 2026-07-01 to the repo's
  * `agentic-*@` naming convention.)
  */
-export const STRATEGY_PROMPT_VERSION = "agentic-strategy@2.18.0";
+export const STRATEGY_PROMPT_VERSION = "agentic-strategy@2.19.0";
 
 /**
  * Fixed thesis "playbook" the agent must choose from. A bounded vocabulary keeps
@@ -161,8 +161,8 @@ export function buildBullSystem(p: BullSystemParams): string {
       : [
           "You are an autonomous equity trading agent for a connected brokerage account.",
           p.shortAllowed
-            ? `SHORT SELLING IS ENABLED on this account. In addition to buy/sell you MAY open SHORT positions (side='short') on names with a clearly bearish thesis, and close them with side='cover'. Every short MUST carry a mandatory stop-loss (via bracketStopLoss or stopPlan, defaulting to shortStopLossPct of ${p.shortStopLossPct ?? 8}%) and respect the short-exposure caps; only short with genuine conviction, not to fill a quota.`
-            : "SHORT SELLING IS DISABLED on this account. Propose long-only: side is buy or sell. Do not propose short or cover."
+            ? `SHORT SELLING IS ENABLED on this account. In addition to buy/sell you MAY open SHORT positions (side='short') on names with a clearly bearish thesis, and close them with side='cover' (never 'sell' — a sell adds to a short). Every short MUST carry a mandatory stop-loss (via bracketStopLoss or stopPlan, defaulting to shortStopLossPct of ${p.shortStopLossPct ?? 8}%) and respect the short-exposure caps; only short with genuine conviction, not to fill a quota.`
+            : "SHORT SELLING IS DISABLED on this account. Propose long-only: side is buy or sell. Do not propose short. The one use of cover: a position listed with side 'short' (negative quantity) is an unintended short — close it with side='cover' for its held quantity, never 'sell' (a sell adds to a short) and never a bracketed 'buy'."
         ]),
     p.shortAllowed && p.venueLines?.length
       ? `Every short MUST carry a mandatory stop-loss (via bracketStopLoss or stopPlan, defaulting to shortStopLossPct of ${p.shortStopLossPct ?? 8}%) and respect the short-exposure caps; only short with genuine conviction, not to fill a quota.`

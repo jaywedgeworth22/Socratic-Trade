@@ -112,6 +112,49 @@ describe("Alpaca REST path — stop_price gating by order type", () => {
     expect(lastCreateOrderOpts).not.toHaveProperty("stop_price");
   });
 
+  it("does NOT set limit_price on a MARKET order even when limitPrice is provided (PG 422, Jul 16/22)", async () => {
+    // Alpaca 422 "market orders require no stop or limit price": a closing market cover for the
+    // unintended PG short carried the proposal's limitPrice/stopPrice and was refused twice.
+    await seedRestAccount();
+    const { getAlpacaGateway } = await import("../src/lib/alpaca");
+    await getAlpacaGateway("local").placeEquityOrder({
+      accountNumber: "MOCK_ACC",
+      symbol: "PG",
+      side: "cover",
+      type: "market",
+      quantity: 12,
+      limitPrice: 150.1,
+      stopPrice: 155,
+      timeInForce: "gfd",
+      marketHours: "regular_hours",
+      refId: "ref-market-cover-1"
+    });
+    expect(lastCreateOrderOpts.type).toBe("market");
+    expect(lastCreateOrderOpts.side).toBe("buy");
+    expect(lastCreateOrderOpts).not.toHaveProperty("limit_price");
+    expect(lastCreateOrderOpts).not.toHaveProperty("stop_price");
+  });
+
+  it("does NOT set limit_price on a STOP_MARKET order", async () => {
+    await seedRestAccount();
+    const { getAlpacaGateway } = await import("../src/lib/alpaca");
+    await getAlpacaGateway("local").placeEquityOrder({
+      accountNumber: "MOCK_ACC",
+      symbol: "PG",
+      side: "sell",
+      type: "stop_market",
+      quantity: 12,
+      limitPrice: 150,
+      stopPrice: 140,
+      timeInForce: "gtc",
+      marketHours: "regular_hours",
+      refId: "ref-stop-market-limit-1"
+    });
+    expect(lastCreateOrderOpts.type).toBe("stop");
+    expect(lastCreateOrderOpts.stop_price).toBe(140);
+    expect(lastCreateOrderOpts).not.toHaveProperty("limit_price");
+  });
+
   it("DOES set stop_price on a stop_market order (positive control)", async () => {
     await seedRestAccount();
     const { getAlpacaGateway } = await import("../src/lib/alpaca");
@@ -189,6 +232,28 @@ describe("Alpaca MCP path — stop_price gating by order type", () => {
     const args = argsSeen[argsSeen.length - 1];
     expect(args.type).toBe("limit");
     expect(args.limit_price).toBe("22");
+    expect(args).not.toHaveProperty("stop_price");
+  });
+
+  it("does NOT set limit_price or stop_price on a MARKET order in the MCP tool args", async () => {
+    await seedMcpAccount();
+    const argsSeen = stubMcpFetch();
+    const { getAlpacaGateway } = await import("../src/lib/alpaca");
+    await getAlpacaGateway("local").placeEquityOrder({
+      accountNumber: "MOCK_ACC",
+      symbol: "PG",
+      side: "cover",
+      type: "market",
+      quantity: 12,
+      limitPrice: 150.1,
+      stopPrice: 155,
+      timeInForce: "gfd",
+      marketHours: "regular_hours",
+      refId: "ref-mcp-market-cover-1"
+    });
+    const args = argsSeen[argsSeen.length - 1];
+    expect(args.type).toBe("market");
+    expect(args).not.toHaveProperty("limit_price");
     expect(args).not.toHaveProperty("stop_price");
   });
 

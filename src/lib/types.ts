@@ -2617,6 +2617,14 @@ export interface EquityOrderInput {
    * there by ratcheting a plain stop_market instead, and never sets this field for them.
    */
   trailPercent?: number;
+  /**
+   * Caller-verified SIGNED position quantity for this symbol (short = negative), from a broker
+   * position read the caller made moments before placing (protective stops, synthetic stops,
+   * stale-exit replacements).  Consumed ONLY by the placement choke point's position invariant
+   * (order-position-invariant.ts) as the fallback when its own fresh read fails, so a protective
+   * exit of a verified quantity is not blocked by a transient read error.  Never sent to a broker.
+   */
+  verifiedPositionQuantity?: number;
 }
 
 /** Scoped broker order-list fetch. Default: open orders plus terminal orders inside a bounded window. */

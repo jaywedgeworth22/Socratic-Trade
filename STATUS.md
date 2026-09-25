@@ -13,6 +13,24 @@ trade-off: the diagnostic token can now cancel orders and change trading state (
 `ops_account_control`).  Wrapper `scripts/ops/account-control.sh`; runbook
 `docs/runbooks/ops-account-control.md`.  Branch `claude/st-ops-account-control`, PR #3754 (auto-merge not armed; review stage arms it).
 Rollout: `docs/rollouts/2026-09-24-st-ops-account-control.md`.
+## 2026-09-24 CLAUDE — Order correctness: no accidental shorts, clamp exits, closing orders carry no brackets
+
+**What.**  A position invariant at the single placement choke point (`getBrokerGateway` ->
+`src/lib/order-position-invariant.ts`) reads the fresh broker position before every app order:
+a sell with no long is refused (it would open a short), a sell/cover above the held position is
+clamped to the exact broker quantity, a buy of at most a held short becomes a cover, closing
+orders drop bracket legs, closing market orders drop limit/stop prices, and full-exit dollar
+orders resolve to the held quantity.  Bracket/OTO/OCO legs — held, bracket-class, or class-less
+but recognised by a bracket sibling — are never stale-alerted or auto cancel-replaced, and an
+activated leg's age is never guessed from its parent's `createdAt`.  LLM `sell` of a held short
+is rewritten to `cover` before policy; the prompt shows `positions[].side` and teaches `cover`
+even on long-only accounts (prompt `agentic-strategy@2.19.0`).  Alpaca and Tradier builders no
+longer send a limit price on market/stop orders.  **Why.**  The 2026-07-08 PG unintended short on
+Alpaca Paper (a stale-exit remediation cancelled a held take-profit leg and market-sold 12 PG the
+account never held), its 2.5 months of refused covers, and the 2026-09-21 VZ 403 fractional
+oversell.  Board `687a5fb4`, lane D, branch `claude/st-order-correctness`.
+Rollout: `docs/rollouts/2026-09-24-st-order-correctness.md`.
+
 ## 2026-09-24 CLAUDE — Warnings crash, rotation failover, exit de-risk default (lane C, board 687a5fb4)
 
 **What/why.**  Three related fixes from the same owner-directed trading-performance program.

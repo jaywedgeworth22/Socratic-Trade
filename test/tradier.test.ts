@@ -136,6 +136,24 @@ describe("Tradier adapter — side & type mapping (write)", () => {
     expect((await place("buy", "stop_limit")).get("type")).toBe("stop_limit");
   });
 
+  it("never sends price/stop on a MARKET order, even when the input carries them", async () => {
+    await seedTradier();
+    const { records } = installFetchMock([
+      { match: (u, m) => u.includes(`/accounts/${ACCT}/orders`) && m === "POST", body: { order: { id: 9, status: "ok" } } }
+    ]);
+    const { getTradierGateway } = await import("../src/lib/tradier");
+    await getTradierGateway("local").placeEquityOrder({
+      accountNumber: ACCT, symbol: "PG", side: "cover", type: "market", quantity: 12,
+      limitPrice: 150.1, stopPrice: 155,
+      timeInForce: "gfd", marketHours: "regular_hours", refId: "r-market-cover"
+    });
+    const form = new URLSearchParams(records.find((r) => r.method === "POST")!.body ?? "");
+    expect(form.get("type")).toBe("market");
+    expect(form.get("side")).toBe("buy_to_cover");
+    expect(form.has("price")).toBe(false);
+    expect(form.has("stop")).toBe(false);
+  });
+
   it("form-encodes the POST with Content-Type application/x-www-form-urlencoded", async () => {
     await seedTradier();
     const { records } = installFetchMock([

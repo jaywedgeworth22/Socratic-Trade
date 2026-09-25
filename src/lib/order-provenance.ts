@@ -95,12 +95,67 @@ export function isAppPlacedBrokerOrder(
   }
 }
 
-/** Returns a skip reason when automated stale-exit cancel-replace must not touch this order. */
+/** Legs of one bracket/OTO/OCO are created together; Alpaca stamps them within milliseconds. */
+const CONTINGENT_SIBLING_WINDOW_MS = 5_000;
+
+function brokerWireSide(side: EquityOrder["side"] | undefined): "buy" | "sell" | "" {
+  const normalized = String(side ?? "").trim().toLowerCase();
+  if (normalized === "buy" || normalized === "cover") return "buy";
+  if (normalized === "sell" || normalized === "short") return "sell";
+  return "";
+}
+
+/**
+ * True when `order` is a member of a multi-leg (bracket/OTO/OCO) order group — a contingent leg
+ * the app must never treat as a standalone working order (stale alert, auto cancel-replace).
+ * However the broker's flat order list labels it:
+ *   - state "held" (waiting on its parent entry to fill) — whatever its order_class;
+ *   - a bracket-family order_class ("bracket" / "oco" / "oto");
+ *   - NO order_class, but a bracket-family sibling in the same listing on the same symbol, on
+ *     the opposite wire side, created within a few seconds — Alpaca's leg rows can arrive
+ *     without the class, and the 2026-07-08 PG take-profit leg (c6e5334f, Alpaca-minted client
+ *     id) looked like an ordinary sell to the stale-exit remediation, which cancelled it and
+ *     sold 12 PG the account never held.
+ * Deliberately conservative: a false positive only means "the app leaves this order alone".
+ */
+export function isContingentOrderLeg(
+  order: EquityOrder,
+  siblings: readonly EquityOrder[] = [],
+  options: { brokerEvidenceOnly?: boolean } = {}
+): boolean {
+  if (String(order.state ?? "").trim().toLowerCase() === "held") return true;
+  if (isBracketOrderClass(order.orderClass)) return true;
+  // A nearby opposite-side bracket order is only a heuristic, not proof of
+  // parentage. Automatic remediation must stay conservative, but a manually
+  // confirmed replacement must not be blocked by an unrelated order.
+  if (options.brokerEvidenceOnly) return false;
+  const symbol = normalizeSymbol(order.symbol);
+  const side = brokerWireSide(order.side);
+  const createdMs = Date.parse(order.createdAt);
+  if (!side || !Number.isFinite(createdMs)) return false;
+  return siblings.some((sibling) => {
+    if (sibling === order || sibling.id === order.id) return false;
+    if (!isBracketOrderClass(sibling.orderClass)) return false;
+    if (normalizeSymbol(sibling.symbol) !== symbol) return false;
+    const siblingSide = brokerWireSide(sibling.side);
+    if (!siblingSide || siblingSide === side) return false;
+    const siblingMs = Date.parse(sibling.createdAt);
+    return Number.isFinite(siblingMs) && Math.abs(siblingMs - createdMs) <= CONTINGENT_SIBLING_WINDOW_MS;
+  });
+}
+
+/**
+ * Returns a skip reason when automated stale-exit cancel-replace must not touch this order.
+ * `siblings` is the broker order listing the order came from — required to recognise a leg whose
+ * row carries no order_class (see isContingentOrderLeg).
+ */
 export function autoReplaceProvenanceSkipReason(
   order: EquityOrder,
-  lookup?: AppPlacedLookup
+  lookup?: AppPlacedLookup,
+  siblings: readonly EquityOrder[] = [],
+  options: { brokerEvidenceOnly?: boolean } = {}
 ): AutoReplaceProvenanceSkipReason | null {
-  if (isBracketOrderClass(order.orderClass)) return "bracket_leg";
+  if (isContingentOrderLeg(order, siblings, options)) return "bracket_leg";
   if (!isAppPlacedBrokerOrder(order, lookup)) return "not_app_placed";
   if (lookup && hasOwnerCancelledProtectiveStop(lookup.userId, lookup.accountNumber, order.symbol)) return "owner_cancelled_stop";
   return null;

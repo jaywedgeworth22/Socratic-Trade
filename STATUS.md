@@ -1,5 +1,13 @@
 # Current Status
 
+## 2026-09-25 CLAUDE — Add 2026-09-25 trading performance report to docs
+
+**What/why.**  Docs-only.  Added the owner-facing performance analysis (produced by CLAUDE's
+performance-analysis workflow from `GET /api/ops/performance?days=120` at 2026-09-25 19:21Z) to
+`docs/reviews/2026-09-25-trading-performance-report.md`, so it has a permanent, reviewable home
+alongside the rest of the review corpus instead of living only in a scratch/durable session file.
+No code changes.  Board `687a5fb4`, lane G5, branch `claude/st-perf-report-docs`.
+Rollout: `docs/rollouts/2026-09-25-st-perf-report-docs.md`.
 ## 2026-09-25 CLAUDE — PR #3756 re-synced with main
 
 Merged `origin/main` into `claude/st-stall-profiler` to pick up #3761, #3774, #3778 (no file
@@ -134,6 +142,21 @@ real SHORT-bracket entry/exit misclassification bug during review (side-agnostic
 `bracketSiblingWorkingCount` fix — see the rollout note).
 PR #3755, branch `claude/st-order-roles`, worktree `~/apps/trading-claude-st-order-roles`.
 Rollout: `docs/rollouts/2026-09-24-st-order-roles.md`.
+## 2026-09-24 CLAUDE — Strategy run halt and restart resilience (board 687a5fb4, lane B)
+
+**What.**  Probe timeouts (`checkBrokerHealth timeout`, `alpaca.getAccount 16000+8000ms`) no longer
+auto-halt Autopilot on the first strike — they join the 3-in-a-row streak via a structural
+`__deadlineTimeout` flag.  A probe that timed out while the event loop was stalled for ≥75% of its
+window skips the tick with "App process was stalled (event loop blocked Xs of Ys); broker not at
+fault" and never touches the streak.  The pause decision now reads the durable policy and writes only
+`systemState`, and an owner Pause / mobile Stop / boot interlock drops the auto-resume marker, so an
+owner halt is never auto-lifted.  Restart-killed runs that wrote no proposal, fill, or decision get
+exactly one account-targeted retry (migration 92, `strategy-run-retry.ts`).  Broker-lane ceiling
+15s → 30s (was below Alpaca's 16s first wait).
+**Why.**  Last 50 Alpaca Paper runs: 21 first-strike halts during RTH stalls, 2 more timeouts, 11
+restart-killed runs never retried, 14 completed.
+**PR.**  Branch `claude/st-run-resilience`; money-path adjacent — adversarial review before merge.
+Rollout: `docs/rollouts/2026-09-24-st-run-resilience.md`.
 
 ## 2026-09-24 MUSE — LLM stats console review-findings sweep (PR #3452)
 

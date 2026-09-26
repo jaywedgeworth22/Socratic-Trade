@@ -45,6 +45,7 @@ import {
   type ExecuteProposalResult
 } from "./placement-outcome";
 import { executeProposal, LiveApprovalConfirmationError, LiveApprovalConfirmation } from "./strategy-execution";
+import { releaseBrokerPlacementPauseToOwner } from "./broker-health";
 
 export const MOBILE_COMMAND_TYPES = [
   "strategy.run_once",
@@ -888,6 +889,16 @@ async function setStrategyState(userId: string, state: SystemState): Promise<{ o
   const next = { ...policy, systemState: state } as TradingPolicy & { enabled?: boolean };
   if (state === "halted") next.enabled = false;
   setPolicy(next, userId);
+  if (state === "halted") {
+    // Owner Stop on top of a broker-health auto-pause: the halt is now the owner's, so a later
+    // healthy probe must never auto-resume it (board 687a5fb4).
+    releaseBrokerPlacementPauseToOwner({
+      userId,
+      connectedAccountId: policy.connectedAccountId,
+      accountNumber: policy.accountNumber,
+      source: "mobile/strategy.stop"
+    });
+  }
   audit("mobile_strategy_state", { from: policy.systemState, to: state }, userId);
   return { ok: true, systemState: state };
 }

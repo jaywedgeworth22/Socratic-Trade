@@ -3321,6 +3321,30 @@ const MIGRATIONS: Migration[] = [
       database.exec("CREATE INDEX IF NOT EXISTS idx_llm_usage_model_status ON llm_usage (model, status, created_at)");
       database.exec("CREATE INDEX IF NOT EXISTS idx_llm_usage_provider_status ON llm_usage (provider, status, created_at)");
     }
+  },
+  {
+    // Board 687a5fb4 (2026-09-24, lane B st-run-resilience): one-time retry of a strategy run the
+    // stale-run sweep marked failed because the PROCESS RESTARTED mid-run (operators restart the
+    // container during RTH event-loop stalls; 11 of the last 50 Alpaca Paper runs died this way
+    // and none was retried).  A retry must target the killed run's account (the queue was
+    // user-scoped: the drain ran the user's ACTIVE account) and carry its lineage so a retry is
+    // never itself retried.  Both columns nullable: every existing row (Manual Run once) keeps its
+    // exact behavior.  The partial UNIQUE index makes "at most one retry per killed run" a
+    // database invariant, not just an application check.
+    version: 92,
+    name: "strategy_run_requests_account_and_retry_lineage",
+    up: (database) => {
+      if (!tableExists(database, "strategy_run_requests")) return;
+      if (!columnExists(database, "strategy_run_requests", "connected_account_id")) {
+        database.exec("ALTER TABLE strategy_run_requests ADD COLUMN connected_account_id TEXT");
+      }
+      if (!columnExists(database, "strategy_run_requests", "retry_of_run_id")) {
+        database.exec("ALTER TABLE strategy_run_requests ADD COLUMN retry_of_run_id TEXT");
+      }
+      database.exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_strategy_run_requests_retry_of ON strategy_run_requests (retry_of_run_id) WHERE retry_of_run_id IS NOT NULL"
+      );
+    }
   }
 ];
 

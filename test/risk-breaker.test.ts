@@ -253,6 +253,8 @@ describe("recordAndEvaluateDrawdownBreaker (stateful HWM + start-of-day persiste
 // ledger explains, must say so when it cannot tell, and must still enforce a real loss.
 describe("recordAndEvaluateDrawdownBreaker — withdrawals, lagged ledger rows, unexplained drops", () => {
   const rules: RiskRules = { maxDrawdownPct: 15 };
+  // The one-run grace is an explicit owner preference (review round 2026-09-25), default off.
+  const graceRules: RiskRules = { maxDrawdownPct: 15, drawdownUnexplainedDropGrace: true };
   const base = { source: "live" as const, riskRules: rules, userId: "local" };
 
   it("does not breach when a same-run IRA distribution + withholding explains the drop", async () => {
@@ -277,9 +279,23 @@ describe("recordAndEvaluateDrawdownBreaker — withdrawals, lagged ledger rows, 
     expect(r.highWaterMark).toBeCloseTo(29.4, 1);
   });
 
-  it("holds a hard action for one run when the balance drops before the withdrawal row posts, then neutralizes it", async () => {
+  it("does not hold the configured hard action by default: a real 30% crash is enforced on the run it happens", async () => {
     const { recordAndEvaluateDrawdownBreaker } = await import("../src/lib/risk-breaker");
-    const acct = { ...base, accountNumber: "ROTH-LAGGED" };
+    const acct = { ...base, accountNumber: "CRASH-DEFAULT" };
+    recordAndEvaluateDrawdownBreaker({ ...acct, equity: 1000, now: new Date("2026-09-09T14:00:00Z"), externalFlows: [] });
+    const crash = recordAndEvaluateDrawdownBreaker({ ...acct, equity: 700, now: new Date("2026-09-09T15:00:00Z"), externalFlows: [] });
+    expect(crash.breached).toBe(true);
+    // Still reported honestly…
+    expect(crash.unexplainedEquityChange?.dropPct).toBeCloseTo(30, 1);
+    expect(crash.reason).toContain("possibly a withdrawal that has not posted yet");
+    // …but the owner's opted-in close_only / halt is NOT downgraded without their say-so.
+    expect(crash.deferHardAction).toBe(false);
+    expect(crash.reason).not.toContain("held as advisory");
+  });
+
+  it("with the owner's unexplained-drop grace on, holds a hard action for one run when the balance drops before the withdrawal row posts, then neutralizes it", async () => {
+    const { recordAndEvaluateDrawdownBreaker } = await import("../src/lib/risk-breaker");
+    const acct = { ...base, riskRules: graceRules, accountNumber: "ROTH-LAGGED" };
     recordAndEvaluateDrawdownBreaker({ ...acct, equity: 101.62, now: new Date("2026-09-09T14:00:00Z") });
     const dropRun = recordAndEvaluateDrawdownBreaker({
       ...acct,
@@ -304,9 +320,9 @@ describe("recordAndEvaluateDrawdownBreaker — withdrawals, lagged ledger rows, 
     expect(posted.deferHardAction).toBe(false);
   });
 
-  it("enforces a real loss on the next run (never defers the same drop twice)", async () => {
+  it("with the grace on, enforces a real loss on the next run (never defers the same drop twice)", async () => {
     const { recordAndEvaluateDrawdownBreaker } = await import("../src/lib/risk-breaker");
-    const acct = { ...base, accountNumber: "REAL-LOSS" };
+    const acct = { ...base, riskRules: graceRules, accountNumber: "REAL-LOSS" };
     recordAndEvaluateDrawdownBreaker({ ...acct, equity: 1000, now: new Date("2026-09-09T14:00:00Z") });
     const first = recordAndEvaluateDrawdownBreaker({ ...acct, equity: 700, now: new Date("2026-09-09T15:00:00Z"), externalFlows: [] });
     expect(first.breached).toBe(true);
@@ -334,9 +350,9 @@ describe("recordAndEvaluateDrawdownBreaker — withdrawals, lagged ledger rows, 
     expect(after.deferHardAction).toBe(false);
   });
 
-  it("reports an unreadable ledger honestly and defers only once while it stays unreadable", async () => {
+  it("reports an unreadable ledger honestly and (grace on) defers only once while it stays unreadable", async () => {
     const { recordAndEvaluateDrawdownBreaker } = await import("../src/lib/risk-breaker");
-    const acct = { ...base, accountNumber: "LEDGER-DOWN" };
+    const acct = { ...base, riskRules: graceRules, accountNumber: "LEDGER-DOWN" };
     recordAndEvaluateDrawdownBreaker({ ...acct, equity: 100, now: new Date("2026-09-09T14:00:00Z") });
     const down = { externalFlows: [], appliedActivityIds: [], advanceObservation: false, flowsUnavailable: true };
     const r1 = recordAndEvaluateDrawdownBreaker({ ...acct, ...down, equity: 50, now: new Date("2026-09-09T15:00:00Z") });
@@ -371,6 +387,83 @@ describe("recordAndEvaluateDrawdownBreaker — withdrawals, lagged ledger rows, 
     expect(r.breached).toBe(true);
     expect(r.unexplainedEquityChange).toBeUndefined();
     expect(r.deferHardAction).toBe(false);
+  });
+});
+
+// Review round 2026-09-25: a run whose ledger read fails still ratchets the persisted HWM but
+// keeps the observation cursor.  When the ledger recovers, a deposit that the ratchet already
+// absorbed must not be added a second time (phantom drawdown / false daily-loss breach).
+describe("recordAndEvaluateDrawdownBreaker — ledger outage then recovery", () => {
+  const rules: RiskRules = { maxDrawdownPct: 15, maxDailyLossNotional: 500 };
+  const base = { source: "live" as const, riskRules: rules, userId: "local" };
+  const down = { externalFlows: [], appliedActivityIds: [], advanceObservation: false, flowsUnavailable: true };
+
+  it("does not add a deposit the ratchet already absorbed during the outage (HWM or start-of-day)", async () => {
+    const { recordAndEvaluateDrawdownBreaker } = await import("../src/lib/risk-breaker");
+    const acct = { ...base, accountNumber: "OUTAGE-DEPOSIT" };
+    recordAndEvaluateDrawdownBreaker({ ...acct, equity: 1000, now: new Date("2026-09-09T15:00:00Z"), externalFlows: [] });
+    // Ledger down; the $1000 deposit is already in equity, so the ratchet lifts the mark to 2000
+    // and the day's first run captures start-of-day equity 2000.
+    const during = recordAndEvaluateDrawdownBreaker({ ...acct, ...down, equity: 2000, now: new Date("2026-09-10T14:00:00Z") });
+    expect(during.highWaterMark).toBeCloseTo(2000, 2);
+    expect(during.startOfDayEquity).toBeCloseTo(2000, 2);
+    // Ledger back: the deposit is now a fresh row.
+    const recovered = recordAndEvaluateDrawdownBreaker({
+      ...acct,
+      equity: 2000,
+      now: new Date("2026-09-10T16:00:00Z"),
+      externalFlows: [{ amount: 1000, day: "2026-09-10" }]
+    });
+    expect(recovered.highWaterMark).toBeCloseTo(2000, 2);
+    expect(recovered.startOfDayEquity).toBeCloseTo(2000, 2);
+    expect(recovered.breached).toBe(false);
+  });
+
+  it("still raises the mark by a deposit that landed while the account sat below its HWM", async () => {
+    const { recordAndEvaluateDrawdownBreaker } = await import("../src/lib/risk-breaker");
+    const acct = { ...base, riskRules: { maxDrawdownPct: 25 }, accountNumber: "OUTAGE-DEPOSIT-HOLE" };
+    recordAndEvaluateDrawdownBreaker({ ...acct, equity: 1000, now: new Date("2026-09-09T14:00:00Z"), externalFlows: [] });
+    recordAndEvaluateDrawdownBreaker({ ...acct, equity: 850, now: new Date("2026-09-09T15:00:00Z"), externalFlows: [] });
+    recordAndEvaluateDrawdownBreaker({ ...acct, ...down, equity: 950, now: new Date("2026-09-09T16:00:00Z") });
+    const recovered = recordAndEvaluateDrawdownBreaker({
+      ...acct,
+      equity: 950,
+      now: new Date("2026-09-09T17:00:00Z"),
+      externalFlows: [{ amount: 100, day: "2026-09-09" }]
+    });
+    // The $150 loss stays a drawdown against a mark raised by the new capital: 1100 → 950.
+    expect(recovered.highWaterMark).toBeCloseTo(1100, 2);
+  });
+
+  it("still neutralizes a withdrawal that landed during the outage", async () => {
+    const { recordAndEvaluateDrawdownBreaker } = await import("../src/lib/risk-breaker");
+    const acct = { ...base, accountNumber: "OUTAGE-WITHDRAW" };
+    recordAndEvaluateDrawdownBreaker({ ...acct, equity: 1000, now: new Date("2026-09-09T14:00:00Z"), externalFlows: [] });
+    recordAndEvaluateDrawdownBreaker({ ...acct, ...down, equity: 500, now: new Date("2026-09-09T15:00:00Z") });
+    const recovered = recordAndEvaluateDrawdownBreaker({
+      ...acct,
+      equity: 500,
+      now: new Date("2026-09-09T16:00:00Z"),
+      externalFlows: [{ amount: -500, day: "2026-09-09" }]
+    });
+    expect(recovered.highWaterMark).toBeCloseTo(500, 2);
+    expect(recovered.startOfDayEquity).toBeCloseTo(500, 2);
+    expect(recovered.breached).toBe(false);
+  });
+
+  it("stamps the HWM and the ledger version on each advanced observation", async () => {
+    const { recordAndEvaluateDrawdownBreaker, readDrawdownHwmObservation, HWM_LEDGER_VERSION } = await import("../src/lib/risk-breaker");
+    const acct = { ...base, accountNumber: "OBS-STAMP" };
+    recordAndEvaluateDrawdownBreaker({
+      ...acct,
+      equity: 1234.5,
+      now: new Date("2026-09-09T14:00:00Z"),
+      externalFlows: [],
+      ledgerVersion: HWM_LEDGER_VERSION
+    });
+    const obs = readDrawdownHwmObservation("local", "OBS-STAMP", "live");
+    expect(obs?.hwm).toBeCloseTo(1234.5, 2);
+    expect(obs?.ledgerVersion).toBe(HWM_LEDGER_VERSION);
   });
 });
 
@@ -412,5 +505,44 @@ describe("replayHighWaterMarkFromDailyHistory (ops recompute)", () => {
     expect(r.unexplainedDrops.map((d) => d.day)).toEqual(["2026-09-09", "2026-09-18"]);
     expect(r.unexplainedDrops[0].dropPct).toBeCloseTo(71.07, 1);
     expect(r.highWaterMark).toBeCloseTo(101.62, 2);
+  });
+
+  // Review round 2026-09-25: Alpaca dates CSW / CSD / ACATC on any calendar day, but daily closes
+  // exist only for trading days.  A weekend withdrawal must explain Monday's lower close.
+  it("counts a flow dated on a day with no close against the next close (weekend withdrawal)", async () => {
+    const { replayHighWaterMarkFromDailyHistory } = await import("../src/lib/risk-breaker");
+    const r = replayHighWaterMarkFromDailyHistory({
+      flows: [
+        { day: "2026-09-01", amount: 100 },
+        { day: "2026-09-05", amount: -50 }
+      ],
+      dailyEquity: [
+        { day: "2026-09-01", equity: 100 },
+        { day: "2026-09-04", equity: 100 },
+        { day: "2026-09-07", equity: 50 }
+      ],
+      currentEquity: 50
+    });
+    expect(r.unexplainedDrops).toEqual([]);
+    expect(r.highWaterMark).toBeCloseTo(50, 2);
+    expect(r.netTransfers).toBeCloseTo(50, 2);
+  });
+
+  it("still flags a fall with no flow at all between two closes", async () => {
+    const { replayHighWaterMarkFromDailyHistory } = await import("../src/lib/risk-breaker");
+    const r = replayHighWaterMarkFromDailyHistory({
+      flows: [
+        { day: "2026-09-01", amount: 100 },
+        { day: "2026-09-05", amount: -50 }
+      ],
+      dailyEquity: [
+        { day: "2026-09-01", equity: 100 },
+        { day: "2026-09-04", equity: 100 },
+        { day: "2026-09-07", equity: 50 },
+        { day: "2026-09-08", equity: 30 }
+      ],
+      currentEquity: 30
+    });
+    expect(r.unexplainedDrops.map((d) => d.day)).toEqual(["2026-09-08"]);
   });
 });

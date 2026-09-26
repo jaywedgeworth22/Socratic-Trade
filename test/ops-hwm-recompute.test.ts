@@ -205,6 +205,11 @@ describe("POST /api/ops/hwm/recompute", () => {
     expect(urls.some((u) => u.includes("DIVTX"))).toBe(false);
     expect(JSON.stringify(body)).not.toMatch(/key-id|key-secret|APCA-API/);
     expect(db.getInternalSetting<number>("risk:hwm:local:ROTH-HIST:live")).toBeCloseTo(1.74, 2);
+    // The live recorder must treat this observation as current-format (no re-seed, no re-apply).
+    const { HWM_LEDGER_VERSION } = await import("../src/lib/risk-breaker");
+    const obs = db.getInternalSetting<{ hwm?: number; ledgerVersion?: number }>("risk:hwm-obs:local:ROTH-HIST:live");
+    expect(obs?.ledgerVersion).toBe(HWM_LEDGER_VERSION);
+    expect(obs?.hwm).toBeCloseTo(1.74, 2);
   });
 
   it("refuses to touch the HWM when the activity ledger cannot be read (502 flowsUnavailable)", async () => {
@@ -259,6 +264,45 @@ describe("POST /api/ops/hwm/recompute", () => {
     expect(body.unexplainedEquityChange.method).toBe("ledger-only");
     expect(body.unexplainedEquityChange.reason).toContain("no contribution or deposit");
     expect(db.getInternalSetting<number>("risk:hwm:local:ROTH-NOHIST:live")).toBe(30);
+  });
+
+  // Review round 2026-09-25: observations written before this change carry no applied ids (main's
+  // ledger read was failing), so the 2-day overlap would re-read deposits the HWM ratchet already
+  // absorbed and add them a second time.  The first run after upgrade must seed, not apply.
+  it("live loader: an observation from before the ledger-version marker seeds applied ids instead of re-applying overlap flows", async () => {
+    const id = randomUUID();
+    const db = await seedRoth(id, "UPGRADE-SEED", 2000);
+    db.setInternalSetting("risk:hwm-obs:local:UPGRADE-SEED:live", {
+      equity: 2000,
+      at: "2026-09-10T16:00:00.000Z",
+      appliedActivityIds: []
+    });
+    const deposit = { id: "20260909000000000::dep", activity_type: "CSD", date: "2026-09-09", net_amount: "1000", status: "executed" };
+    stubAlpaca({ ledger: [deposit] });
+    const { loadCashFlowsForDrawdownBreaker } = await import("../src/lib/risk-hwm");
+    const { recordAndEvaluateDrawdownBreaker, HWM_LEDGER_VERSION } = await import("../src/lib/risk-breaker");
+    const seeded = await loadCashFlowsForDrawdownBreaker({ userId: "local", accountNumber: "UPGRADE-SEED", source: "live", connectedAccountId: id });
+    expect(seeded?.flowsUnavailable).toBeFalsy();
+    expect(seeded?.externalFlows).toEqual([]);
+    expect(seeded?.appliedActivityIds).toContain(deposit.id);
+    expect(seeded?.ledgerVersion).toBe(HWM_LEDGER_VERSION);
+    const run = recordAndEvaluateDrawdownBreaker({
+      accountNumber: "UPGRADE-SEED",
+      source: "live",
+      equity: 2000,
+      riskRules: { maxDrawdownPct: 15 },
+      userId: "local",
+      now: new Date("2026-09-10T18:00:00Z"),
+      ...(seeded ?? {})
+    });
+    expect(run.highWaterMark).toBeCloseTo(2000, 2);
+    expect(run.breached).toBe(false);
+
+    // Next run: the seeded deposit is deduped; a genuinely new deposit is applied.
+    const fresh = { id: "20260910000000000::dep2", activity_type: "CSD", date: "2026-09-10", net_amount: "500", status: "executed" };
+    stubAlpaca({ ledger: [fresh, deposit] });
+    const next = await loadCashFlowsForDrawdownBreaker({ userId: "local", accountNumber: "UPGRADE-SEED", source: "live", connectedAccountId: id });
+    expect(next?.externalFlows).toEqual([{ amount: 500, day: "2026-09-10" }]);
   });
 
   it("surfaces an unrecognized non-trade type in the response without applying it", async () => {

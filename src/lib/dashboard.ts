@@ -50,7 +50,7 @@ import {
 } from "./performance";
 import { computeSpyBenchmarkDetailed, type SpyBenchmarkResult } from "./benchmark";
 import { brokerFlowOnDay, isBrokerTransferActivity } from "./broker-cash-flows";
-import { fetchAlpacaAccountActivities } from "./alpaca-account-insights";
+import { fetchAlpacaNonTradeActivities } from "./alpaca-account-insights";
 import { centralTradingDayKey } from "./trading-day";
 import { getTaxSummary, overlayAccountTaxationType } from "./tax";
 import { getBrokerGateway } from "./broker";
@@ -820,14 +820,12 @@ async function computeDashboardSnapshot(userId: string = "local", currentUser?: 
         ? await withDeadline(
             // category=non_trade_activity, classified client-side in broker-cash-flows: a server-side
             // activity_types filter once carried a non-Alpaca code ("DIVTX") and could not name every
-            // IRA cash type (2026-09-24).
-            fetchAlpacaAccountActivities(userId, {
-              category: "non_trade_activity",
-              connectedAccountId: activeAccount?.id
-            }),
+            // IRA cash type (2026-09-24).  Same fallback-aware reader as the drawdown HWM and the ops
+            // routes, so a rejected `category` degrades to the documented type list, not to [].
+            fetchAlpacaNonTradeActivities(userId, { connectedAccountId: activeAccount?.id }).then((ledger) => ledger.activities),
             4000,
             () => [],
-            "fetchAlpacaAccountActivities",
+            "fetchAlpacaNonTradeActivities",
             timedOutSections
           )
         : [];

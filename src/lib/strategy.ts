@@ -884,9 +884,9 @@ export async function runStrategyOnce(
       if (breaker.breached) {
         const configuredBreakerAction = policy.riskRules.drawdownBreakerAction ?? "advisory";
         // Equity fell hard since the last run with no deposit/withdrawal on the broker ledger (or the
-        // ledger was unreadable): most likely a cash-out whose ledger row has not posted.  Hold an
-        // opted-in hard action as advisory for this ONE run; risk-breaker never defers the same
-        // baseline twice, so a real loss is enforced next run.
+        // ledger was unreadable).  Only when the owner turned on riskRules.drawdownUnexplainedDropGrace
+        // does risk-breaker set deferHardAction, holding an opted-in hard action as advisory for this
+        // ONE run (never the same baseline twice).  By default the configured action applies now.
         const breakerAction = breaker.deferHardAction ? "advisory" : configuredBreakerAction;
         const breakerLedgerContext = {
           ...(breaker.deferHardAction && configuredBreakerAction !== "advisory" ? { deferredHardAction: configuredBreakerAction } : {}),

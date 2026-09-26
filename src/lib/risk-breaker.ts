@@ -93,14 +93,35 @@ export interface DrawdownHwmObservation {
   at: string;
   appliedActivityIds?: string[];
   pendingDrop?: PendingEquityDrop;
+  /**
+   * The persisted HWM as it stood when this observation was taken.  A run whose ledger read fails
+   * still ratchets the persisted mark but keeps this observation (the retry cursor), so when the
+   * ledger recovers a deposit is applied from here — never on top of a ratchet that may already
+   * include it.  Absent on observations written before 2026-09-25.
+   */
+  hwm?: number;
+  /**
+   * `HWM_LEDGER_VERSION` when `appliedActivityIds` came from a successful category ledger read.
+   * An observation without it (written while the old typed-filter read was failing and every
+   * run stored an empty id list) is re-seeded by the live loader instead of trusted.
+   */
+  ledgerVersion?: number;
 }
 
 /**
- * A run-over-run equity fall at least this large with NO external flow on the ledger is treated
- * as "not yet explained": the breaker still reports the breach, but an opted-in hard action
- * (close_only / halted) is held as advisory for ONE run so a withdrawal whose ledger row posts a
- * little after the balance moves cannot halt the account.  A real loss is enforced on the next
- * run.  Losses this fast between two consecutive runs are rare; external cash-outs are not.
+ * Ledger format stamped on observations.  Bump when the meaning of `appliedActivityIds` changes so
+ * the first live run after deploy seeds ids (without applying flows) instead of re-applying rows
+ * the HWM ratchet already absorbed.  2 = `category=non_trade_activity` read (2026-09-24).
+ */
+export const HWM_LEDGER_VERSION = 2;
+
+/**
+ * A run-over-run equity fall at least this large with NO external flow on the ledger is reported as
+ * "not yet explained" (possibly a withdrawal whose ledger row has not posted).  The configured
+ * breaker action still applies unless the owner turned on `riskRules.drawdownUnexplainedDropGrace`,
+ * which holds an opted-in hard action (close_only / halted) as advisory for ONE run; a real loss is
+ * then enforced on the next run.  The follow-up run re-bases the HWM either way when the
+ * withdrawal posts.
  */
 export const UNEXPLAINED_EQUITY_DROP_PCT = 20;
 
@@ -209,9 +230,10 @@ export interface UnexplainedDailyEquityDrop {
  *
  * Per day, in order: apply that day's net flow against the previous close, then ratchet to the
  * day's close.  Alpaca dates a withdrawal on the day its close reflects it, so the pairing is
- * day-consistent.  Also reports each close-to-close fall ≥ UNEXPLAINED_EQUITY_DROP_PCT on a day
- * with no counted flow — the honest signal that a withdrawal is missing from the ledger (or that
- * the account really lost that much).
+ * day-consistent.  Also reports each close-to-close fall ≥ UNEXPLAINED_EQUITY_DROP_PCT with no
+ * counted flow since the previous close (a flow dated on a weekend or holiday counts toward the
+ * next close) — the honest signal that a withdrawal is missing from the ledger (or that the
+ * account really lost that much).
  */
 export function replayHighWaterMarkFromDailyHistory(args: {
   flows: Array<{ day: string; amount: number }>;
@@ -233,6 +255,10 @@ export function replayHighWaterMarkFromDailyHistory(args: {
   let hwm = 0;
   let lastEquity = 0;
   let prevClose: number | undefined;
+  // Flows since the previous close, including days with no close of their own: Alpaca dates a
+  // CSW / CSD / ACATC on any calendar day (weekends, holidays), but closes exist only for trading
+  // days, so a weekend withdrawal is what explains Monday's lower close.
+  let flowSincePrevClose = 0;
   let netTransfers = 0;
   const unexplainedDrops: UnexplainedDailyEquityDrop[] = [];
   for (const day of days) {
@@ -241,10 +267,13 @@ export function replayHighWaterMarkFromDailyHistory(args: {
       netTransfers = round2(netTransfers + flow);
       hwm = adjustHighWaterMarkForExternalFlow({ highWaterMark: hwm, equityBeforeFlow: lastEquity, flow });
       lastEquity = round2(lastEquity + flow);
+      flowSincePrevClose = round2(flowSincePrevClose + flow);
     }
     const close = equityByDay.get(day);
     if (close === undefined) continue;
-    if (flow === 0 && prevClose !== undefined && prevClose > 0) {
+    const flowedSincePrevClose = flowSincePrevClose !== 0;
+    flowSincePrevClose = 0;
+    if (!flowedSincePrevClose && prevClose !== undefined && prevClose > 0) {
       const dropPct = ((prevClose - close) / prevClose) * 100;
       if (dropPct >= UNEXPLAINED_EQUITY_DROP_PCT) {
         unexplainedDrops.push({ day, fromEquity: round2(prevClose), toEquity: round2(close), dropPct: round2(dropPct) });
@@ -294,9 +323,10 @@ export type DrawdownBreakerRecordResult = DrawdownBreakerResult & {
   /** Present when equity fell ≥ UNEXPLAINED_EQUITY_DROP_PCT since the last run with no ledger flow. */
   unexplainedEquityChange?: UnexplainedEquityChange;
   /**
-   * True when a breach coincides with an unexplained drop: the caller should hold an opted-in
-   * hard action (close_only / halted) as advisory for this one run.  Never true twice in a row
-   * for the same baseline, so a real loss is enforced on the next run.
+   * True when a breach coincides with an unexplained drop AND the owner turned on
+   * `riskRules.drawdownUnexplainedDropGrace`: the caller holds an opted-in hard action
+   * (close_only / halted) as advisory for this one run.  Never true twice in a row for the same
+   * baseline, so a real loss is enforced on the next run.  Always false with the grace off.
    */
   deferHardAction: boolean;
 };
@@ -329,6 +359,8 @@ export function recordAndEvaluateDrawdownBreaker(args: {
   advanceObservation?: boolean;
   /** The caller could not read the broker ledger this run (surfaced, never treated as "no flows"). */
   flowsUnavailable?: boolean;
+  /** `HWM_LEDGER_VERSION` when `appliedActivityIds` came from a successful ledger read; stamped on the observation. */
+  ledgerVersion?: number;
 }): DrawdownBreakerRecordResult {
   const { accountNumber, source, equity, riskRules, userId } = args;
   const now = args.now ?? new Date();
@@ -360,11 +392,28 @@ export function recordAndEvaluateDrawdownBreaker(args: {
       const missViaObserved = Math.abs(observedEquity + netFlow - equity);
       if (missViaPending < missViaObserved) lastEquity = pending.fromEquity;
     }
-    adjustedHwm = applyExternalFlowsToHighWaterMark({
+    const flowAmounts = externalFlows.map((flow) => flow.amount);
+    // Apply the flows to the HWM as it stood at the observation they are fresh against.  A run
+    // whose ledger read failed kept that observation but still ratcheted the persisted mark, and
+    // the ratchet may already include a deposit that is only now on the ledger: adding it again
+    // on top of the ratchet is a phantom drawdown (review round 2026-09-25).  `min` also honors
+    // an operator lowering the mark after the observation.
+    const observedHwm =
+      Number.isFinite(prevObs.hwm) && (prevObs.hwm as number) > 0 ? Math.min(prevObs.hwm as number, prevHwm as number) : (prevHwm as number);
+    const fromObservation = applyExternalFlowsToHighWaterMark({
+      highWaterMark: observedHwm,
+      equityBeforeFlows: lastEquity,
+      flows: flowAmounts
+    });
+    // A ratchet since the observation is kept, net of withdrawals only: whether it already holds a
+    // deposit is unknowable, and the reading that cannot manufacture a drawdown is chosen.  In the
+    // ordinary case (mark unchanged since the observation) this never exceeds `fromObservation`.
+    const ratchetCarry = applyExternalFlowsToHighWaterMark({
       highWaterMark: prevHwm as number,
       equityBeforeFlows: lastEquity,
-      flows: externalFlows.map((flow) => flow.amount)
+      flows: flowAmounts.filter((amount) => amount < 0)
     });
+    adjustedHwm = Math.max(fromObservation, ratchetCarry);
     appliedExternalFlowTotal = round2(externalFlows.reduce((sum, flow) => sum + flow.amount, 0));
   }
   const highWaterMark = round2(Math.max(adjustedHwm, equity));
@@ -403,8 +452,16 @@ export function recordAndEvaluateDrawdownBreaker(args: {
     startOfDayEquity = equity;
     setInternalSetting(sodKey(userId, accountNumber, source, day), startOfDayEquity);
   } else if (prevObs && hasFlows) {
+    // Today's start-of-day equity predates these flows only when it was captured at or before the
+    // observation they are fresh against, i.e. that observation was taken today.  Otherwise it was
+    // captured by a run whose ledger read failed (the observation is older), and may already hold
+    // them: a deposit is then left out (adding it twice is a phantom daily loss) while a withdrawal
+    // is still subtracted (the reading that cannot manufacture a loss).
+    const obsAtMs = Date.parse(prevObs.at);
+    const sodPredatesFlows = Number.isFinite(obsAtMs) && centralTradingDayKey(new Date(obsAtMs)) === day;
     const todayNet = externalFlows.reduce((sum, flow) => {
       if (flow.day && flow.day !== day) return sum;
+      if (!sodPredatesFlows && flow.amount > 0) return sum;
       return sum + flow.amount;
     }, 0);
     if (todayNet !== 0) {
@@ -419,7 +476,9 @@ export function recordAndEvaluateDrawdownBreaker(args: {
       equity,
       at: now.toISOString(),
       appliedActivityIds: appliedActivityIds.slice(-500),
-      ...(nextPending ? { pendingDrop: nextPending } : {})
+      ...(nextPending ? { pendingDrop: nextPending } : {}),
+      hwm: highWaterMark,
+      ...(args.ledgerVersion !== undefined ? { ledgerVersion: args.ledgerVersion } : {})
     } satisfies DrawdownHwmObservation);
   } else if (prevObs && (nextPending || pending)) {
     // Keep the retry cursor (equity/at/applied ids) untouched, but record the new pending drop or
@@ -438,13 +497,19 @@ export function recordAndEvaluateDrawdownBreaker(args: {
     maxDailyLossNotional: riskRules.maxDailyLossNotional
   });
 
-  const deferHardAction = result.breached && Boolean(unexplainedEquityChange);
+  // The one-run hold is the owner's explicit preference (default off): without it, an opted-in
+  // close_only / halt applies on this run like any other breach — a genuine crash between two runs
+  // is not second-guessed as a possible transfer (review round 2026-09-25).
+  const graceOptedIn = riskRules.drawdownUnexplainedDropGrace === true;
+  const deferHardAction = result.breached && Boolean(unexplainedEquityChange) && graceOptedIn;
   let reason = result.reason;
   if (result.breached && reason) {
     if (unexplainedEquityChange) {
       reason += ` Equity fell ${unexplainedEquityChange.dropPct.toFixed(2)}% since the last run with no deposit or withdrawal on the broker ledger${
         flowsUnavailable ? " (ledger unreadable this run)" : ""
-      } — possibly a withdrawal that has not posted yet; any hard action is held as advisory for one run.`;
+      } — possibly a withdrawal that has not posted yet${
+        graceOptedIn ? "; per your unexplained-drop grace, any hard action is held as advisory for one run." : "."
+      }`;
     } else if (flowsUnavailable) {
       reason += " The broker cash-flow ledger could not be read this run, so a recent deposit or withdrawal may not be reflected.";
     }

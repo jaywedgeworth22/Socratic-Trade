@@ -143,6 +143,8 @@ that file directly.
 
 ## Hosting & dev servers (multi-agent coordination)
 
+Hosting and routing (apexes, hostnames, hosts, deploy paths): see [`Fleet-OPS/docs/DOMAINS-AND-ROUTING.md`](https://github.com/jaywedgeworth22/Fleet-OPS/blob/main/docs/DOMAINS-AND-ROUTING.md). Built from live Cloudflare, Vercel, Coolify, Namecheap/RDAP, and GitHub APIs by CLAUDE on 2026-09-25; refresh via `Fleet-OPS/scripts/domain-inventory/run-all.sh`.
+
 This repo is touched by several AI tools (Claude Code, Codex, Antigravity/Gemini, Cursor).
 **Each agent works in its OWN git worktree, on its OWN branch** (Claude →
 `~/apps/trading-claude`, Codex → `~/apps/trading-codex`, Antigravity →

@@ -37,6 +37,18 @@ export interface HealthSignals {
    * label audit/notifications (order_capability = OMS/placement path; equity = unfunded, etc.).
    */
   category?: "connectivity" | "account" | "equity" | "error_rate" | "order_capability";
+  /**
+   * Structural: the probe got NO answer inside its wait budget (a deadline or the broker read's
+   * first+retry budget expired).  Streak-eligible like a dead socket — it takes
+   * BROKER_CONNECTIVITY_HALT_STREAK consecutive failures to auto-halt, never one (board 687a5fb4).
+   */
+  probeTimedOut?: boolean;
+  /**
+   * The probe timed out while THIS process's event loop was blocked for most of the probe window
+   * (lag sampler, event-loop-lag.ts).  The broker is not at fault: skip the tick's strategy launch,
+   * never count it toward the halt streak.
+   */
+  processStall?: { stalledMs: number; elapsedMs: number };
 }
 
 type ExecutionPolicy = Pick<TradingPolicy, "accountNumber" | "connectedAccountId" | "activeBroker">;

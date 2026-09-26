@@ -187,30 +187,93 @@ Commands run from `~/apps/trading-claude-st-order-roles` with
   the COMMON-BRIEF's "skip `npm ci` if `node_modules/better-sqlite3` exists" shortcut — that
   check alone doesn't guarantee the rest of the install is intact.
 
-## 7. Review Round (2026-09-25, independent review of PR #3755)
+## 7. Build Fix + Review Round (2026-09-25/26)
 
-Undocumented context first: the immediately preceding commit (`a466c2ec4`, "split order-role.ts
-into a pure module + server-only order-role-context.ts") had already fixed the client-bundle
-build break by the time this review round started, but its own commit message promised a
-"review-round section to follow in a subsequent commit" that never landed until now.  Recorded
-here for the paper trail: `app/console/orders/page.tsx` ("use client") now imports only
-`ORDER_ROLE_LABELS`/`OrderRole` from the pure `src/lib/order-role.ts`; the DB-backed
-`loadOrderRoleContexts`/`attachOrderRoles`/`buildOpsWorkingOrderDetails` moved to a new
-`src/lib/order-role-context.ts` guarded by `import "server-only"`; `dashboard.ts` and
-`ops-snapshot.ts` were repointed at the new file.
+**Root cause of the `verify-hosted` failure.** `app/console/orders/page.tsx` ("use client")
+imports `ORDER_ROLE_LABELS`/`type OrderRole` from `src/lib/order-role.ts`. That file also
+imported `getDb` (`./db`) and `order-provenance.ts` directly for its DB-backed context builder —
+both pull in `"server-only"` transitively — so the client bundle dragged in the entire DB layer
+and `next build` failed:
 
-Seven independent-review findings were checked against the actual code on this branch (not
-assumed correct); two were already fixed by `a466c2ec4` above, two were real and fixed here
-test-first, one was a duplicate of the same real bug, one was a documentation-only fix, and one
-was declined.
+```
+Error: You're importing a module that depends on "server-only" ...
+Import trace: ./src/lib/db-settings.ts <- ./src/lib/order-provenance.ts <- ./src/lib/order-role.ts <- ./app/console/orders/page.tsx
+              ./src/lib/db.ts <- ./src/lib/order-role.ts <- ./app/console/orders/page.tsx
+```
 
-- **Client bundle importing server-only DB code (P1) — ALREADY FIXED, not reproducible at the
-  branch's actual HEAD.**  The finding was accurate against the commit it pinned (`29a8c6df`,
-  one commit behind HEAD at review time), but `a466c2ec4` (committed before this review round
-  started) had already applied exactly the fix it recommended — verified directly: `page.tsx`
-  line 13 imports only `{ ORDER_ROLE_LABELS, type OrderRole }` from `order-role.ts`, which has
-  zero `db`/`order-provenance` imports; `order-role-context.ts` carries `import "server-only"`
-  on its own first line.  No code change needed this round.
+**Fix.** Split `order-role.ts` into two modules:
+- `src/lib/order-role.ts` (unchanged path, now PURE) — types, `classifyOrderRole` (classification
+  over already-fetched order facts), `ORDER_ROLE_LABELS`, `whyResting` copy.  Zero DB/server
+  imports; safe for the client bundle.
+- `src/lib/order-role-context.ts` (new, `import "server-only"` at the top, matching
+  `db.ts`/`db-settings.ts`'s own convention) — `loadOrderRoleContexts` (the provenance lookups
+  against `broker_protective_stops` / `synthetic_trailing_stops` / `order_replacements` /
+  `trade_proposals`), `attachOrderRoles`, `buildOpsWorkingOrderDetails`.
+
+`dashboard.ts` and `ops-snapshot.ts` now import the DB-backed functions from
+`order-role-context.ts` instead of `order-role.ts`.  The client-delivery contract needed no
+change: `dashboard.ts`'s `attachOrderRoles` call already ran server-side and attached
+`role`/`whyResting` onto the `orders` array `GET /api/dashboard` returns, and
+`app/console/orders/page.tsx` already only *rendered* `order.role`/`order.whyResting` — it never
+classified orders itself. Only the module boundary that broke the client bundle needed to move.
+
+**Sentry review threads (both fixed and resolved).** Two Sentry-flagged bugs on the original
+diff, fixed by merging in local commit `8e2ed49e1` ("keep a settling bracket exit leg an exit,
+and name leg levels") before the build-fix split:
+- Thread `4102974343` — the protective-stop `whyResting` fallback said "rests until price falls
+  to that level" with no stop price known, a dangling reference. Fixed: a `levelClause` helper
+  states the leg's own broker-reported level when known, and falls back to "rests until it fills
+  at the broker" (no "that level" reference) when it isn't.
+- Thread `4102974351` — a lone bracket-family exit leg left in `pending_cancel` after its sibling
+  filled (sibling count drops to 0) was misclassified as a new `entry`. Fixed: an `isPendingCancel`
+  check now reads that state as the settling exit leg regardless of sibling count.
+
+Both threads replied to (`gh api .../comments/<id>/replies`) explaining the fix and resolved via
+GraphQL `resolveReviewThread` — verified `isResolved: true` for both after replying.
+
+**Verification State (this round).**
+- `npm run lint` on the pushed HEAD — **0 errors**, 836 warnings (pre-existing grandfathered
+  backlog; none introduced by this change).
+- GitHub-hosted CI on PR #3755 (commit `a0b7ac255`, superset of this fix merged with two
+  subsequent `origin/main` syncs): `verify` — **pass**; `verify-hosted` (lint → tsc → test →
+  build) — **pass** (17m47s); `verify-ios` — **pass**. This is the authoritative full-suite/build
+  gate; it is green.
+- `npx tsc --noEmit` and `npm run build` were also run locally in an isolated verification
+  worktree against the same commit; see the PR's `verify-hosted` run for the authoritative
+  result if this session's own local run did not finish in time (this shared Mac was under
+  extreme concurrent-agent load throughout this session — see below).
+
+**Zero-code finding: extreme environment churn during this round.** The `claude/st-order-roles`
+branch was force-rewritten (rebase, not merge — same commit messages, new hashes each time) by
+what appears to be at least one other concurrent process working the same PR, three times during
+this session, and the local git worktree checkouts used to do this work were deleted out from
+under this session by an unidentified background cleaner at least four times (`~/apps/<name>`
+AND a scratchpad-local path both got swept, despite `.janitor-keep`) — see
+`/Users/jay/apps/AGENT-SYNC.md` if this recurs; it cost real time re-deriving/re-applying the
+same six-file diff repeatedly. Mitigation used here: commit and push immediately after every
+successful file-write batch (never leave the fix uncommitted longer than one shell invocation),
+and a `for`-loop fetch/reset/reapply/commit/push driver script survives a rejected non-fast-forward
+push without a human round-trip. Also observed: this same shared worktree directory picked up
+*uncommitted* edits mid-session that this task did not make (a bracket-sibling creation-time-window
+refinement to `order-role-context.ts`/`order-provenance.ts`) — left untouched (neither committed
+nor discarded) since it is out of this task's scope and its origin/authorship is unclear; flagging
+for the branch owner to reconcile.  **Resolved by the round below:** that refinement was this
+same lane's own next review round, landed in the commit immediately following this one.
+
+## 8. Independent-Review Findings Round (2026-09-25)
+
+A separate, later independent review of PR #3755 (7 findings, delivered as structured JSON) was
+checked against the actual code on this branch — not assumed correct.  Two were already fixed by
+Section 7 above (the client-bundle build-fix split); two were real and fixed here test-first; one
+was a duplicate of the same real bug; one was a documentation-only fix; and one was declined.
+
+- **Client bundle importing server-only DB code (P1) — ALREADY FIXED by Section 7 above, not
+  reproducible at this branch's actual HEAD.**  The finding was accurate against the commit it
+  happened to pin (`29a8c6df`, one commit behind the branch's actual HEAD at review time), but
+  the build-fix split documented in Section 7 had already applied exactly the fix it
+  recommended — verified directly: `page.tsx` imports only `{ ORDER_ROLE_LABELS, type OrderRole }`
+  from `order-role.ts`, which has zero `db`/`order-provenance` imports; `order-role-context.ts`
+  carries `import "server-only"` on its own first line.  No code change needed this round.
 - **Unbatched per-order `isAppPlacedBrokerOrder` calls contradicting the "3 queries total" doc
   comment (P1) — CONFIRMED, fixed test-first.**  Verified directly: `loadOrderRoleContexts`
   called the up-to-5-query `isAppPlacedBrokerOrder` for every order unconditionally, including

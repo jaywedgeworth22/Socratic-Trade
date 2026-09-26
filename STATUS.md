@@ -24,8 +24,61 @@ Verified: `npx tsc --noEmit` clean, targeted `eslint` on every touched file 0 er
 `test/order-role.test.ts` + `test/dashboard-order-role-api.test.ts` + `test/ops-snapshot.test.ts`
 (55 tests, including the 2 new query-batching tests and the 1 new scale-in bracket regression)
 all green.  Hold label kept; auto-merge not armed (review stage did not ask for it).  Detail:
-`docs/rollouts/2026-09-24-st-order-roles.md` ("Review Round" section).
+`docs/rollouts/2026-09-24-st-order-roles.md` (section 8, "Independent-Review Findings Round").
 
+## 2026-09-25/26 CLAUDE — PR #3755 build fix: split order-role.ts + resolve Sentry threads
+
+**What/why.**  `verify-hosted` was failing on PR #3755 (`next build`: "You're importing a module
+that depends on 'server-only'" — `app/console/orders/page.tsx` is a client component importing
+`ORDER_ROLE_LABELS` from `src/lib/order-role.ts`, which also imported `getDb`/`order-provenance.ts`
+directly).  Split `order-role.ts` into a PURE module (types, `classifyOrderRole`,
+`ORDER_ROLE_LABELS`) and a new server-only `src/lib/order-role-context.ts`
+(`loadOrderRoleContexts`, `attachOrderRoles`, `buildOpsWorkingOrderDetails`); `dashboard.ts` and
+`ops-snapshot.ts` now import the DB-backed functions from the new module.  Also merged local
+commit `8e2ed49e1` (fixes Sentry threads 4102974343 + 4102974351: dangling "that level" reference
+in the protective-stop fallback copy, and a settling bracket exit leg in `pending_cancel`
+misclassified as an entry) — both threads replied to and resolved.  New
+`test/dashboard-order-role-api.test.ts` asserts the actual `GET /api/dashboard` contract:
+`getDashboardSnapshot` attaches `role`/`whyResting` server-side.  CI `verify`/`verify-hosted`/
+`verify-ios` all green on PR #3755 at commit `a0b7ac255`.  Board `687a5fb4`, lane E1, branch
+`claude/st-order-roles`.  `do-not-automerge` label kept; auto-merge NOT armed per task
+instructions (owner arms it after independent review).
+Rollout: `docs/rollouts/2026-09-24-st-order-roles.md` (section 7).
+## 2026-09-25 CLAUDE — Ops performance endpoint: review round 2 (follow-up to merged PR #3751, board 687a5fb4)
+
+Five independent-reviewer findings against the Round-1 fix (`#3751`, already merged to `main`).
+Two P1s, same root cause: `buildOpsPerformanceSnapshot` called `getRedTeamEfficacy(...)` unguarded
+at three sites in `src/lib/ops-performance.ts`, including once inside its own per-account `catch`
+fallback re-invoking the identical call that could have been what threw in the first place.
+`getRedTeamEfficacy` -> `listAuditByKind` (`src/lib/db-learning.ts`) does an unguarded
+`JSON.parse(row.payload)` per audit row with no try/catch, so one malformed
+`proposal_rejected_by_red_team` audit row for any account would 500 the whole diagnostic
+endpoint — confirmed by writing the regression test first and watching it fail with exactly that
+`SyntaxError`, thrown through the catch-fallback call site. Fixed with a small `safeRedTeamEfficacy()`
+try/catch wrapper (static empty `RedTeamEfficacy` fallback shape) at all three call sites —
+finer-grained than the module's existing per-account isolation, since a Red-Team-only read
+failure for one account no longer blanks that account's otherwise-correct P&L/trade-stats/funnel/
+equity-curve too (previously it would have hit the outer catch and zeroed everything). One P2
+fixed: a non-ASCII em dash in the new `scripts/fetch-prod-ops-performance.sh` (line 4), replaced
+with `--`; `grep -nP '[^\x00-\x7F]' scripts/*.sh` now clean for that file. Two P2s verified real
+but declined this round with a concrete reason — per-account-only event-loop-yield granularity,
+and no cap on accounts processed by an unfiltered request — both explicitly scoped by the
+reviewers themselves as narrow/conditional at today's single-owner, small-account-count scale;
+documented as deliberate, revisit-if-scale-changes deferrals rather than fixed speculatively.
+New regression: `test/ops-performance.test.ts` "survives a malformed Red Team audit payload...".
+Gate: targeted test file 11/11 (post-fix), `npm run lint` 0 errors, `npx tsc --noEmit` clean —
+see rollout doc for exact output; full `npm test`/`npm run build` left to the required `verify`
+CI check per this lane's own load note. Auto-merge intentionally NOT armed (`do-not-automerge`
+label kept). Rollout: `docs/rollouts/2026-09-24-st-ops-performance.md` ("Review round 2" section).
+
+## 2026-09-25 CLAUDE — Add 2026-09-25 trading performance report to docs
+
+**What/why.**  Docs-only.  Added the owner-facing performance analysis (produced by CLAUDE's
+performance-analysis workflow from `GET /api/ops/performance?days=120` at 2026-09-25 19:21Z) to
+`docs/reviews/2026-09-25-trading-performance-report.md`, so it has a permanent, reviewable home
+alongside the rest of the review corpus instead of living only in a scratch/durable session file.
+No code changes.  Board `687a5fb4`, lane G5, branch `claude/st-perf-report-docs`.
+Rollout: `docs/rollouts/2026-09-25-st-perf-report-docs.md`.
 ## 2026-09-25 CLAUDE — PR #3756 re-synced with main
 
 Merged `origin/main` into `claude/st-stall-profiler` to pick up #3761, #3774, #3778 (no file
@@ -160,6 +213,33 @@ real SHORT-bracket entry/exit misclassification bug during review (side-agnostic
 `bracketSiblingWorkingCount` fix — see the rollout note).
 PR #3755, branch `claude/st-order-roles`, worktree `~/apps/trading-claude-st-order-roles`.
 Rollout: `docs/rollouts/2026-09-24-st-order-roles.md`.
+## 2026-09-24 CLAUDE — Detect IRA withdrawals and deposits so drawdown math is not fooled (board 687a5fb4, lane F2)
+
+**What.**  The Roth IRA HWM recompute found zero transfers after ~$96 was withdrawn: the ledger
+read sent an `activity_types` filter containing `DIVTX` (not an Alpaca type) and swallowed any
+non-2xx as `[]`, and the recompute then silently reset the HWM to equity.  Ledger reads now use
+`category=non_trade_activity` with client-side classification (IRA contributions, distributions,
+`WH` withholding, `ACATC`, journals); failures are explicit (`flowsUnavailable`), unknown types
+are audited, the recompute replays Alpaca daily closes and returns 409 instead of guessing, and
+the breaker holds an opted-in hard action one run on an unexplained ≥ 20% fall.  New read-only
+`GET /api/ops/account-activity`.  **Next:** after deploy, run the diagnostic then the recompute
+for the Roth account (exact commands in the rollout).  Branch `claude/st-cashflow-detection`.
+Rollout: `docs/rollouts/2026-09-24-st-cashflow-detection.md`.
+## 2026-09-24 CLAUDE — Strategy run halt and restart resilience (board 687a5fb4, lane B)
+
+**What.**  Probe timeouts (`checkBrokerHealth timeout`, `alpaca.getAccount 16000+8000ms`) no longer
+auto-halt Autopilot on the first strike — they join the 3-in-a-row streak via a structural
+`__deadlineTimeout` flag.  A probe that timed out while the event loop was stalled for ≥75% of its
+window skips the tick with "App process was stalled (event loop blocked Xs of Ys); broker not at
+fault" and never touches the streak.  The pause decision now reads the durable policy and writes only
+`systemState`, and an owner Pause / mobile Stop / boot interlock drops the auto-resume marker, so an
+owner halt is never auto-lifted.  Restart-killed runs that wrote no proposal, fill, or decision get
+exactly one account-targeted retry (migration 92, `strategy-run-retry.ts`).  Broker-lane ceiling
+15s → 30s (was below Alpaca's 16s first wait).
+**Why.**  Last 50 Alpaca Paper runs: 21 first-strike halts during RTH stalls, 2 more timeouts, 11
+restart-killed runs never retried, 14 completed.
+**PR.**  Branch `claude/st-run-resilience`; money-path adjacent — adversarial review before merge.
+Rollout: `docs/rollouts/2026-09-24-st-run-resilience.md`.
 
 ## 2026-09-24 MUSE — LLM stats console review-findings sweep (PR #3452)
 

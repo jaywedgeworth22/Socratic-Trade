@@ -35,13 +35,20 @@
  * Deliberately NOT retried: Manual Run once / API-requested runs (owner-initiated — the owner
  * re-clicks; a manual run is also propose-only and must not come back as an autonomous one), runs
  * with a run-scoped trigger override (e.g. close_only — a plain retry would not carry it), runs
- * with no account id, and anything outside the account's allowed session.
+ * with no account id, runs on an account that is gone or being disconnected (draining), and
+ * anything outside the account's allowed session.
+ *
+ * Review round (2026-09-25): "no strategy_run_requests row" is NOT proof of a scheduler run — the
+ * iOS `strategy.run_once` command calls runStrategyOnce({ manual: true }) directly.  Eligibility now
+ * requires the killed run's own recorded origin (`strategy_runs.origin`, strategy-run-origin.ts) to
+ * be `autonomous`; a NULL origin (pre-migration-93 row) fails closed.
  */
 
 import { randomUUID } from "crypto";
 import { audit, getDb, getPolicy } from "./db";
 import { hasLiveStrategyRunLease, sweepStaleRunningRuns, type RestartKilledRun } from "./db-execution";
 import { isRunAllowedNow } from "./market-hours";
+import { isRestartRetryableOrigin } from "./strategy-run-origin";
 import type { TradingPolicy } from "./types";
 
 /** A queued retry older than this is dropped at drain time — the "lost slot" it was meant to
@@ -53,12 +60,16 @@ export type RestartRetrySkipReason =
   | "run_not_failed"
   | "killed_run_was_retry"
   | "request_driven_run"
+  | "manual_run"
+  | "unknown_origin"
   | "already_retried"
   | "wrote_proposals"
   | "wrote_fills"
   | "wrote_decisions"
   | "run_scoped_override"
   | "live_lease"
+  | "account_missing"
+  | "account_draining"
   | "account_not_active"
   | "session_closed"
   | "newer_run"
@@ -96,8 +107,8 @@ export function evaluateRestartRetryEligibility(
   if (!killed.connectedAccountId) return { eligible: false, reason: "no_account" };
 
   const run = db
-    .prepare("SELECT status FROM strategy_runs WHERE id = ? AND user_id = ?")
-    .get(killed.id, killed.userId) as { status: string } | undefined;
+    .prepare("SELECT status, origin FROM strategy_runs WHERE id = ? AND user_id = ?")
+    .get(killed.id, killed.userId) as { status: string; origin: string | null } | undefined;
   if (!run) return { eligible: false, reason: "killed_run_missing" };
   if (run.status !== "failed") return { eligible: false, reason: "run_not_failed" };
 
@@ -115,6 +126,22 @@ export function evaluateRestartRetryEligibility(
       .get(killed.id, ignore)
   ) {
     return { eligible: false, reason: "already_retried" };
+  }
+  // Only a run launched as an autonomous run (scheduler cadence or plain trigger) is retried.  A
+  // manual run is propose-only; retrying it as an autonomous run could place orders the owner only
+  // asked to have proposed.  Unknown / unrecorded origin fails closed.
+  if (!isRestartRetryableOrigin(run.origin)) {
+    return {
+      eligible: false,
+      reason:
+        run.origin === "manual"
+          ? "manual_run"
+          : run.origin === "run_state_override"
+            ? "run_scoped_override"
+            : run.origin === "request"
+              ? "request_driven_run"
+              : "unknown_origin"
+    };
   }
 
   // Placed nothing — see the module doc for why "no proposal row" is sufficient.
@@ -137,6 +164,14 @@ export function evaluateRestartRetryEligibility(
   if (hasLiveStrategyRunLease(killed.id, killed.userId, nowMs)) {
     return { eligible: false, reason: "live_lease" };
   }
+
+  // Disconnecting an account sets is_draining=1 / is_active=0 but leaves its strategy state
+  // `active` while the drain lane winds down its open orders; only the scheduler loop skips it.
+  const account = db
+    .prepare("SELECT is_draining FROM connected_accounts WHERE id = ? AND user_id = ?")
+    .get(killed.connectedAccountId, killed.userId) as { is_draining: number | null } | undefined;
+  if (!account) return { eligible: false, reason: "account_missing" };
+  if (account.is_draining === 1) return { eligible: false, reason: "account_draining" };
 
   const policy = getPolicy(killed.userId, killed.connectedAccountId);
   if (policy.systemState !== "active") return { eligible: false, reason: "account_not_active" };

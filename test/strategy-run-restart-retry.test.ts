@@ -37,16 +37,40 @@ const CLOSED = { sessionAllows: () => false };
 
 type Db = typeof import("../src/lib/db");
 
-async function setup(options: { ageMs?: number; systemState?: "active" | "halted" } = {}) {
+async function setup(
+  options: {
+    ageMs?: number;
+    systemState?: "active" | "halted";
+    /** How the killed run was launched.  Default: an autonomous (scheduler / trigger) run. */
+    origin?: import("../src/lib/strategy-run-origin").StrategyRunOrigin | null;
+  } = {}
+) {
   const db = await import("../src/lib/db");
   const { DEFAULT_POLICY } = await import("../src/lib/defaults");
   const userId = `retry-user-${randomUUID()}`;
   const accountId = `acct-${randomUUID()}`;
+  // A real connected account row: the retry re-checks it is still connected and not draining.
+  db.upsertConnectedAccount({
+    id: accountId,
+    userId,
+    broker: "alpaca",
+    environment: "paper",
+    accountNumber: "PA-RETRY",
+    label: "Retry paper",
+    isActive: true
+  });
   db.setPolicy({ ...DEFAULT_POLICY, accountNumber: "PA-RETRY", systemState: options.systemState ?? "active" }, userId, accountId);
   const runId = randomUUID();
   // Before this worker booted (restart arm) but inside the 30-min window, with the dead process's
   // lease long expired: exactly a container restart ~20 minutes into an RTH stall.
-  db.insertStrategyRun(runId, userId, accountId, "PA-RETRY");
+  db.insertStrategyRun(
+    runId,
+    userId,
+    accountId,
+    "PA-RETRY",
+    undefined,
+    options.origin === undefined ? "autonomous" : (options.origin ?? undefined)
+  );
   db.getDb()
     .prepare("UPDATE strategy_runs SET started_at = ? WHERE id = ?")
     .run(new Date(Date.now() - (options.ageMs ?? 20 * 60_000)).toISOString(), runId);
@@ -283,6 +307,134 @@ describe("restart-killed strategy run: one-time retry", () => {
     const row = requestsFor(db, userId).find((r) => r.id === retryId)!;
     expect(row.status).toBe("failed");
     expect(JSON.parse(row.result ?? "{}").summary).toMatch(/not retried again/);
+  });
+
+  // Review round (2026-09-25): the iOS `strategy.run_once` command calls runStrategyOnce(userId,
+  // { manual: true }) directly — no strategy_run_requests row — so "no request row" did not mean
+  // "scheduler-launched".  The run's own origin, written with the run row, is now the gate.
+  it("does not turn an iOS Run once (manual run, no request row) into an autonomous retry", async () => {
+    const { sweepStaleRunsAndRetry } = await import("../src/lib/strategy-run-retry");
+    const { db, userId } = await setup({ origin: "manual" });
+    sweepStaleRunsAndRetry(Date.now(), OPEN);
+    expect(requestsFor(db, userId)).toHaveLength(0);
+    expect(auditKinds(db, userId).find((a) => a.kind === "strategy_run_retry_skipped")?.payload.reason).toBe("manual_run");
+  });
+
+  it("fails closed on a killed run whose origin was never recorded, and on run-scoped overrides", async () => {
+    const { sweepStaleRunsAndRetry } = await import("../src/lib/strategy-run-retry");
+    const legacy = await setup({ origin: null });
+    sweepStaleRunsAndRetry(Date.now(), OPEN);
+    expect(requestsFor(legacy.db, legacy.userId)).toHaveLength(0);
+    expect(
+      auditKinds(legacy.db, legacy.userId).find((a) => a.kind === "strategy_run_retry_skipped")?.payload.reason
+    ).toBe("unknown_origin");
+
+    // close_only trigger run: refused from the run row itself, even with no run_state_override audit row.
+    const override = await setup({ origin: "run_state_override" });
+    sweepStaleRunsAndRetry(Date.now(), OPEN);
+    expect(requestsFor(override.db, override.userId)).toHaveLength(0);
+    expect(
+      auditKinds(override.db, override.userId).find((a) => a.kind === "strategy_run_retry_skipped")?.payload.reason
+    ).toBe("run_scoped_override");
+  });
+
+  it("records a manual origin for every manual run and an autonomous one only for scheduler/trigger shapes", async () => {
+    const { resolveStrategyRunOrigin, isRestartRetryableOrigin } = await import("../src/lib/strategy-run-origin");
+    // iOS strategy.run_once and web Manual Run once.
+    expect(resolveStrategyRunOrigin({ manual: true })).toBe("manual");
+    expect(resolveStrategyRunOrigin({ manual: true, runId: "r", connectedAccountId: "a" })).toBe("manual");
+    // Scheduler ({ connectedAccountId }) and plain trigger (no options) runs.
+    expect(resolveStrategyRunOrigin({ connectedAccountId: "a" })).toBe("autonomous");
+    expect(resolveStrategyRunOrigin({})).toBe("autonomous");
+    expect(resolveStrategyRunOrigin({ runStateOverride: "close_only" })).toBe("run_state_override");
+    // Drained request rows (API run, restart retry).
+    expect(resolveStrategyRunOrigin({ runId: "r", connectedAccountId: "a" })).toBe("request");
+    expect(isRestartRetryableOrigin("autonomous")).toBe(true);
+    for (const origin of ["manual", "request", "run_state_override", null, undefined, "something-new"]) {
+      expect(isRestartRetryableOrigin(origin)).toBe(false);
+    }
+  });
+
+  // Review round: deleteConnectedAccount sets is_draining=1 / is_active=0 but leaves the account's
+  // strategy state `active`, and only the scheduler loop skips draining accounts.
+  it("does not retry on an account that is being disconnected (draining) or is gone", async () => {
+    const { sweepStaleRunsAndRetry } = await import("../src/lib/strategy-run-retry");
+    const draining = await setup();
+    draining.db.deleteConnectedAccount(draining.accountId, draining.userId);
+    sweepStaleRunsAndRetry(Date.now(), OPEN);
+    expect(requestsFor(draining.db, draining.userId)).toHaveLength(0);
+    expect(
+      auditKinds(draining.db, draining.userId).find((a) => a.kind === "strategy_run_retry_skipped")?.payload.reason
+    ).toBe("account_draining");
+
+    const gone = await setup();
+    gone.db.getDb().prepare("DELETE FROM connected_accounts WHERE id = ?").run(gone.accountId);
+    sweepStaleRunsAndRetry(Date.now(), OPEN);
+    expect(requestsFor(gone.db, gone.userId)).toHaveLength(0);
+    expect(auditKinds(gone.db, gone.userId).find((a) => a.kind === "strategy_run_retry_skipped")?.payload.reason).toBe(
+      "account_missing"
+    );
+  });
+
+  it("drain drops a queued retry whose account started draining after it was queued, without running it", async () => {
+    const { sweepStaleRunsAndRetry } = await import("../src/lib/strategy-run-retry");
+    const { processPendingStrategyRunRequests } = await import("../src/lib/strategy-run-requests");
+    const { db, userId, accountId } = await setup();
+    sweepStaleRunsAndRetry(Date.now(), OPEN);
+    expect(requestsFor(db, userId)[0]?.status).toBe("queued");
+    db.deleteConnectedAccount(accountId, userId);
+
+    await processPendingStrategyRunRequests({ limit: 50 });
+
+    expect(strategyMocks.runStrategyOnce.mock.calls.filter((c) => c[0] === userId)).toHaveLength(0);
+    const [retry] = requestsFor(db, userId);
+    expect(retry.status).toBe("failed");
+    expect(auditKinds(db, userId).find((a) => a.kind === "strategy_run_retry_dropped")?.payload.reason).toBe("account_draining");
+  });
+
+  // Review round: queueStrategyRunRequest deduped onto ANY open request for the user, and restart
+  // retries share that table — so the owner's Run once click returned the retry's id and never ran.
+  it("an owner's Run once is never swallowed by a queued restart retry; the owner's request supersedes it", async () => {
+    const { sweepStaleRunsAndRetry } = await import("../src/lib/strategy-run-retry");
+    const { queueStrategyRunRequest } = await import("../src/lib/strategy-run-requests");
+    const { db, userId } = await setup();
+    sweepStaleRunsAndRetry(Date.now(), OPEN);
+    const [retry] = requestsFor(db, userId);
+    expect(retry.status).toBe("queued");
+
+    const owner = queueStrategyRunRequest({ userId, manual: true });
+    expect(owner.deduped).toBe(false);
+    expect(owner.request.id).not.toBe(retry.id);
+    expect(owner.request.manual).toBe(true);
+
+    const rows = requestsFor(db, userId);
+    const retryAfter = rows.find((r) => r.id === retry.id)!;
+    expect(retryAfter.status).toBe("failed");
+    expect(JSON.parse(retryAfter.result ?? "{}").summary).toMatch(/superseded by owner request/);
+    expect(auditKinds(db, userId).find((a) => a.kind === "strategy_run_retry_dropped")?.payload.reason).toBe(
+      "superseded_by_owner_request"
+    );
+
+    // A second owner click still dedupes onto the owner's own open request, exactly as before.
+    const again = queueStrategyRunRequest({ userId, manual: true });
+    expect(again.deduped).toBe(true);
+    expect(again.request.id).toBe(owner.request.id);
+  });
+
+  it("an owner's Run once is not deduped onto a RUNNING restart retry (the account lock serializes them)", async () => {
+    const { sweepStaleRunsAndRetry } = await import("../src/lib/strategy-run-retry");
+    const { queueStrategyRunRequest } = await import("../src/lib/strategy-run-requests");
+    const { db, userId } = await setup();
+    sweepStaleRunsAndRetry(Date.now(), OPEN);
+    const [retry] = requestsFor(db, userId);
+    // The drain claimed it: a live autonomous retry is mid-run.
+    db.getDb().prepare("UPDATE strategy_run_requests SET status = 'running', started_at = ? WHERE id = ?").run(new Date().toISOString(), retry.id);
+    db.insertStrategyRun(retry.id, userId, retry.connected_account_id ?? undefined, "PA-RETRY", undefined, "request");
+
+    const owner = queueStrategyRunRequest({ userId, manual: true });
+    expect(owner.deduped).toBe(false);
+    expect(owner.request.id).not.toBe(retry.id);
+    expect(requestsFor(db, userId).find((r) => r.id === retry.id)?.status).toBe("running");
   });
 
   it("leaves Manual Run once rows running exactly as before (no account id -> active account)", async () => {

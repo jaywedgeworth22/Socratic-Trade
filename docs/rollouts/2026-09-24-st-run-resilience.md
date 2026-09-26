@@ -110,7 +110,8 @@ Files:
   and a propose-only manual run must not come back as an autonomous one.
 - **Queue interplay.**  `queueStrategyRunRequest` dedupes per user, so a Manual Run once click while a
   retry is queued (at most one tick) is deduped onto the retry.  Accepted: short window, and it keeps
-  the queue single-flight per user.
+  the queue single-flight per user.  **Superseded by the review round below** — the window was not
+  one tick (a running retry is minutes of LLM work), and the owner's run was lost, not delayed.
 - **Migration version 92.**  Parallel lanes that add a migration will conflict textually at the end of
   `MIGRATIONS`; the later lander renumbers.
 - **Broker-lane ceiling 15s → 30s** lengthens the worst case of the awaited in-run maintenance pass,
@@ -158,3 +159,111 @@ inflated.
   and defaults unknown values to "Completed" — any future new run status needs an iOS release first.
 - The web console hides "Stop Agent" while an account is halted, so an owner cannot convert an
   auto-pause to a manual halt from the console; the API and mobile `strategy.stop` can, and now do.
+
+## 7. Review Round (2026-09-25, follow-up PR after #3752 merged)
+
+PR #3752 merged (squash `9152322b4`, 2026-09-25 7:35 PM CT) before the independent review findings
+were addressed, so the fixes ship as a follow-up branch `claude/st-run-resilience-followup` off
+`origin/main`.  Every finding was verified against the merged code first.  All six were real.
+
+**Fixed.**
+
+1. **P2 — iOS Run once killed by a restart was retried as an autonomous run.**  Verified:
+   `mobile-api.ts` `runCommand` calls `runStrategyOnce(userId, { manual: true })` with no
+   `strategy_run_requests` row, and eligibility treated "no request row" as "scheduler launched".  A
+   killed propose-only run on an `active` account with saved `decide` authority was re-run with
+   `manual: false`.  Fix: migration 93 adds `strategy_runs.origin`; `runStrategyOnce` writes it with
+   the run row from the same options that decide authority (`resolveStrategyRunOrigin`, new
+   `src/lib/strategy-run-origin.ts`: `manual` wins, then `run_state_override`, then `request` when a
+   drained `runId` is supplied, else `autonomous`).  Only `autonomous` is retry-eligible; NULL
+   (pre-migration rows) fails closed as `unknown_origin`.  No call site changed, so the scheduler,
+   trigger, and drain invocations stay byte-identical.
+2. **P2 — web Manual Run once swallowed by a queued or running restart retry.**  Verified: the
+   dedupe query matched any open request, including `retry_of_run_id` rows.  Fix: retries are never
+   dedupe targets; a new owner request drops any still-queued retry with receipt
+   `strategy_run_retry_dropped` / `superseded_by_owner_request`; a running retry serializes with the
+   owner's run through the per-account strategy run lock, as a scheduler run already does.
+3. **P2 — restart retry could run on a draining (disconnected) account.**  Verified:
+   `deleteConnectedAccount` sets `is_draining=1, is_active=0` and leaves the strategy state `active`;
+   only the scheduler loop skipped draining accounts.  Fix: eligibility (enqueue and drain) reads
+   `connected_accounts` and skips `account_missing` / `account_draining`; `runStrategyOnce` also
+   refuses any non-manual run on a draining account before broker or LLM work (defense in depth).
+4. **P2 — boot marker release lacked `sqliteYieldRetry`.**  Verified: the halted branch of
+   `reconcileAutonomyOnBoot` called `releaseBrokerPlacementPauseToOwner` unwrapped, so a
+   `SQLITE_BUSY` was swallowed and the stale marker survived to auto-resume the account.  Fix: the
+   release is now one IMMEDIATE transaction (read, clear marker and streak, audit), so a busy error
+   rolls back the whole unit; the boot call is wrapped in `sqliteYieldRetry`.  Plain wrapping alone
+   was not enough: a busy audit after the deletes would have retried into "no marker" and skipped
+   the receipt (the second new test proves the rollback).
+5. **P2 — the ops-token halt in open PR #3754 bypasses the streak reset.**  Verified in #3754's diff:
+   its `halted` branch calls `clearBrokerPlacementPauseMarker` directly.  Fixed from this side, so
+   it holds whichever PR lands first and for every re-arm path: `clearBrokerPlacementPauseMarker` now
+   also deletes the connectivity streak, and the auto-halt itself resets the streak once it fires, so
+   a re-arm (console Start, mobile, ops token) needs a fresh three-in-a-row.  Left for #3754's own
+   lane: calling `releaseBrokerPlacementPauseToOwner` there would also write the
+   `broker_placement_pause_owner_override` receipt (its `ops_account_control` audit already records
+   the action).  #3754's branch was not edited from this lane.
+6. **P2 — boot notification misattributed an already-halted account.**  Verified: the halted branch
+   pushed into the same `haltedByUser` list whose one body said "reverted from 'active' … because the
+   app restarted".  Fix: `reverted` and `autoPauseReleased` are tracked separately; new pure
+   `autonomyBootInterlockNotificationCopy` describes each group truthfully (title "Broker auto-pause
+   kept after restart: …" when only released).  Payload adds `revertedAccountLabels` and
+   `autoPauseReleasedAccountLabels`; `accountLabels` keeps the union.  Same notification type, so the
+   owner's `enabledEvents` toggle still applies.
+
+**Declined.**  None.
+
+**Files (review round).**
+
+- `src/lib/strategy-run-origin.ts` (new)
+- `src/lib/db.ts` (migration 93 `strategy_runs_origin`)
+- `src/lib/db-execution.ts` (`insertStrategyRun` origin parameter)
+- `src/lib/strategy.ts` (origin on the run row; draining guard for non-manual runs)
+- `src/lib/strategy-run-retry.ts` (origin gate, account missing/draining gate)
+- `src/lib/strategy-run-requests.ts` (dedupe excludes retries; owner request supersedes a queued retry)
+- `src/lib/broker-health.ts` (streak reset on auto-halt and on marker clear; atomic owner release)
+- `src/lib/scheduler.ts` (boot release under `sqliteYieldRetry`; split notification copy)
+- `test/strategy-run-restart-retry.test.ts` (7 new cases; setup writes a real connected account and
+  an `autonomous` origin)
+- `test/strategy-run-origin.test.ts` (new: origin plumbing through the real `runStrategyOnce`,
+  draining guard)
+- `test/broker-health-probe-resilience.test.ts` (2 new cases; boot-restart case asserts the
+  notification)
+- `test/scheduler-sqlite-busy.test.ts` (2 new cases: busy marker delete, busy audit rollback)
+- `test/scheduler-boot-halt-notify.test.ts` (notification copy case)
+- `test/persistence-hardening.test.ts` (schema version 92 -> 93)
+- `STATUS.md`, `docs/EFFORT-LOG.md`, this note
+
+**Decisions.**
+
+- **Origin derived inside `runStrategyOnce`, not passed by callers.**  The authority decision
+  (`manual` -> propose-only) is made there, so recording the origin from the same options cannot
+  drift from it, and existing exact-argument tests of the scheduler / trigger / drain calls stay
+  valid.
+- **Fail closed on NULL origin.**  Runs in flight across the deploy of this follow-up were written
+  without an origin and will not be retried once.  One lost retry beats guessing.
+- **Migration 93** — no open PR adds a migration (checked `gh pr list` for `src/lib/db.ts`: only
+  #3776, no migration).
+
+**Verification (review round).**  Red first: with only the tests applied, the five new
+broker-health / boot-busy cases failed for the expected reasons (`expected 3 to be undefined`,
+`expected 2 to be undefined`, the "Autonomy halted on boot" title, marker still present, 0 receipts);
+the retry-file cases could not load without `strategy-run-origin.ts`.
+
+Green (host load average 250-480, so targeted suites only; the required `verify` check runs the full
+suite and build):
+
+- `npx tsc --noEmit` — clean (before and after merging `origin/main` at `0201b5723`).
+- `npx eslint` on every changed file — 0 errors, pre-existing warnings only.
+- `npx vitest run test/strategy-run-restart-retry.test.ts test/scheduler-sqlite-busy.test.ts
+  test/broker-health-probe-resilience.test.ts test/scheduler-boot-halt-notify.test.ts
+  test/strategy-run-origin.test.ts test/persistence-hardening.test.ts` — 75 passed, 2 failed on load
+  (the lag-sampler attribution case and the 60s scheduler-tick case, neither touched here); the two
+  files rerun alone — 24/24 passed.
+- Related suites `broker-health-auto-pause`, `mobile-api`, `route-strategy-pause`,
+  `scheduler-followup-lease`, `scheduler-leader-heartbeat`, `stale-running-runs-adoption-grace`,
+  `stale-running-runs`, `strategy-run-drain-handoff`, `strategy-run-once-async-route`,
+  `strategy-run-status`, `transient-network-resilience` — 11 files, 62 tests passed.
+
+Follow-up PR: #3794 (hold label `do-not-automerge`).
+

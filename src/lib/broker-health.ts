@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { audit, finishStrategyRun, getInternalSetting, getPolicy, insertStrategyRun, setInternalSetting, setPolicy, deleteInternalSetting } from "./db";
+import { audit, finishStrategyRun, getDb, getInternalSetting, getPolicy, insertStrategyRun, setInternalSetting, setPolicy, deleteInternalSetting } from "./db";
 import { countRecentAuditEvents } from "./db-learning";
 import { ExecutionAccount, HealthSignals } from "./execution-mode";
 import { accountEquity } from "./risk-breaker";
@@ -248,8 +248,16 @@ export function getBrokerPlacementPauseMarker(
   return raw;
 }
 
+/**
+ * Drop the auto-resume marker AND the connectivity streak for this scope.  Every caller that clears
+ * the marker is ending a pause episode (healthy probe, owner halt, boot interlock, and the ops-token
+ * `set_system_state` in PR #3754, which calls this directly): a streak left behind would let the
+ * next single timeout after a re-arm halt again — the first-strike halt this lane removed (board
+ * 687a5fb4 review round).
+ */
 export function clearBrokerPlacementPauseMarker(userId: string, accountScope: string): void {
   deleteInternalSetting(pauseMarkerKey(userId, accountScope));
+  deleteInternalSetting(brokerConnectivityStreakKey(userId, accountScope));
 }
 
 export type ApplyBrokerPauseResult =
@@ -428,6 +436,10 @@ export async function applyBrokerOrderPlacementPause(input: {
     priorState
   };
   setInternalSetting(pauseMarkerKey(userId, accountScope), nextMarker);
+  // The streak did its job.  Reset it so a re-arm (console Start, mobile, ops token) while the broker
+  // is still flaky needs a fresh three-in-a-row before the next connectivity halt, instead of
+  // re-halting on the first timeout (board 687a5fb4 review round).
+  deleteInternalSetting(brokerConnectivityStreakKey(userId, accountScope));
   audit(
     "broker_placement_auto_halted",
     {
@@ -476,17 +488,23 @@ export function releaseBrokerPlacementPauseToOwner(input: {
   source: string;
 }): boolean {
   const scope = brokerPauseAccountScope(input.connectedAccountId, input.accountNumber);
-  const marker = getBrokerPlacementPauseMarker(input.userId, scope);
-  if (!marker) return false;
-  clearBrokerPlacementPauseMarker(input.userId, scope);
-  deleteInternalSetting(brokerConnectivityStreakKey(input.userId, scope));
-  audit(
-    "broker_placement_pause_owner_override",
-    { source: input.source, autoPauseReason: marker.reason, autoPausedSince: marker.since },
-    input.userId,
-    input.connectedAccountId
-  );
-  return true;
+  // Read, clear, and audit as ONE transaction: a SQLITE_BUSY anywhere rolls the whole release back,
+  // so a retry (the boot interlock wraps this in sqliteYieldRetry) redoes it exactly once instead of
+  // finding the marker already gone and skipping the streak reset and the ownership receipt.
+  return getDb()
+    .transaction((): boolean => {
+      const marker = getBrokerPlacementPauseMarker(input.userId, scope);
+      if (!marker) return false;
+      clearBrokerPlacementPauseMarker(input.userId, scope);
+      audit(
+        "broker_placement_pause_owner_override",
+        { source: input.source, autoPauseReason: marker.reason, autoPausedSince: marker.since },
+        input.userId,
+        input.connectedAccountId
+      );
+      return true;
+    })
+    .immediate();
 }
 
 /**

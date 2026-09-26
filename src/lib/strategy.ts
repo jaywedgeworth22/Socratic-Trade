@@ -132,6 +132,7 @@ import { avgReturnCorrelation, correlationProfile } from "./correlation";
 import { stressScenario, type StressPositionInput } from "./stress-scenario";
 import { assertLivePreflight } from "./preflight-live-guard";
 import { startStrategyLockGuard, StrategyLockOwnershipLostError } from "./strategy-lock-guard";
+import { resolveStrategyRunOrigin } from "./strategy-run-origin";
 import type { StrategyRunFinishStatus } from "./strategy-run-status";
 import { checkLlmDailyBudget, checkMonthlyLlmSpendCeiling, releaseLlmReservation, reserveLlmRunBudget } from "./llm-budget";
 import {
@@ -494,7 +495,10 @@ export async function runStrategyOnce(
     const activeProfile = getActiveStrategyProfile(userId);
     const policyRevision = activeProfile ? `${activeProfile.id}@${activeProfile.updatedAt}` : undefined;
     const savedPolicy = getPolicy(userId, connectedAccountId);
-    insertStrategyRun(runId, userId, connectedAccountId, savedPolicy.accountNumber, policyRevision);
+    // The run's origin is written with the run row, from the same options that decide its authority
+    // (a manual run is propose-only), so the restart retry never re-runs a manual run as an
+    // autonomous one (board 687a5fb4 review round, strategy-run-origin.ts).
+    insertStrategyRun(runId, userId, connectedAccountId, savedPolicy.accountNumber, policyRevision, resolveStrategyRunOrigin(options));
     const accountNumber = savedPolicy.accountNumber;
     if (!accountNumber) throw new Error("No account selected.");
     if (savedPolicy.systemState === "halted" && !manualRun) throw new Error("System is halted.");
@@ -511,6 +515,13 @@ export async function runStrategyOnce(
       audit("run_state_override", { runId, userId, override: options.runStateOverride, storedSystemState: savedPolicy.systemState }, userId, connectedAccountId);
     }
     const activeAccount = connectedAccountId ? getConnectedAccount(connectedAccountId, userId) : undefined;
+    // A disconnected account keeps its strategy state `active` while the scheduler's drain lane
+    // cancels its open orders and then purges it; only the scheduler loop skipped draining accounts.
+    // No autonomous run may place new orders there (the purge would delete their stops and plans,
+    // leaving any fill unmanaged).  Board 687a5fb4 review round.
+    if (!manualRun && activeAccount?.isDraining) {
+      throw new Error("This account is being disconnected — autonomous strategy runs are stopped while its open orders are wound down.");
+    }
     // Owner ruling 2026-08-05: TestBroker is vitest infrastructure, never a production autonomy
     // target. Scheduler already skips broker==="test"; this refuse is belt-and-suspenders for
     // prod/manual runs. Vitest still uses TestBroker (VITEST / NODE_ENV=test).

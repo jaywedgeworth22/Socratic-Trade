@@ -1,26 +1,19 @@
 import { getPolicy, setPolicy } from "@/lib/db";
-import { getBrokerGateway } from "@/lib/broker";
-import { messageFromUnknownError } from "@/lib/recoverable-issue";
+import { verifyAutonomyArmingPreconditions } from "@/lib/autonomy-arming";
 import { resolveRequestUserId } from "@/lib/request-user";
-import type { BrokerageAccount } from "@/lib/types";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * POST /api/strategy/enable — the console's Start button for the SELECTED account.  The arming
+ * checks live in src/lib/autonomy-arming.ts so the ops account-control route runs the same ones.
+ */
 export async function POST(request: Request) {
   const userId = resolveRequestUserId(request);
   const policy = getPolicy(userId);
-  if (!policy.accountNumber) return new NextResponse("Select an account before enabling autonomy.", { status: 400 });
-  if (policy.includedIndices.length === 0 && policy.additionalSymbols.length === 0) return new NextResponse("Select at least one base index or additional watchlist symbol before enabling autonomy.", { status: 400 });
-  let accounts: BrokerageAccount[];
-  try {
-    accounts = await getBrokerGateway(policy, userId).getAccounts();
-  } catch (error) {
-    return new NextResponse(`Selected broker account is not reachable: ${messageFromUnknownError(error)}`, { status: 400 });
-  }
-  const account = accounts.find((item) => item.accountNumber === policy.accountNumber);
-  if (!account) return new NextResponse("Selected account is not available.", { status: 400 });
-  if (!account.agenticAllowed) return new NextResponse("Selected account is not agentic_allowed.", { status: 400 });
+  const check = await verifyAutonomyArmingPreconditions(policy, userId);
+  if (!check.ok) return new NextResponse(check.message, { status: 400 });
   const next = { ...policy, systemState: "active" as const };
   setPolicy(next, userId);
   return NextResponse.json(next);

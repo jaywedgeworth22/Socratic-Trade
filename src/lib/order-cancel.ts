@@ -69,8 +69,32 @@ export interface CancelWorkingOrderInput {
    * and their own broker credentials.
    */
   requireWorkingOrder?: boolean;
+  /**
+   * With `requireWorkingOrder`, refuse (502) instead of failing open when the pre-cancel read is
+   * unavailable.  Set only by the ops account-control route, which promises a verified
+   * working-order check.  The mobile lane leaves it unset and keeps the fail-open emergency-lever
+   * behaviour documented above.
+   */
+  failClosedWhenUnverified?: boolean;
+  /**
+   * How long the pre-cancel orders+positions read may take.  Defaults to the console's 2.5s
+   * advisory budget, which is right for a read that never gates the cancel.  A caller that fails
+   * closed on an unverified read (the ops route) passes its own broker-read budget instead: Tradier
+   * pages its order list one request at a time and Robinhood reads go through MCP, so 2.5s would
+   * refuse most cancels on those brokers.
+   */
+  lookupTimeoutMs?: number;
+  /**
+   * Act on THIS connected account instead of the user's currently selected one.  Used by the ops
+   * account-control route (POST /api/ops/account-control), which names the account explicitly and
+   * must never follow the console's selection.  When set, the policy (account number, broker,
+   * credentials) is resolved from this account's own live state; an id that is not one of this
+   * user's connected accounts is refused, never re-pointed at the selected account.  Omitted by
+   * the console and mobile lanes, whose behaviour is unchanged.
+   */
+  connectedAccountId?: string;
   /** Receipt-only label for where the cancel came from. */
-  source?: "console" | "mobile";
+  source?: "console" | "mobile" | "ops";
 }
 
 interface CancelLookup {
@@ -125,8 +149,19 @@ async function lookupCancelContext(
 
 export async function cancelWorkingOrder(input: CancelWorkingOrderInput): Promise<CancelWorkingOrderResult> {
   const { userId, source = "console" } = input;
-  const policy = getPolicy(userId);
-  if (!policy.accountNumber) throw new OrderCancelPreconditionError("No selected account.", 400);
+  const explicitAccountId = input.connectedAccountId?.trim() || undefined;
+  const policy = explicitAccountId ? getPolicy(userId, explicitAccountId) : getPolicy(userId);
+  if (explicitAccountId && policy.connectedAccountId !== explicitAccountId) {
+    // getPolicy falls back to the user-level policy when the id does not resolve for this user.
+    // Refuse rather than let a cancel land on whatever that fallback points at.
+    throw new OrderCancelPreconditionError("That connected account was not found for this user.", 404);
+  }
+  // Wording only: the console and mobile lanes act on "the selected account"; an explicit caller
+  // names one.  Every behaviour below is identical for both.
+  const accountPhrase = explicitAccountId ? "that account" : "the selected account";
+  if (!policy.accountNumber) {
+    throw new OrderCancelPreconditionError(explicitAccountId ? "That connected account has no broker account number." : "No selected account.", 400);
+  }
   const orderId = String(input.orderId ?? "").trim();
   if (!orderId) throw new OrderCancelPreconditionError("orderId is required.", 400);
   // Account isolation, enforced unconditionally: the cancel is scoped to the account currently
@@ -161,13 +196,30 @@ export async function cancelWorkingOrder(input: CancelWorkingOrderInput): Promis
   const gateway = getBrokerGateway(policy, userId);
   // Time-bound the advisory pre-fetch: the cancel must never wait behind a hung broker READ.
   // If the reads don't answer quickly, skip the advisory and cancel immediately.
+  const lookupTimeoutMs =
+    typeof input.lookupTimeoutMs === "number" && Number.isFinite(input.lookupTimeoutMs) && input.lookupTimeoutMs > 0
+      ? input.lookupTimeoutMs
+      : CANCEL_LOOKUP_TIMEOUT_MS;
+  let lookupTimer: ReturnType<typeof setTimeout> | undefined;
   const lookup = await Promise.race([
     lookupCancelContext(gateway, policy.accountNumber, orderId, policy.activeBroker),
-    new Promise<CancelLookup>((resolve) => setTimeout(() => resolve({ unavailable: true }), CANCEL_LOOKUP_TIMEOUT_MS))
-  ]);
+    new Promise<CancelLookup>((resolve) => {
+      lookupTimer = setTimeout(() => resolve({ unavailable: true }), lookupTimeoutMs);
+    })
+  ]).finally(() => {
+    if (lookupTimer) clearTimeout(lookupTimer);
+  });
 
   if (input.requireWorkingOrder) {
     if (lookup.unavailable) {
+      if (input.failClosedWhenUnverified) {
+        // The ops path promises a working-order check; an unavailable read cannot prove
+        // membership or working state, so nothing is sent.
+        throw new OrderCancelPreconditionError(
+          `Could not verify that order is still working in ${accountPhrase}. Nothing was cancelled.`,
+          502
+        );
+      }
       // Nothing was learned, so there is nothing to refuse on. Say so in the receipt rather than
       // letting a silent fall-through look like a verified cancel.
       audit(
@@ -178,7 +230,7 @@ export async function cancelWorkingOrder(input: CancelWorkingOrderInput): Promis
       );
     } else if (!lookup.order) {
       throw new OrderCancelPreconditionError(
-        "That order is not open in the selected account.  It may have already filled, or been cancelled elsewhere.",
+        `That order is not open in ${accountPhrase}.  It may have already filled, or been cancelled elsewhere.`,
         404
       );
     } else if (!isWorkingOrderState(lookup.order.state)) {
@@ -252,7 +304,14 @@ export async function cancelWorkingOrder(input: CancelWorkingOrderInput): Promis
       policy.connectedAccountId
     );
   }
-  audit("order_cancel", { accountNumber: policy.accountNumber, orderId, result, source }, userId);
+  // Console/mobile receipts keep their historical shape (no connected-account column); an explicit
+  // caller attributes the receipt to the account it named.
+  audit(
+    "order_cancel",
+    { accountNumber: policy.accountNumber, orderId, result, source },
+    userId,
+    explicitAccountId ? policy.connectedAccountId : undefined
+  );
 
   if (cancelledSymbol) {
     const { listOpenBracketOrders, enqueueTeardownForAllOpenBrackets } = await import("./db-api-keys");

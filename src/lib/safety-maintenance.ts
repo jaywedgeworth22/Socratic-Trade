@@ -4,16 +4,28 @@ import { reconcilePendingFills, flagStalePlacingIntents } from "./strategy-execu
 import { notifyStaleLimitOrders } from "./stale-limit-orders";
 import { autoRemediateStaleExitOrders } from "./order-replacement";
 import { runSyntheticStopMonitor } from "./synthetic-stops";
-import { withDeadline } from "./inflight-deadline";
+import { withDeadline, ALPACA_ACCOUNT_READ_FIRST_MS, ALPACA_ACCOUNT_READ_RETRY_MS } from "./inflight-deadline";
 import { startEventLoopLagSampler, stalledMsSince } from "./event-loop-lag";
 import { yieldEventLoop } from "./slow-sync-guard";
 import type { TradingPolicy, BrokerGateway, ConnectedAccount } from "./types";
 
 export { withDeadline } from "./inflight-deadline";
 
-const BROKER_TIMEOUT_MS = 15_000;
+/**
+ * Scheduler / safety-maintenance broker lane ceiling.
+ *
+ * Was 15s, which sat BELOW the 16s first wait of the Alpaca reads these lanes wrap
+ * (`awaitWithFirstCallRetry`, 16s first + 8s retry — inflight-deadline.ts): every slow-but-healthy
+ * read was reported as a lane "timeout" before its own retry could even start, and the strategy
+ * run's maintenance pass moved on while the read was still in flight (GROK lesson 2026-09-18,
+ * board 687a5fb4).  Now first+retry plus a 6s margin = 30s, the same ceiling as the inner broker
+ * I/O deadline (ALPACA/TRADIER_BROKER_IO_DEADLINE_MS) and the scheduler health probe.  The void
+ * scheduler lanes are reporting-only deadlines (work is never cancelled), so this changes
+ * attribution, not what runs; the awaited in-run maintenance pass now waits for a read that is
+ * still legitimately retrying instead of racing ahead of it.
+ */
+const BROKER_TIMEOUT_MS = ALPACA_ACCOUNT_READ_FIRST_MS + ALPACA_ACCOUNT_READ_RETRY_MS + 6_000;
 
-/** Scheduler / safety-maintenance broker lane ceiling (matches BROKER_TIMEOUT_MS). */
 export const SCHEDULER_BROKER_TIMEOUT_MS = BROKER_TIMEOUT_MS;
 
 /**
@@ -58,13 +70,13 @@ export function isLaneDeadlineExpiry(err: unknown): err is LaneDeadlineExpiry {
  *
  * Behaviour is otherwise identical to `withDeadline`, and deliberately so — this is an
  * observability change on a safety path, not a safety change:
- *   * the deadline value is unchanged (still SCHEDULER_BROKER_TIMEOUT_MS),
+ *   * the deadline value is whatever the caller passes (SCHEDULER_BROKER_TIMEOUT_MS for the lanes),
  *   * no AbortController is passed, so the protective work is never cancelled — it keeps
  *     running to completion exactly as before,
  *   * the expiry still rejects, so the caller still records a lane failure and still escalates
  *     to `lane_degraded` on a streak.
  *
- * What changes is that the rejection now says whether the 15s was spent waiting on a broker or
+ * What changes is that the rejection now says whether the window was spent waiting on a broker or
  * spent on a pinned event loop, and a pass that finishes late is no longer invisible.  Before
  * this, `synthetic-stop-monitor` could log `runSyntheticStopMonitor timeout` and then quietly
  * complete `ok evaluated=6` 196s later, leaving an operator with no way to tell whether stops

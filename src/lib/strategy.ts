@@ -61,11 +61,11 @@ import { createEvidencePack, createEvidenceRef } from "./evidence-pack";
 import { derivePromptRagConsumption, type PromptRagCandidate, type PromptRagConsumptionResult } from "./rag/evidence-consumption";
 import { summarizeSourceCoverage } from "./source-value";
 import { deriveExecutionState, fillSourceForExecutionMode, llmExecutionMode, llmModeClarification, type ExecutionAccount } from "./execution-mode";
-import { applyBrokerOrderPlacementPause, checkBrokerHealth, isOrderPlacementInfrastructureFailure } from "./broker-health";
+import { applyBrokerOrderPlacementPause, brokerHealthRunSkip, checkBrokerHealth, isOrderPlacementInfrastructureFailure } from "./broker-health";
 import { greenFailoverExhaustedSuffix, interactiveStrategyReasoningEffort, isFailoverLlmStatus, isRetryableLlmError, LLM_OUTPUT_TOKEN_CAPS, LLM_REQUEST_DEFAULTS, LLM_TIMEOUT_MS, llmFetch, llmFetchCapturing, resolveLlmWireOutputCap, strategyLlmTimeoutMs, type LlmCallOutcome } from "./llm-request";
 import { buildBullSystem, STRATEGY_PROMPT_VERSION, THESIS_PLAYBOOK } from "./strategy-prompts";
 import { resolveLlmEndpoint } from "./llm-provider";
-import { implicitGreenRotationFallbacks, isModelRotationSentinel, recordOpenRouterModelNotFound, resolveModelRotationForRun } from "./model-rotation";
+import { isModelRotationSentinel, planRotationImplicitFallbacks, recordOpenRouterModelNotFound, resolveModelRotationForRun } from "./model-rotation";
 import { maybeOpenRouterCreditsExhaustedHint } from "./openrouter-credits";
 import { buildLlmRequestBody, llmAuthHeaders, extractLlmText, extractJsonPayload, detectLlmTruncation, toGeminiJsonSchema } from "./llm-call";
 import { humanizeLlmError, humanizeLlmTransportError } from "./llm-errors";
@@ -652,11 +652,13 @@ export async function runStrategyOnce(
         return result;
       }
       if (!healthSignals.isHealthy) {
-        const reason = `Broker health check failed: ${healthSignals.reason}. Skipping strategy run to avoid consuming budget.`;
+        // A probe that timed out on a stalled event loop is not a broker failure (board 687a5fb4).
+        const skip = brokerHealthRunSkip(healthSignals);
+        const reason = skip.summary;
         console.warn(`[Strategy] ${reason}`);
-        audit("run_skipped_broker_unhealthy", { runId, userId, reason, pauseAction: pauseResult.action }, userId, connectedAccountId);
-        result = { runId, status: "skipped_broker_unhealthy", summary: reason, proposals: [] };
-        finishStrategyRun(runId, "skipped_broker_unhealthy", reason, userId);
+        audit(skip.auditKind, { runId, userId, reason, pauseAction: pauseResult.action, processStall: healthSignals.processStall }, userId, connectedAccountId);
+        result = { runId, status: skip.status, summary: reason, proposals: [] };
+        finishStrategyRun(runId, skip.status, reason, userId);
         return result;
       }
     }
@@ -882,13 +884,23 @@ export async function runStrategyOnce(
         ...(cashFlows ?? {})
       });
       if (breaker.breached) {
-        const breakerAction = policy.riskRules.drawdownBreakerAction ?? "advisory";
+        const configuredBreakerAction = policy.riskRules.drawdownBreakerAction ?? "advisory";
+        // Equity fell hard since the last run with no deposit/withdrawal on the broker ledger (or the
+        // ledger was unreadable): most likely a cash-out whose ledger row has not posted.  Hold an
+        // opted-in hard action as advisory for this ONE run; risk-breaker never defers the same
+        // baseline twice, so a real loss is enforced next run.
+        const breakerAction = breaker.deferHardAction ? "advisory" : configuredBreakerAction;
+        const breakerLedgerContext = {
+          ...(breaker.deferHardAction && configuredBreakerAction !== "advisory" ? { deferredHardAction: configuredBreakerAction } : {}),
+          ...(breaker.unexplainedEquityChange ? { unexplainedEquityChange: breaker.unexplainedEquityChange } : {}),
+          ...(breaker.flowsUnavailable ? { flowsUnavailable: true } : {})
+        };
         const drawdownPct = breaker.highWaterMark > 0 ? ((breaker.highWaterMark - equity) / breaker.highWaterMark) * 100 : 0;
         if (breakerAction === "advisory") {
           // Advisory (default): receipt + prompt context, NO state change. The account boundary is the
           // only absolute; the agent decides whether to de-risk, and the deviation is logged/coachable.
           drawdownAdvisory = { reason: breaker.reason ?? "drawdown/daily-loss threshold breached", equity, highWaterMark: breaker.highWaterMark, drawdownPct };
-          audit("policy_violation_drawdown", { runId, reason: breaker.reason, equity, highWaterMark: breaker.highWaterMark, startOfDayEquity: breaker.startOfDayEquity, from: "active", action: "advisory" }, userId, connectedAccountId);
+          audit("policy_violation_drawdown", { runId, reason: breaker.reason, equity, highWaterMark: breaker.highWaterMark, startOfDayEquity: breaker.startOfDayEquity, from: "active", action: "advisory", ...breakerLedgerContext }, userId, connectedAccountId);
           // Advisory must still REACH the owner, not just the logs (guard enablement 2026-07-28,
           // proposal row 8) — but without spamming: notify at most once per
           // (user, account, source, day), deduped via the same internal-settings KV pattern as the
@@ -921,7 +933,7 @@ export async function runStrategyOnce(
           const revertedTo = breakerAction === "close_only" ? "close_only" : "halted";
           policy.systemState = revertedTo;
           setPolicy(policy, userId, connectedAccountId);
-          audit("policy_violation_drawdown", { runId, reason: breaker.reason, equity, highWaterMark: breaker.highWaterMark, startOfDayEquity: breaker.startOfDayEquity, from: "active", revertedTo, action: breakerAction }, userId, connectedAccountId);
+          audit("policy_violation_drawdown", { runId, reason: breaker.reason, equity, highWaterMark: breaker.highWaterMark, startOfDayEquity: breaker.startOfDayEquity, from: "active", revertedTo, action: breakerAction, ...breakerLedgerContext }, userId, connectedAccountId);
           await sendNotification(
             {
               type: "kill_switch",
@@ -1151,11 +1163,7 @@ export async function runStrategyOnce(
     // single-model chain, so an empty/malformed OpenRouter 200 killed the run (five Aug 6 deaths
     // named one rotated model each).  Append a small implicit failover from the same eligible
     // pool.  Owner-configured fallbacks win unchanged.
-    const explicitGreenFallbacks = Array.isArray(gatePolicy.llmFallbackModels) ? gatePolicy.llmFallbackModels : [];
-    const implicitGreenFallbacks =
-      greenRotationPool && rotationOverride.llmModel && explicitGreenFallbacks.length === 0
-        ? implicitGreenRotationFallbacks(greenRotationPool, rotationOverride.llmModel)
-        : [];
+    //
     // 2026-09-24 fix (rotation access-error failover, board 687a5fb4): the Red reviewer had NO
     // equivalent safety net — a rotating Red seat with no owner-configured redTeamFallbackModels
     // was always a single-model chain, so a permanent OpenRouter access error (403 "doesn't have
@@ -1164,12 +1172,26 @@ export async function runStrategyOnce(
     // Autopilot (red-team-routing.ts fails opens closed by design), so this is a bigger blast
     // radius than a missed Green proposal.  Mirrors the Green mechanism exactly, including
     // "owner-configured fallbacks win unchanged" and excluding any slug currently cooling down
-    // from a recent 404/403 (implicitGreenRotationFallbacks — seat-agnostic despite the name).
+    // from a recent 404 (or this user's recent 403).
+    //
+    // Review round 2026-09-25 (P1): both chains are planned together so neither seat's implicit
+    // chain can hold the OTHER seat's model — Red's chain used to put Green's own pick first
+    // (a preferred failover seat), so one Red failure made the proposer review its own opening.
+    // debateProposal also drops any fallback reviewer that turns out to be the model that
+    // actually proposed (a Green failover), so both directions are covered.
+    const explicitGreenFallbacks = Array.isArray(gatePolicy.llmFallbackModels) ? gatePolicy.llmFallbackModels : [];
     const explicitRedFallbacks = Array.isArray(gatePolicy.redTeamFallbackModels) ? gatePolicy.redTeamFallbackModels : [];
-    const implicitRedFallbacks =
-      redRotationPool && rotationOverride.redTeamLlmModel && explicitRedFallbacks.length === 0
-        ? implicitGreenRotationFallbacks(redRotationPool, rotationOverride.redTeamLlmModel)
-        : [];
+    const { green: implicitGreenFallbacks, red: implicitRedFallbacks } = planRotationImplicitFallbacks({
+      userId,
+      greenRotationPool,
+      redRotationPool,
+      greenPick: rotationOverride.llmModel,
+      redPick: rotationOverride.redTeamLlmModel,
+      greenPrimary: runLlmOverride.llmModel ?? rotationOverride.llmModel ?? gatePolicy.llmModel,
+      redPrimary: runLlmOverride.redTeamLlmModel ?? rotationOverride.redTeamLlmModel ?? gatePolicy.redTeamLlmModel,
+      explicitGreenFallbacks,
+      explicitRedFallbacks
+    });
     const runPolicy: RunnablePolicy = {
       ...gatePolicy,
       ...rotationOverride,
@@ -6219,8 +6241,10 @@ async function proposeTrades(input: {
               // Both cool that slug for a bounded window instead of being frozen into a hardcoded
               // "dead models" list that no live catalog could ever overrule, and instead of
               // silently re-picking the same broken slug on the next rotation sample.
+              // A 404 cools catalog-wide; a 403 cools for THIS user only (it is a fact about one key)
+              // and never on a moderation refusal (one flagged prompt) — review round 2026-09-25.
               if (attempt.provider === "openrouter" && (response.status === 404 || response.status === 403)) {
-                recordOpenRouterModelNotFound(attempt.model);
+                recordOpenRouterModelNotFound(attempt.model, { status: response.status, userId: input.userId, detail });
               }
               if (!isLast && isFailoverLlmStatus(response.status)) {
                 lastError = new Error(humanizeLlmError(detail, { provider: attempt.provider, status: response.status }));

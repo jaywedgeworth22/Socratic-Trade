@@ -1,9 +1,13 @@
 /**
- * Unit + DB-backed tests for src/lib/order-role.ts — the classifier that answers the owner
+ * Unit + DB-backed tests for src/lib/order-role.ts (pure classifier) and its server-only sibling
+ * src/lib/order-role-context.ts (DB-backed context builder) — together they answer the owner
  * report this exists for: four resting Alpaca-paper orders (BAC, BRK-B, KO, PYPL) turned out to
  * be correct, app-placed protective stops, but nothing in the ops snapshot or the console Orders
- * screen said so. One `describe` block per OrderRole plus the DB-backed context builder,
- * `attachOrderRoles`, and `buildOpsWorkingOrderDetails`.
+ * screen said so. `classifyOrderRole`/`ORDER_ROLE_LABELS` tests import only the pure module
+ * (`orderRole`, below) — that module has ZERO db/server imports so a "use client" component can
+ * import it directly (app/console/orders/page.tsx does, for `ORDER_ROLE_LABELS`). The DB-backed
+ * context builder, `attachOrderRoles`, and `buildOpsWorkingOrderDetails` live in
+ * `order-role-context.ts` and are exercised via the separate `orderRoleContext` import below.
  */
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -11,17 +15,20 @@ import { join } from "node:path";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { EquityOrder } from "../src/lib/types";
 
-// order-role.ts pulls in ./db (~5k lines) + order-provenance.ts + broker-held-orders.ts +
+// order-role-context.ts pulls in ./db (~5k lines) + order-provenance.ts + broker-held-orders.ts +
 // broker-side.ts — a multi-second cold import solo, and much slower under full-suite/full-fleet
 // CPU contention (mirrors test/chat-orchestrator-search-knowledge.test.ts's own note on this
 // exact class of flake). Importing inside a test body charges that one-time cost to the FIRST
 // test's default testTimeout; beforeAll gets its own explicit budget instead, so every test body
-// below is a synchronous, millisecond-fast call against the already-cached module.
+// below is a synchronous, millisecond-fast call against the already-cached module. order-role.ts
+// itself (the pure classifier) has none of those imports and is cheap to load either way.
 let orderRole: typeof import("../src/lib/order-role");
+let orderRoleContext: typeof import("../src/lib/order-role-context");
 let db: typeof import("../src/lib/db");
 
 beforeAll(async () => {
   orderRole = await import("../src/lib/order-role");
+  orderRoleContext = await import("../src/lib/order-role-context");
   db = await import("../src/lib/db");
 }, 120_000);
 
@@ -296,7 +303,7 @@ describe("loadOrderRoleContexts — DB-backed", () => {
       status: "resting",
       kind: "fixed"
     });
-    const contexts = orderRole.loadOrderRoleContexts([{ id: "broker-order-1", clientOrderId: undefined, symbol: "BAC" }], {
+    const contexts = orderRoleContext.loadOrderRoleContexts([{ id: "broker-order-1", clientOrderId: undefined, symbol: "BAC" }], {
       userId: "local",
       accountNumber
     });
@@ -319,7 +326,7 @@ describe("loadOrderRoleContexts — DB-backed", () => {
       status: "triggered",
       lastAttemptRefId: "sstop-abc-123"
     });
-    const contexts = orderRole.loadOrderRoleContexts([{ id: "order-2", clientOrderId: "sstop-abc-123", symbol: "T" }], {
+    const contexts = orderRoleContext.loadOrderRoleContexts([{ id: "order-2", clientOrderId: "sstop-abc-123", symbol: "T" }], {
       userId: "local",
       accountNumber
     });
@@ -336,7 +343,7 @@ describe("loadOrderRoleContexts — DB-backed", () => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(randomUUID(), "local", accountNumber, "stale-order-1", "repl-ref-1", "replacement_submitted", "new-order-1", now, now);
-    const contexts = orderRole.loadOrderRoleContexts([{ id: "new-order-1", clientOrderId: undefined, symbol: "MSFT" }], {
+    const contexts = orderRoleContext.loadOrderRoleContexts([{ id: "new-order-1", clientOrderId: undefined, symbol: "MSFT" }], {
       userId: "local",
       accountNumber
     });
@@ -352,7 +359,7 @@ describe("loadOrderRoleContexts — DB-backed", () => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(randomUUID(), "local", accountNumber, "stale-order-2", "repl-ref-2", "cancel_requested", now, now);
-    const contexts = orderRole.loadOrderRoleContexts([{ id: "stale-order-2", clientOrderId: "repl-ref-2", symbol: "MSFT" }], {
+    const contexts = orderRoleContext.loadOrderRoleContexts([{ id: "stale-order-2", clientOrderId: "repl-ref-2", symbol: "MSFT" }], {
       userId: "local",
       accountNumber
     });
@@ -360,7 +367,7 @@ describe("loadOrderRoleContexts — DB-backed", () => {
   });
 
   it("returns an empty map when accountNumber is empty, without querying the DB", () => {
-    const contexts = orderRole.loadOrderRoleContexts([{ id: "x", clientOrderId: undefined, symbol: "X" }], {
+    const contexts = orderRoleContext.loadOrderRoleContexts([{ id: "x", clientOrderId: undefined, symbol: "X" }], {
       userId: "local",
       accountNumber: ""
     });
@@ -384,7 +391,7 @@ describe("attachOrderRoles", () => {
     });
     const working = order({ id: "working-1", state: "new" });
     const filled = order({ id: "filled-1", state: "filled" });
-    const result = orderRole.attachOrderRoles([working, filled], "local", accountNumber);
+    const result = orderRoleContext.attachOrderRoles([working, filled], "local", accountNumber);
     expect(result.find((o) => o.id === "working-1")?.role).toBe("protective_stop");
     expect(result.find((o) => o.id === "working-1")?.whyResting).toBeDefined();
     expect(result.find((o) => o.id === "filled-1")?.role).toBeUndefined();
@@ -413,7 +420,7 @@ describe("attachOrderRoles", () => {
       orderClass: "bracket",
       state: "new"
     });
-    const result = orderRole.attachOrderRoles([takeProfitLeg, stopLossLeg], "local", accountNumber);
+    const result = orderRoleContext.attachOrderRoles([takeProfitLeg, stopLossLeg], "local", accountNumber);
     expect(result.find((o) => o.id === "short-tp-1")?.role).toBe("bracket_take_profit");
     expect(result.find((o) => o.id === "short-sl-1")?.role).toBe("bracket_stop_loss");
   });
@@ -427,7 +434,7 @@ describe("attachOrderRoles", () => {
       orderClass: "oco",
       state: "pending_cancel"
     });
-    const result = orderRole.attachOrderRoles([remainingExit], "local", accountNumber);
+    const result = orderRoleContext.attachOrderRoles([remainingExit], "local", accountNumber);
     expect(result[0]?.role).toBe("bracket_stop_loss");
   });
 
@@ -450,7 +457,7 @@ describe("attachOrderRoles", () => {
       orderClass: "bracket",
       state: "pending_cancel"
     });
-    const result = orderRole.attachOrderRoles([filledTakeProfit, settlingStopLoss], "local", accountNumber);
+    const result = orderRoleContext.attachOrderRoles([filledTakeProfit, settlingStopLoss], "local", accountNumber);
     expect(result.find((o) => o.id === "brk-sl-pending-cancel")?.role).toBe("bracket_stop_loss");
     expect(result.find((o) => o.id === "brk-tp-filled")?.role).toBeUndefined();
   });
@@ -465,19 +472,19 @@ describe("attachOrderRoles", () => {
       orderClass: "bracket",
       state: "new"
     });
-    const result = orderRole.attachOrderRoles([shortEntry], "local", accountNumber);
+    const result = orderRoleContext.attachOrderRoles([shortEntry], "local", accountNumber);
     expect(result.find((o) => o.id === "short-entry-1")?.role).toBe("entry");
   });
 
   it("returns the orders unchanged when accountNumber is empty", () => {
     const working = order({ state: "new" });
-    const result = orderRole.attachOrderRoles([working], "local", "");
+    const result = orderRoleContext.attachOrderRoles([working], "local", "");
     expect(result[0]).toBe(working);
   });
 
   it("returns the orders unchanged when there are no working orders", () => {
     const filled = order({ state: "filled" });
-    const result = orderRole.attachOrderRoles([filled], "local", freshAccountNumber());
+    const result = orderRoleContext.attachOrderRoles([filled], "local", freshAccountNumber());
     expect(result[0]).toBe(filled);
   });
 });
@@ -498,7 +505,7 @@ describe("buildOpsWorkingOrderDetails", () => {
       trailPercent: 5
     });
     const o = order({ id: "ord-detail-1", clientOrderId: "protstop-local-1", state: "new" });
-    const details = orderRole.buildOpsWorkingOrderDetails([o], "local", accountNumber);
+    const details = orderRoleContext.buildOpsWorkingOrderDetails([o], "local", accountNumber);
     expect(details).toHaveLength(1);
     expect(details[0]).toEqual({
       symbol: "BAC",
@@ -523,17 +530,17 @@ describe("buildOpsWorkingOrderDetails", () => {
   });
 
   it("drops terminal orders and caps at OPS_ORDERS_DETAIL_MAX_PER_ACCOUNT", () => {
-    const working = Array.from({ length: orderRole.OPS_ORDERS_DETAIL_MAX_PER_ACCOUNT + 10 }, (_, i) =>
+    const working = Array.from({ length: orderRoleContext.OPS_ORDERS_DETAIL_MAX_PER_ACCOUNT + 10 }, (_, i) =>
       order({ id: `working-${i}`, symbol: `SYM${i}`, state: "new" })
     );
     const terminal = order({ id: "done-1", state: "filled" });
-    const details = orderRole.buildOpsWorkingOrderDetails([...working, terminal], "local", freshAccountNumber());
-    expect(details).toHaveLength(orderRole.OPS_ORDERS_DETAIL_MAX_PER_ACCOUNT);
+    const details = orderRoleContext.buildOpsWorkingOrderDetails([...working, terminal], "local", freshAccountNumber());
+    expect(details).toHaveLength(orderRoleContext.OPS_ORDERS_DETAIL_MAX_PER_ACCOUNT);
     expect(details.every((d) => d.symbol.startsWith("SYM"))).toBe(true);
   });
 
   it("returns [] when accountNumber is empty", () => {
-    const details = orderRole.buildOpsWorkingOrderDetails([order({ state: "new" })], "local", "");
+    const details = orderRoleContext.buildOpsWorkingOrderDetails([order({ state: "new" })], "local", "");
     expect(details).toEqual([]);
   });
 });

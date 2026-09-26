@@ -966,7 +966,7 @@ export interface EquityOrder {
    */
   orderClass?: string;
   /** See `OrderRole`. Present only when a dashboard/ops snapshot attached it via
-   *  `order-role.ts`'s `attachOrderRoles`/`buildOpsWorkingOrderDetails`. */
+   *  `order-role-context.ts`'s `attachOrderRoles`/`buildOpsWorkingOrderDetails`. */
   role?: OrderRole;
   /** One-sentence, owner-facing explanation of why a `role`-classified order is resting (e.g.
    *  "Protective trailing stop for 24 BAC; rests until price falls 5%."). Present alongside `role`. */

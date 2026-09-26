@@ -14,7 +14,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { NextRequest } from "next/server";
 
 import type { OHLCBar } from "../src/lib/indicators";
-import { closesInRange, fetchCompanyProfile, fetchPriceSeries, fetchSpxCloses, parseMarketRange } from "../src/lib/market-read";
+import { clearScreenerProfileCacheForTests, closesInRange, fetchCompanyProfile, fetchPriceSeries, fetchSpxCloses, parseMarketRange } from "../src/lib/market-read";
 import { GET as profileRoute } from "../app/api/market/profile/[symbol]/route";
 import { fetchDailyOHLC } from "../src/lib/history";
 import { GET as pricesRoute } from "../app/api/market/prices/[symbol]/route";
@@ -41,6 +41,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  clearScreenerProfileCacheForTests();
   for (const [key, value] of Object.entries(savedEnv)) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -305,6 +306,96 @@ describe("GET /api/market/profile/{symbol}", () => {
       marketCap: 3_000_000_000_000,
       assetClass: "equity"
     });
+  });
+
+  it("does not cache empty map after Nasdaq screener fetch failure — subsequent call retries", async () => {
+    clearScreenerProfileCacheForTests();
+    let fetchCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        fetchCalls += 1;
+        if (fetchCalls === 1) {
+          throw new Error("nasdaq transient failure");
+        }
+        return Response.json({
+          data: {
+            table: {
+              rows: [
+                {
+                  symbol: "RETRYTICK",
+                  name: "Retry Co",
+                  sector: "Technology",
+                  industry: "Software",
+                  marketCap: "1000000000"
+                }
+              ]
+            }
+          }
+        });
+      }) as unknown as typeof fetch
+    );
+
+    expect(await fetchCompanyProfile("RETRYTICK")).toBeNull();
+    const callsAfterFailure = fetchCalls;
+    expect(callsAfterFailure).toBeGreaterThanOrEqual(1);
+
+    const ref = await fetchCompanyProfile("RETRYTICK");
+    expect(ref).toMatchObject({
+      ticker: "RETRYTICK",
+      companyName: "Retry Co",
+      sector: "Technology",
+      industry: "Software",
+      marketCap: 1_000_000_000,
+      assetClass: "equity"
+    });
+    expect(fetchCalls).toBeGreaterThan(callsAfterFailure);
+
+    // Successful map is cached — a third lookup must not re-hit Nasdaq.
+    const callsAfterSuccess = fetchCalls;
+    expect(await fetchCompanyProfile("RETRYTICK")).toMatchObject({ ticker: "RETRYTICK" });
+    expect(fetchCalls).toBe(callsAfterSuccess);
+  });
+
+  it("does not cache empty map after non-OK Nasdaq screener response — subsequent call retries", async () => {
+    clearScreenerProfileCacheForTests();
+    let fetchCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        fetchCalls += 1;
+        if (fetchCalls === 1) {
+          return new Response("upstream unavailable", { status: 503 });
+        }
+        return Response.json({
+          data: {
+            table: {
+              rows: [
+                {
+                  symbol: "RETRY503",
+                  name: "Retry Five Oh Three",
+                  sector: "Healthcare",
+                  industry: "Biotech",
+                  marketCap: "500000000"
+                }
+              ]
+            }
+          }
+        });
+      }) as unknown as typeof fetch
+    );
+
+    expect(await fetchCompanyProfile("RETRY503")).toBeNull();
+    const callsAfterFailure = fetchCalls;
+    expect(callsAfterFailure).toBeGreaterThanOrEqual(1);
+
+    const ref = await fetchCompanyProfile("RETRY503");
+    expect(ref).toMatchObject({
+      ticker: "RETRY503",
+      companyName: "Retry Five Oh Three",
+      sector: "Healthcare"
+    });
+    expect(fetchCalls).toBeGreaterThan(callsAfterFailure);
   });
 
   it("returns null from the helper for an empty symbol", async () => {

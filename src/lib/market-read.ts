@@ -138,30 +138,37 @@ async function loadScreenerProfileMap(now = Date.now()): Promise<Map<string, Pro
   if (screenerProfileCache && screenerProfileCache.expiresAt > now) {
     return screenerProfileCache.byTicker;
   }
-  const byTicker = new Map<string, ProfileRef>();
   try {
     const response = await fetchNasdaqScreenerResponse("congress-nasdaq-screener");
-    if (response.ok) {
-      const payload = (await response.json()) as {
-        data?: { table?: { rows?: Array<Record<string, unknown>> } };
-      };
-      const rows = Array.isArray(payload?.data?.table?.rows) ? payload.data.table.rows : [];
-      for (const row of rows) {
-        const ref = marketQuoteToRef({
-          symbol: String(row.symbol ?? ""),
-          companyName: typeof row.name === "string" ? row.name : undefined,
-          sector: typeof row.sector === "string" ? row.sector : undefined,
-          industry: typeof row.industry === "string" ? row.industry : undefined,
-          marketCap: parseScreenerMarketCap(row.marketCap)
-        });
-        if (ref) byTicker.set(ref.ticker, ref);
-      }
+    // Only cache successful HTTP responses. Transient failures / non-OK must not
+    // poison the 5m TTL with an empty map (valid symbols would 404 until expiry).
+    if (!response.ok) {
+      return new Map();
     }
+    const payload = (await response.json()) as {
+      data?: { table?: { rows?: Array<Record<string, unknown>> } };
+    };
+    const rows = Array.isArray(payload?.data?.table?.rows) ? payload.data.table.rows : [];
+    const byTicker = new Map<string, ProfileRef>();
+    for (const row of rows) {
+      const ref = marketQuoteToRef({
+        symbol: String(row.symbol ?? ""),
+        companyName: typeof row.name === "string" ? row.name : undefined,
+        sector: typeof row.sector === "string" ? row.sector : undefined,
+        industry: typeof row.industry === "string" ? row.industry : undefined,
+        marketCap: parseScreenerMarketCap(row.marketCap)
+      });
+      if (ref) byTicker.set(ref.ticker, ref);
+    }
+    // Successful empty screener (legitimately zero rows) is still cacheable.
+    screenerProfileCache = { expiresAt: now + SCREENER_PROFILE_TTL_MS, byTicker };
+    return byTicker;
   } catch (err) {
     console.warn("[market-read] screener profile map failed:", err);
+    // Leave any prior (expired) cache alone; return empty without writing TTL
+    // so the next call retries immediately.
+    return new Map();
   }
-  screenerProfileCache = { expiresAt: now + SCREENER_PROFILE_TTL_MS, byTicker };
-  return byTicker;
 }
 
 /** Test seam: drop the screener profile cache. */

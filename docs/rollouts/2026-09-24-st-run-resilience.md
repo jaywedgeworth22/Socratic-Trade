@@ -248,6 +248,22 @@ were addressed, so the fixes ship as a follow-up branch `claude/st-run-resilienc
 **Verification (review round).**  Red first: with only the tests applied, the five new
 broker-health / boot-busy cases failed for the expected reasons (`expected 3 to be undefined`,
 `expected 2 to be undefined`, the "Autonomy halted on boot" title, marker still present, 0 receipts);
-the retry-file cases could not load without `strategy-run-origin.ts`.  Green commands and results are
-recorded in the follow-up PR and `STATUS.md`.
+the retry-file cases could not load without `strategy-run-origin.ts`.
+
+Green (host load average 250-480, so targeted suites only; the required `verify` check runs the full
+suite and build):
+
+- `npx tsc --noEmit` — clean (before and after merging `origin/main` at `0201b5723`).
+- `npx eslint` on every changed file — 0 errors, pre-existing warnings only.
+- `npx vitest run test/strategy-run-restart-retry.test.ts test/scheduler-sqlite-busy.test.ts
+  test/broker-health-probe-resilience.test.ts test/scheduler-boot-halt-notify.test.ts
+  test/strategy-run-origin.test.ts test/persistence-hardening.test.ts` — 75 passed, 2 failed on load
+  (the lag-sampler attribution case and the 60s scheduler-tick case, neither touched here); the two
+  files rerun alone — 24/24 passed.
+- Related suites `broker-health-auto-pause`, `mobile-api`, `route-strategy-pause`,
+  `scheduler-followup-lease`, `scheduler-leader-heartbeat`, `stale-running-runs-adoption-grace`,
+  `stale-running-runs`, `strategy-run-drain-handoff`, `strategy-run-once-async-route`,
+  `strategy-run-status`, `transient-network-resilience` — 11 files, 62 tests passed.
+
+Follow-up PR: #3794 (hold label `do-not-automerge`).
 

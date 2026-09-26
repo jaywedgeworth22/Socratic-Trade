@@ -13,8 +13,9 @@ retry.  (3) No retry, and no non-manual run, on a draining or missing account.  
 interlock's marker release is one transaction under `sqliteYieldRetry`.  (5) The connectivity
 streak resets on auto-halt and on every marker clear, which also covers the ops-token halt in open
 PR #3754.  (6) The boot notification no longer says "reverted from 'active'" for an account a
-broker auto-pause had already halted.  Rollout: `docs/rollouts/2026-09-24-st-run-resilience.md`
-section 7.
+broker auto-pause had already halted.  PR #3794 (hold label kept).  Verified locally: tsc clean,
+eslint 0 errors, targeted suites green (17 files).  Rollout:
+`docs/rollouts/2026-09-24-st-run-resilience.md` section 7.
 ## 2026-09-25 CLAUDE — C review fixes (follow-up to #3761)
 
 **What.**  Review round on merged PR #3761 (rotation access-error failover), board `687a5fb4`.

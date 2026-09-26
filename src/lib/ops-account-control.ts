@@ -1,4 +1,4 @@
-import { verifyAutonomyArmingPreconditions } from "./autonomy-arming";
+import { checkAutonomyArmingPolicyPreconditions, verifyAutonomyArmingPreconditions } from "./autonomy-arming";
 import { getBrokerGateway } from "./broker";
 import { isWorkingOrderState } from "./broker-held-orders";
 import { checkBrokerHealth, clearBrokerPlacementPauseMarker, getBrokerPlacementPauseMarker } from "./broker-health";
@@ -59,6 +59,14 @@ export const OPS_MAX_ORDER_IDS = 100;
 const MAX_ID_LENGTH = 200;
 /** A broker read that has not answered by now is reported as a failure instead of hanging the call. */
 const BROKER_READ_TIMEOUT_MS = 15_000;
+/**
+ * Wall-clock budget for one cancel_working_orders call, measured from its start.  Each order is
+ * cancelled on its own (a fresh working-order check, then the cancel), so a long list on a slow
+ * broker could otherwise hold the request past the edge proxy's 100s limit.  Once the budget is
+ * spent no further cancel is STARTED; the rest are reported as not attempted and a re-run picks
+ * them up.  An in-flight cancel is never abandoned, so the worst case is this plus one order.
+ */
+export const OPS_CANCEL_BATCH_BUDGET_MS = 45_000;
 /** Matches the scheduler's TICK_MS (src/lib/scheduler.ts). */
 const SCHEDULER_TICK_MS = 60_000;
 const SCHEDULER_STALE_TICK_MS = 3 * SCHEDULER_TICK_MS;
@@ -247,7 +255,7 @@ function centralTime(iso: string | null): string | null {
 
 /**
  * What the scheduler (src/lib/scheduler.ts `tickInner`, per-account loop) will do with this account
- * on its next ticks, evaluated in the same gate order: test broker → draining → account number →
+ * on its next ticks, evaluated in the same gate order: test broker → account number → draining →
  * broker health gate → systemState → cadence lane → market session → cadence clock → monthly LLM
  * ceiling.  Read-only; uses the scheduler's own presentation helper for the next-run time.
  */
@@ -269,8 +277,10 @@ export function describeNextEligibleRun(input: {
   const lane = cadenceLaneDecision(policy);
 
   if (account.broker === "test") blockers.push("This is an internal test-broker account; the scheduler never runs strategy for it.");
-  if (account.isDraining) blockers.push("This account is draining (being disconnected); the scheduler only winds it down.");
+  // The scheduler skips an account with no account number BEFORE its drain branch, so a draining
+  // account without one is never wound down either: report the account number first.
   if (!policy.accountNumber) blockers.push("This connected account has no broker account number.");
+  if (account.isDraining) blockers.push("This account is draining (being disconnected); the scheduler only winds it down.");
   if (brokerHealth && !brokerHealth.isHealthy) {
     blockers.push(
       `The broker health gate is failing right now (${brokerHealth.reason ?? "unhealthy"}).  The scheduler skips this account every tick until it passes, and re-halts an active account if the failure persists.`
@@ -407,6 +417,8 @@ interface CancelResult {
   dryRun?: true;
   wouldCancel?: boolean;
   skipped?: true;
+  /** The call's time budget ran out before this order's cancel was started.  Nothing was sent. */
+  notAttempted?: true;
   dustWarning?: string;
   error?: string;
   status?: number;
@@ -417,6 +429,7 @@ async function cancelWorkingOrders(
   request: Extract<OpsAccountControlRequest, { action: "cancel_working_orders" }>
 ): Promise<OpsAccountControlOutcome> {
   const userId = account.userId;
+  const startedAt = Date.now();
   const policy = peekPolicy(userId, account.id);
   const read = await readWorkingOrders(account, policy, userId);
   if (!policy.accountNumber || !read.ok) {
@@ -451,15 +464,28 @@ async function cancelWorkingOrders(
       results.push({ orderId, ok: true, dryRun: true, wouldCancel: true, ...describe });
       continue;
     }
+    if (Date.now() - startedAt >= OPS_CANCEL_BATCH_BUDGET_MS) {
+      results.push({
+        orderId,
+        ok: false,
+        notAttempted: true,
+        ...describe,
+        error: `Not attempted: this call's ${Math.round(OPS_CANCEL_BATCH_BUDGET_MS / 1000)}s time budget ran out before this order.  Nothing was sent for it; run the cancel again to finish the rest.`
+      });
+      continue;
+    }
     try {
       // The console's cancel path, pointed at THIS account.  requireWorkingOrder re-checks
-      // membership at cancel time (an order that filled since the read above is refused).
+      // membership at cancel time (an order that filled since the read above is refused), with the
+      // same broker-read budget as the read above: the ops path fails closed on an unverified
+      // read, so the console's 2.5s advisory budget would refuse most cancels on a slow broker.
       const result = await cancelWorkingOrder({
         userId,
         orderId,
         connectedAccountId: account.id,
         requireWorkingOrder: true,
         failClosedWhenUnverified: true,
+        lookupTimeoutMs: BROKER_READ_TIMEOUT_MS,
         source: "ops"
       });
       results.push({
@@ -482,17 +508,19 @@ async function cancelWorkingOrders(
   }
 
   const skipped = results.filter((r) => r.skipped).length;
-  const failed = results.filter((r) => !r.ok && !r.skipped).length;
+  const notAttempted = results.filter((r) => r.notAttempted).length;
+  const failed = results.filter((r) => !r.ok && !r.skipped && !r.notAttempted).length;
   const summary = {
     requested: targets.length,
     ...(request.dryRun ? { wouldCancel: results.filter((r) => r.wouldCancel).length } : { cancelled: results.filter((r) => r.ok).length }),
     failed,
-    skipped
+    skipped,
+    notAttempted
   };
   const outcome = {
     status: 200,
     body: {
-      ok: failed === 0 && skipped === 0,
+      ok: failed === 0 && skipped === 0 && notAttempted === 0,
       action: request.action,
       dryRun: request.dryRun,
       account: accountSummary(account),
@@ -555,9 +583,11 @@ async function setSystemState(
   if (!request.dryRun) {
     // The broker read above awaited.  Re-check and re-read inside one SQLite transaction so that
     // (1) an account deleted meanwhile is refused — setPolicy falls back to USER-level storage for
-    // an id that no longer resolves, the same trap PUT /api/policy guards against — and (2) a
+    // an id that no longer resolves, the same trap PUT /api/policy guards against — (2) a
     // concurrent console edit to this account's policy is not overwritten by the pre-await
-    // snapshot: only systemState (and `enabled` on halt) changes.
+    // snapshot: only systemState (and `enabled` on halt) changes, and (3) arming is re-checked
+    // against the policy it is written onto: a universe emptied, or an account number changed,
+    // while the broker check was in flight must not end up armed on a policy nobody verified.
     let refusal: string | undefined;
     getDb().transaction(() => {
       const current = getConnectedAccount(account.id, userId);
@@ -569,15 +599,29 @@ async function setSystemState(
         refusal = "This account is disconnected and being wound down; it cannot be armed.";
         return;
       }
-      setPolicy(withTargetState(getPolicy(userId, account.id)), userId, account.id);
+      const fresh = getPolicy(userId, account.id);
+      if (target === "active") {
+        const problem = checkAutonomyArmingPolicyPreconditions(fresh);
+        if (problem) {
+          refusal = `This account's settings changed while the broker check was in flight, so it was not armed: ${problem}`;
+          return;
+        }
+        if (fresh.accountNumber !== policy.accountNumber) {
+          refusal = "This account's broker account number changed while the broker check was in flight, so it was not armed.  Run the call again.";
+          return;
+        }
+      }
+      setPolicy(withTargetState(fresh), userId, account.id);
+      // The broker-health gate auto-resumes a halt it owns (marker present) to ACTIVE once the
+      // broker recovers.  Any explicit operator state (halted, close_only, or active) now owns the
+      // account, so the marker goes with the same write: a stale marker would let a healthy tick
+      // turn an operator's close_only, or a later manual halt, back into active.
+      if (getBrokerPlacementPauseMarker(userId, account.id)) {
+        clearBrokerPlacementPauseMarker(userId, account.id);
+        clearedBrokerAutoPause = true;
+      }
     })();
     if (refusal) return refuse(409, refusal);
-    if (target === "halted" && autoPause) {
-      // The broker-health gate auto-resumes a halt it owns (marker present) once the broker
-      // recovers.  An explicit operator halt must stick, so the halt is now the operator's.
-      clearBrokerPlacementPauseMarker(userId, account.id);
-      clearedBrokerAutoPause = true;
-    }
     // Nudge any open console to refresh: this change did not come from that console.
     emitDashboardEvent({
       type: "dirty",

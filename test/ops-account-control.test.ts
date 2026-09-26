@@ -679,6 +679,17 @@ describe("console paths are unchanged", () => {
     expect(broker.cancelCalls).toEqual([{ accountNumber: seeded.namedAccountNumber, orderId: "n-1" }]);
   });
 
+  it("without lookupTimeoutMs the pre-cancel read keeps the console's 2.5s advisory budget (fail-open lanes)", async () => {
+    const seeded = await seed({ namedOrders: [order("n-1", "AAPL")] });
+    // Slower than 2.5s: had the default budget grown, the read would have answered and no
+    // "precheck unavailable" receipt would be written.
+    broker.delayMs.set("getEquityPositions", 3_500);
+    const { cancelWorkingOrder } = await import("../src/lib/order-cancel");
+    await cancelWorkingOrder({ userId: seeded.userId, orderId: "n-1", connectedAccountId: seeded.namedId, requireWorkingOrder: true, source: "ops" });
+    expect(broker.cancelCalls).toEqual([{ accountNumber: seeded.namedAccountNumber, orderId: "n-1" }]);
+    expect((await auditRows(seeded.userId)).map((row) => row.kind)).toContain("order_cancel_precheck_unavailable");
+  }, 60_000);
+
   it("an explicit connectedAccountId that is not this user's is refused, never re-pointed", async () => {
     const seeded = await seed({ selectedOrders: [order("s-1", "NVDA")] });
     const other = await seed({ namedOrders: [order("n-1", "AAPL")] });

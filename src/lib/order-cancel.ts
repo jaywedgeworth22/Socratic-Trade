@@ -77,6 +77,14 @@ export interface CancelWorkingOrderInput {
    */
   failClosedWhenUnverified?: boolean;
   /**
+   * How long the pre-cancel orders+positions read may take.  Defaults to the console's 2.5s
+   * advisory budget, which is right for a read that never gates the cancel.  A caller that fails
+   * closed on an unverified read (the ops route) passes its own broker-read budget instead: Tradier
+   * pages its order list one request at a time and Robinhood reads go through MCP, so 2.5s would
+   * refuse most cancels on those brokers.
+   */
+  lookupTimeoutMs?: number;
+  /**
    * Act on THIS connected account instead of the user's currently selected one.  Used by the ops
    * account-control route (POST /api/ops/account-control), which names the account explicitly and
    * must never follow the console's selection.  When set, the policy (account number, broker,
@@ -188,10 +196,19 @@ export async function cancelWorkingOrder(input: CancelWorkingOrderInput): Promis
   const gateway = getBrokerGateway(policy, userId);
   // Time-bound the advisory pre-fetch: the cancel must never wait behind a hung broker READ.
   // If the reads don't answer quickly, skip the advisory and cancel immediately.
+  const lookupTimeoutMs =
+    typeof input.lookupTimeoutMs === "number" && Number.isFinite(input.lookupTimeoutMs) && input.lookupTimeoutMs > 0
+      ? input.lookupTimeoutMs
+      : CANCEL_LOOKUP_TIMEOUT_MS;
+  let lookupTimer: ReturnType<typeof setTimeout> | undefined;
   const lookup = await Promise.race([
     lookupCancelContext(gateway, policy.accountNumber, orderId, policy.activeBroker),
-    new Promise<CancelLookup>((resolve) => setTimeout(() => resolve({ unavailable: true }), CANCEL_LOOKUP_TIMEOUT_MS))
-  ]);
+    new Promise<CancelLookup>((resolve) => {
+      lookupTimer = setTimeout(() => resolve({ unavailable: true }), lookupTimeoutMs);
+    })
+  ]).finally(() => {
+    if (lookupTimer) clearTimeout(lookupTimer);
+  });
 
   if (input.requireWorkingOrder) {
     if (lookup.unavailable) {

@@ -191,16 +191,32 @@ export function persistBrokerHealthSkipRun(input: {
  * to `active`. Manual owner halts (no marker) are never auto-resumed.
  *
  * Safe to call every scheduler tick — notifications fire once per pause episode.
+ *
+ * Decides and writes against the DURABLE policy, not the caller's snapshot.  Callers read their
+ * snapshot before awaiting the health probe (the scheduler allows it ~30s), and an operator
+ * (console Start/Stop, POST /api/ops/account-control) can change systemState during that await.
+ * Deciding on the stale snapshot turned an operator halt or close_only into an auto-resumable
+ * halt, resumed an operator's close_only to active, and `setPolicy(snapshot)` overwrote any
+ * console edit made during the probe.  Only systemState is written, onto a fresh read, and the
+ * caller's snapshot is synced to the durable systemState so the rest of its tick sees it too.
  */
 export async function applyBrokerOrderPlacementPause(input: {
   userId: string;
   connectedAccountId?: string;
   accountScope: string;
   health: HealthSignals;
-  /** Current policy snapshot (may be mutated in place when state flips). */
+  /** The caller's policy snapshot.  Its systemState is synced in place to the durable value. */
   policy: TradingPolicy;
 }): Promise<ApplyBrokerPauseResult> {
   const { userId, connectedAccountId, accountScope, health, policy } = input;
+  // No await between this read and the writes below, so nothing can interleave with them.
+  const durable = getPolicy(userId, connectedAccountId);
+  if (connectedAccountId && durable.connectedAccountId !== connectedAccountId) {
+    // The account was removed during the probe and getPolicy fell back to another policy.  Writing
+    // would land on that one, so do nothing.
+    return { action: "none" };
+  }
+  policy.systemState = durable.systemState;
   const marker = getBrokerPlacementPauseMarker(userId, accountScope);
 
   if (health.isHealthy) {
@@ -208,9 +224,9 @@ export async function applyBrokerOrderPlacementPause(input: {
     if (!marker) return { action: "none" };
     // Only auto-resume if we still own the halt (marker present) and state is still halted.
     // If the owner already re-armed to active, just clear the marker.
-    if (policy.systemState === "halted") {
+    if (durable.systemState === "halted") {
+      setPolicy({ ...durable, systemState: "active" }, userId, connectedAccountId);
       policy.systemState = "active";
-      setPolicy(policy, userId, connectedAccountId);
       audit(
         "broker_placement_auto_resumed",
         {
@@ -249,7 +265,7 @@ export async function applyBrokerOrderPlacementPause(input: {
   // Unhealthy.
   const reason = health.reason ?? "Broker cannot place orders";
 
-  if (policy.systemState === "halted") {
+  if (durable.systemState === "halted") {
     // Already halted — ensure marker exists if this was (or becomes) our pause, so auto-resume works.
     if (!marker) {
       // Do NOT claim ownership of a pre-existing owner halt. Without a marker we won't auto-resume.
@@ -260,7 +276,7 @@ export async function applyBrokerOrderPlacementPause(input: {
     return { action: "still_paused", reason: marker.reason, autoOwned: true };
   }
 
-  if (policy.systemState !== "active") {
+  if (durable.systemState !== "active") {
     // close_only / liquidating: leave owner intent alone; still skip runs via health gate.
     return { action: "none" };
   }
@@ -279,9 +295,9 @@ export async function applyBrokerOrderPlacementPause(input: {
   }
 
   // Flip active → halted.
-  const priorState = policy.systemState;
+  const priorState = durable.systemState;
+  setPolicy({ ...durable, systemState: "halted" }, userId, connectedAccountId);
   policy.systemState = "halted";
-  setPolicy(policy, userId, connectedAccountId);
   const nextMarker: BrokerPlacementPauseMarker = {
     since: new Date().toISOString(),
     reason,

@@ -21,11 +21,23 @@ export type AutonomyArmingCheck =
   | { ok: true; account: BrokerageAccount }
   | { ok: false; message: string };
 
-export async function verifyAutonomyArmingPreconditions(policy: TradingPolicy, userId: string): Promise<AutonomyArmingCheck> {
-  if (!policy.accountNumber) return { ok: false, message: "Select an account before enabling autonomy." };
+/**
+ * The synchronous half of the arming checks (an account to arm, something to trade), in the same
+ * order and with the same messages.  Exported so a caller that awaited the broker half can re-run
+ * it inside its write transaction against a freshly read policy: a concurrent edit that empties the
+ * universe while the broker check is in flight must not end up armed.
+ */
+export function checkAutonomyArmingPolicyPreconditions(policy: TradingPolicy): string | undefined {
+  if (!policy.accountNumber) return "Select an account before enabling autonomy.";
   if (policy.includedIndices.length === 0 && policy.additionalSymbols.length === 0) {
-    return { ok: false, message: "Select at least one base index or additional watchlist symbol before enabling autonomy." };
+    return "Select at least one base index or additional watchlist symbol before enabling autonomy.";
   }
+  return undefined;
+}
+
+export async function verifyAutonomyArmingPreconditions(policy: TradingPolicy, userId: string): Promise<AutonomyArmingCheck> {
+  const policyProblem = checkAutonomyArmingPolicyPreconditions(policy);
+  if (policyProblem) return { ok: false, message: policyProblem };
   let accounts: BrokerageAccount[];
   try {
     accounts = await getBrokerGateway(policy, userId).getAccounts();

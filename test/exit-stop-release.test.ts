@@ -28,7 +28,10 @@ import {
   getExitStopReleaseIntent,
   type ExitStopReleaseIntent
 } from "../src/lib/exit-stop-release-intents";
-import type { EquityOrder, EquityOrderInput, EquityPosition, TradeProposal, TradingPolicy } from "../src/lib/types";
+import type { EquityOrder, EquityOrderInput as BaseOrderInput, EquityPosition, TradeProposal, TradingPolicy } from "../src/lib/types";
+
+/** The gateway contract: every placement carries its idempotency key. */
+type EquityOrderInput = BaseOrderInput & { refId: string };
 
 beforeAll(() => {
   process.env.DATABASE_URL = `file:${join(tmpdir(), `agentic-exit-stop-release-${randomUUID()}.db`)}`;

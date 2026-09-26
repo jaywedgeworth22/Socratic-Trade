@@ -130,9 +130,79 @@ Results (shared dev box at load average 250 to 735 from parallel lanes):
    `state ... active --execute`, and read `nextEligibleRun`.
 2. Console Stop (`POST /api/strategy/pause`) does not clear the broker-health auto-pause marker, so
    a console Stop issued while the broker gate owns the halt is auto-resumed on recovery.  Small
-   fix for the broker-health owner (lane B).
+   fix for the broker-health owner (lane B).  The review round (section 7) closed the related
+   in-flight-tick race for every writer, but not this stale-marker case, which needs the console
+   Stop itself to clear the marker as `set_system_state` now does.
 3. Decide whether mutating ops calls should also send an owner notification (not added; the
    console path sends none for these actions).
+
+## 7. Review Round (2026-09-25)
+
+Independent reviewers raised five findings on #3754.  Each was checked against the code; all five
+were real and all five are fixed test-first on the same branch (10 new regression tests, each seen
+failing before its fix).
+
+Fixed:
+
+1. **P1: an ops cancel refused whenever the broker took more than 2.5s to confirm the order.**
+   The ops path sets `requireWorkingOrder` + `failClosedWhenUnverified`, but the pre-cancel
+   orders+positions read inside `cancelWorkingOrder` kept the console's 2.5s advisory budget.
+   Tradier walks its order pages one request at a time and Robinhood reads go through MCP, so on
+   those brokers every ops cancel came back 502 even though the route's own order-book read allows
+   15s.  Fix: `CancelWorkingOrderInput.lookupTimeoutMs` (optional; console and mobile keep 2.5s),
+   and the ops route passes its 15s `BROKER_READ_TIMEOUT_MS`.  The race timer is now also cleared
+   when the read answers.  Tests: a 3s-slow broker cancels (was 502), and a fail-open lane without
+   the option still gives up at 2.5s.
+2. **P2: an ops halt or close_only could be undone by a scheduler tick already in progress.**  The
+   scheduler reads a policy snapshot, awaits `checkBrokerHealth` (up to about 30s), then called
+   `applyBrokerOrderPlacementPause`, which decided and wrote on that stale snapshot.  An operator
+   halt or close_only during the probe became an auto-resumable halt; a close_only on an
+   auto-halted account was resumed to active; `setPolicy(snapshot)` also overwrote any console edit
+   made during the probe.  Fix (both halves the reviewer proposed): `applyBrokerOrderPlacementPause`
+   re-reads the durable policy (no await between that read and its writes), decides on it, writes
+   only `systemState` onto the fresh read, and syncs the caller's snapshot so the rest of the tick
+   (including "do not launch a run unless active") sees it; and `set_system_state` now clears the
+   broker auto-pause marker for ANY explicit operator state, inside the same write transaction.
+   This closes the race for the console Start/Stop too, since the scheduler side is shared.
+   Tests: four in `test/broker-health-auto-pause.test.ts` plus one ops test.
+3. **P2: `describeNextEligibleRun` reported blockers in a different order than the scheduler.**
+   `tickInner` checks the test broker, then `!policy.accountNumber -> continue`, and only then
+   `isDraining`, so a draining account with no account number is never wound down.  The account
+   number blocker now comes first.  Test added.
+4. **P2: `active` did not re-check the arming preconditions inside the write transaction.**  The
+   universe or account number could change while the broker check was in flight and the account
+   was still armed.  Fix: the synchronous half of the console Start checks is now
+   `checkAutonomyArmingPolicyPreconditions` (same messages, same order, still used by
+   `verifyAutonomyArmingPreconditions`), and the transaction re-runs it against the fresh policy
+   and refuses (409) if the account number differs from the one the broker verified.  Tests:
+   universe emptied mid-call, account number replaced mid-call.
+5. **P2: bulk `cancel_working_orders` had no wall-clock bound.**  Each order gets its own fresh
+   check and cancel, and up to 100 ids (or every working order) could hold the request for
+   minutes, past the edge proxy's 100s limit.  Fix: `OPS_CANCEL_BATCH_BUDGET_MS` (45s from the
+   start of the call).  Once spent, no further cancel is started; the rest come back as
+   `notAttempted: true` with nothing sent, `summary.notAttempted` counts them, and `ok` is false so
+   a re-run finishes the job.  An in-flight cancel is never abandoned.  Test added.
+
+Declined: none.
+
+Files touched this round: `src/lib/order-cancel.ts`, `src/lib/ops-account-control.ts`,
+`src/lib/autonomy-arming.ts`, `src/lib/broker-health.ts`, `test/ops-account-control.test.ts`,
+`test/broker-health-auto-pause.test.ts`, `docs/runbooks/ops-account-control.md`, this note,
+`STATUS.md`, `docs/EFFORT-LOG.md`.
+
+Verification this round (worktree `~/apps/claude-st-ops-account-control`, Node 24, load average
+280 to 400):
+
+```bash
+npx vitest run test/broker-health-auto-pause.test.ts test/ops-account-control.test.ts \
+  test/transient-network-resilience.test.ts test/strategy-enable-route.test.ts
+npx vitest run test/mobile-order-cancel.test.ts test/scheduler-tick-reentrancy.test.ts \
+  test/account-mutation-pr2-strategy-loop.test.ts
+npm run lint
+npx tsc --noEmit
+```
+
+Results are recorded in the PR comment for this round; CI `verify` is the binding gate.
 
 ## 6. Zero-Code Findings
 

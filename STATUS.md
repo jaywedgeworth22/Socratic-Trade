@@ -1,5 +1,17 @@
 # Current Status
 
+## 2026-09-25 CLAUDE — Ops account control review round (board 687a5fb4, lane F1, PR #3754)
+
+Five reviewer findings on #3754, all verified real, all fixed test-first on the same branch.  The
+ops cancel's fail-closed pre-cancel check now gets the 15s broker-read budget instead of the
+console's 2.5s (slow Tradier/Robinhood reads no longer refuse every cancel); the broker-health
+auto-pause decides on the durable policy, so an operator halt or close_only made while a scheduler
+tick is mid health probe is not converted or resumed (and `set_system_state` clears the auto-pause
+marker for any operator state); `nextEligibleRun` lists the account-number gate before draining,
+as the scheduler does; `active` re-checks the universe and account number inside its write
+transaction; bulk cancel stops starting new cancels after 45s and reports the rest as
+`notAttempted`.  Rollout: `docs/rollouts/2026-09-24-st-ops-account-control.md` section 7.
+
 ## 2026-09-24 CLAUDE — Ops-token account control (board 687a5fb4, lane F1, PR #3754)
 
 New `POST /api/ops/account-control` (ops-token gated) acts on an explicit `connectedAccountId`,

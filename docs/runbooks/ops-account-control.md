@@ -77,10 +77,17 @@ exactly as a console cancel does).
 - If the order book cannot be read, nothing is cancelled (502), even with explicit `orderIds`: an
   unreadable book cannot prove an id is working in this account.  The per-order re-check inside
   `cancelWorkingOrder` also fails closed for this route (`failClosedWhenUnverified`), while the
-  console and mobile lanes keep their fail-open emergency-lever behaviour.  Use the console cancel
-  when the broker's order list is down but its cancel endpoint works.
+  console and mobile lanes keep their fail-open emergency-lever behaviour.  That re-check gets the
+  same 15s broker-read budget as the order-book read (`lookupTimeoutMs`), not the console's 2.5s
+  advisory budget, so a slow Tradier or Robinhood read does not refuse the cancel.  Use the console
+  cancel when the broker's order list is down but its cancel endpoint works.
+- Latency: each order is a fresh working-order check plus the cancel, one after another, so expect
+  a few seconds per order on a slow broker.  A call stops STARTING new cancels 45s after it began
+  (`OPS_CANCEL_BATCH_BUDGET_MS`); the rest come back `notAttempted: true` with nothing sent and
+  `ok: false`.  Run the cancel again to finish them (already-cancelled orders are no longer working,
+  so they are not re-sent).
 - `dryRun: true`: read-only broker calls only (order book, positions); no cancel is sent.
-- Per-order results plus `summary: {requested, cancelled | wouldCancel, failed, skipped}`.
+- Per-order results plus `summary: {requested, cancelled | wouldCancel, failed, skipped, notAttempted}`.
 
 ### `set_system_state`
 
@@ -90,12 +97,15 @@ exactly as a console cancel does).
   400 with the console's exact message.  It then runs the scheduler's broker health probe once as
   an advisory (`brokerHealthNow`) — Tradier's probe is a `preview: true` order, never a placement.
 - `close_only`: systemState only.  No broker call.
-- `halted`: mirrors the console Stop (`enabled: false`, `systemState: "halted"`).  It also clears a
-  broker-health auto-pause marker when one exists, so the next healthy tick does not auto-resume an
-  account the operator deliberately halted (`clearedBrokerAutoPause: true`).
+- `halted`: mirrors the console Stop (`enabled: false`, `systemState: "halted"`).
+- Every non-dry-run state change clears a broker-health auto-pause marker when one exists
+  (`clearedBrokerAutoPause: true`): the operator now owns the state, so a healthy tick cannot turn
+  an operator halt or close_only back into active.
 - The write re-reads the account's policy inside one SQLite transaction and changes only
   `systemState`, so a concurrent console edit is not overwritten, and an account deleted mid-call
-  is refused (409) instead of falling back to user-level storage.
+  is refused (409) instead of falling back to user-level storage.  For `active` the transaction
+  also re-runs the policy half of the Start checks against that fresh read: a universe emptied, or
+  an account number changed, while the broker check was in flight is refused (409), not armed.
 - It never changes `isActive` (the console's selected-account pointer).
 - `dryRun: true` runs the same checks and reports `wouldChange`; nothing is written.
 
@@ -103,7 +113,7 @@ exactly as a console cancel does).
 
 Every `set_system_state` response states what the scheduler will do next with this account,
 evaluated in the scheduler's own gate order (`src/lib/scheduler.ts` `tickInner`): test broker,
-draining, account number, broker health gate, systemState, cadence lane, market session, cadence
+account number, draining, broker health gate, systemState, cadence lane, market session, cadence
 clock, monthly LLM ceiling.  `willRun`, `at` (ISO), `atCentral`, `reason`, `blockers`, `notes`.
 
 Facts it encodes:
@@ -126,4 +136,6 @@ Facts it encodes:
 - A call naming an unknown account id is refused (404) and not audited (there is no user to
   attribute it to).
 - The console Stop (`POST /api/strategy/pause`) does not clear the broker-health auto-pause
-  marker; only this route does.  Tracked in the 2026-09-24 rollout note.
+  marker; only this route does.  Tracked in the 2026-09-24 rollout note.  (A Stop or ops change made
+  while a scheduler tick is mid health probe is no longer overwritten by that tick: the pause logic
+  now decides on the durable policy.)

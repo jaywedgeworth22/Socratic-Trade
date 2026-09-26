@@ -14,7 +14,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { NextRequest } from "next/server";
 
 import type { OHLCBar } from "../src/lib/indicators";
-import { closesInRange, fetchPriceSeries, fetchSpxCloses, parseMarketRange } from "../src/lib/market-read";
+import { clearScreenerProfileCacheForTests, closesInRange, fetchCompanyProfile, fetchPriceSeries, fetchSpxCloses, parseMarketRange } from "../src/lib/market-read";
+import { GET as profileRoute } from "../app/api/market/profile/[symbol]/route";
 import { fetchDailyOHLC } from "../src/lib/history";
 import { GET as pricesRoute } from "../app/api/market/prices/[symbol]/route";
 import { GET as spxRoute } from "../app/api/market/spx/route";
@@ -40,6 +41,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  clearScreenerProfileCacheForTests();
   for (const [key, value] of Object.entries(savedEnv)) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -253,6 +255,154 @@ describe("GET /api/market/spx", () => {
   });
 });
 
+
+// ── /api/market/profile/{symbol} ─────────────────────────────────────────────
+
+describe("GET /api/market/profile/{symbol}", () => {
+  function profileUrl(symbol: string): string {
+    return `http://x/api/market/profile/${symbol}`;
+  }
+
+  it("401 without bearer", async () => {
+    const res = await profileRoute(authedRequest(profileUrl("AAPL")), {
+      params: Promise.resolve({ symbol: "AAPL" })
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("404 { ref: null } envelope when screener has no row (no bare framework 404)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ data: { table: { rows: [] } } })
+      ) as unknown as typeof fetch
+    );
+    const res = await profileRoute(authedRequest(profileUrl("ZZZZNOPE"), TEST_TOKEN), {
+      params: Promise.resolve({ symbol: "ZZZZNOPE" })
+    });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ ref: null });
+  });
+
+  it("helper returns null when the injected lookup misses", async () => {
+    expect(await fetchCompanyProfile("ZZZZNOPE", async () => null)).toBeNull();
+  });
+
+  it("200 { ref } when lookup returns sector/industry/marketCap", async () => {
+    // Unit the helper with an injected lookup (no network / DB).
+    const ref = await fetchCompanyProfile("MSFT", async () => ({
+      ticker: "MSFT",
+      companyName: "Microsoft Corporation",
+      sector: "Technology",
+      industry: "Software",
+      marketCap: 3_000_000_000_000,
+      assetClass: "equity"
+    }));
+    expect(ref).toEqual({
+      ticker: "MSFT",
+      companyName: "Microsoft Corporation",
+      sector: "Technology",
+      industry: "Software",
+      marketCap: 3_000_000_000_000,
+      assetClass: "equity"
+    });
+  });
+
+  it("does not cache empty map after Nasdaq screener fetch failure — subsequent call retries", async () => {
+    clearScreenerProfileCacheForTests();
+    let fetchCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        fetchCalls += 1;
+        if (fetchCalls === 1) {
+          throw new Error("nasdaq transient failure");
+        }
+        return Response.json({
+          data: {
+            table: {
+              rows: [
+                {
+                  symbol: "RETRYTICK",
+                  name: "Retry Co",
+                  sector: "Technology",
+                  industry: "Software",
+                  marketCap: "1000000000"
+                }
+              ]
+            }
+          }
+        });
+      }) as unknown as typeof fetch
+    );
+
+    expect(await fetchCompanyProfile("RETRYTICK")).toBeNull();
+    const callsAfterFailure = fetchCalls;
+    expect(callsAfterFailure).toBeGreaterThanOrEqual(1);
+
+    const ref = await fetchCompanyProfile("RETRYTICK");
+    expect(ref).toMatchObject({
+      ticker: "RETRYTICK",
+      companyName: "Retry Co",
+      sector: "Technology",
+      industry: "Software",
+      marketCap: 1_000_000_000,
+      assetClass: "equity"
+    });
+    expect(fetchCalls).toBeGreaterThan(callsAfterFailure);
+
+    // Successful map is cached — a third lookup must not re-hit Nasdaq.
+    const callsAfterSuccess = fetchCalls;
+    expect(await fetchCompanyProfile("RETRYTICK")).toMatchObject({ ticker: "RETRYTICK" });
+    expect(fetchCalls).toBe(callsAfterSuccess);
+  });
+
+  it("does not cache empty map after non-OK Nasdaq screener response — subsequent call retries", async () => {
+    clearScreenerProfileCacheForTests();
+    let fetchCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        fetchCalls += 1;
+        if (fetchCalls === 1) {
+          return new Response("upstream unavailable", { status: 503 });
+        }
+        return Response.json({
+          data: {
+            table: {
+              rows: [
+                {
+                  symbol: "RETRY503",
+                  name: "Retry Five Oh Three",
+                  sector: "Healthcare",
+                  industry: "Biotech",
+                  marketCap: "500000000"
+                }
+              ]
+            }
+          }
+        });
+      }) as unknown as typeof fetch
+    );
+
+    expect(await fetchCompanyProfile("RETRY503")).toBeNull();
+    const callsAfterFailure = fetchCalls;
+    expect(callsAfterFailure).toBeGreaterThanOrEqual(1);
+
+    const ref = await fetchCompanyProfile("RETRY503");
+    expect(ref).toMatchObject({
+      ticker: "RETRY503",
+      companyName: "Retry Five Oh Three",
+      sector: "Healthcare"
+    });
+    expect(fetchCalls).toBeGreaterThan(callsAfterFailure);
+  });
+
+  it("returns null from the helper for an empty symbol", async () => {
+    expect(await fetchCompanyProfile("   ", async () => ({ ticker: "X" }))).toBeNull();
+  });
+});
+
 // ── middleware pass-through ──────────────────────────────────────────────────
 
 describe("middleware — market read bearer pass-through", () => {
@@ -295,6 +445,14 @@ describe("middleware — market read bearer pass-through", () => {
     process.env.AUTH_SECRET = "test-secret";
     const middleware = await loadMiddleware();
     const res = await middleware(mwRequest("/api/market/intraday/AAPL", { authorization: `Bearer ${TEST_TOKEN}` }));
+    expect(res.status).not.toBe(401);
+  });
+
+  it("lets a bearer request through to /api/market/profile/{symbol} without a session", async () => {
+    vi.resetModules();
+    process.env.AUTH_SECRET = "test-secret";
+    const middleware = await loadMiddleware();
+    const res = await middleware(mwRequest("/api/market/profile/AAPL", { authorization: `Bearer ${TEST_TOKEN}` }));
     expect(res.status).not.toBe(401);
   });
 

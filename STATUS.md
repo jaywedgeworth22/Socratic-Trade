@@ -1,5 +1,49 @@
 # Current Status
 
+## 2026-09-25 CLAUDE — Order role classification: review-round fixes (PR #3755, board 687a5fb4)
+
+Independent review of PR #3755 raised 7 findings; verified each against the actual branch HEAD
+rather than trusting them.  Two (client bundle importing server-only DB code) were already fixed
+by the branch's own prior commit `a466c2ec4` (the `order-role.ts` / `order-role-context.ts`
+pure/server split) — no code change needed, just documenting it since that commit's own message
+had promised a review-round writeup that never landed.  Two real bugs fixed test-first: (1)
+`loadOrderRoleContexts` was calling the up-to-5-query `isAppPlacedBrokerOrder` for every order
+even when a cheaper protective/synthetic/replacement/bracket match had already resolved the role
+(whose result is then never read) — now skipped for those orders and batched into 3 queries
+total for the remaining ones, not 3 per order; (2) the bracket entry-vs-exit sibling count was
+scoped by bare symbol across the whole batch, so a scale-in bracket entry on a symbol that
+already had an unrelated, older resting bracket exit pair was misread as an exit leg — now scoped
+by symbol AND creation-time proximity (`order-provenance.ts`'s `CONTINGENT_SIBLING_WINDOW_MS`,
+now exported for reuse).  One finding was a duplicate of the same sibling-count bug.  One
+(`docs/EFFORT-LOG.md` carrying two near-duplicate rows for this lane) was confirmed and fixed —
+stale no-PR-number row removed.  One (missing render test for the console Orders badge) was
+declined — the badge's only logic is an already-exhaustively-tested label lookup; flagged as a
+follow-up rather than added under this round's scope.
+
+Verified: `npx tsc --noEmit` clean, targeted `eslint` on every touched file 0 errors, and
+`test/order-role.test.ts` + `test/dashboard-order-role-api.test.ts` + `test/ops-snapshot.test.ts`
+(55 tests, including the 2 new query-batching tests and the 1 new scale-in bracket regression)
+all green.  Hold label kept; auto-merge not armed (review stage did not ask for it).  Detail:
+`docs/rollouts/2026-09-24-st-order-roles.md` (section 8, "Independent-Review Findings Round").
+
+## 2026-09-25/26 CLAUDE — PR #3755 build fix: split order-role.ts + resolve Sentry threads
+
+**What/why.**  `verify-hosted` was failing on PR #3755 (`next build`: "You're importing a module
+that depends on 'server-only'" — `app/console/orders/page.tsx` is a client component importing
+`ORDER_ROLE_LABELS` from `src/lib/order-role.ts`, which also imported `getDb`/`order-provenance.ts`
+directly).  Split `order-role.ts` into a PURE module (types, `classifyOrderRole`,
+`ORDER_ROLE_LABELS`) and a new server-only `src/lib/order-role-context.ts`
+(`loadOrderRoleContexts`, `attachOrderRoles`, `buildOpsWorkingOrderDetails`); `dashboard.ts` and
+`ops-snapshot.ts` now import the DB-backed functions from the new module.  Also merged local
+commit `8e2ed49e1` (fixes Sentry threads 4102974343 + 4102974351: dangling "that level" reference
+in the protective-stop fallback copy, and a settling bracket exit leg in `pending_cancel`
+misclassified as an entry) — both threads replied to and resolved.  New
+`test/dashboard-order-role-api.test.ts` asserts the actual `GET /api/dashboard` contract:
+`getDashboardSnapshot` attaches `role`/`whyResting` server-side.  CI `verify`/`verify-hosted`/
+`verify-ios` all green on PR #3755 at commit `a0b7ac255`.  Board `687a5fb4`, lane E1, branch
+`claude/st-order-roles`.  `do-not-automerge` label kept; auto-merge NOT armed per task
+instructions (owner arms it after independent review).
+Rollout: `docs/rollouts/2026-09-24-st-order-roles.md` (section 7).
 ## 2026-09-25 CLAUDE — Ops account control review round (board 687a5fb4, lane F1, PR #3754)
 
 Five reviewer findings on #3754, all verified real, all fixed test-first on the same branch.  The
@@ -196,6 +240,21 @@ re-walk the heap (measured 3.4-56 s on a 575-631 MB heap), so each rotation is b
 keepalive `console.profile()` (~5 ms); a missing keepalive or a slow start self-disables.
 **Next:** after deploy, on the next stall read the newest `.top.json` (command in the rollout).
 Rollout: `docs/rollouts/2026-09-24-st-stall-profiler.md`.
+## 2026-09-24 CLAUDE — Order role classification, ops order detail, console badges (board 687a5fb4, lane E1)
+
+**What/why.**  The owner saw "4 open orders just sitting there" on Alpaca Paper with no way to
+tell why — they were correct, resting GTC protective stops (`broker_protective_stops`), but
+nothing said so.  New `src/lib/order-role.ts`: pure `classifyOrderRole(order, ctx)` ->
+`protective_stop | trailing_stop | bracket_take_profit | bracket_stop_loss | entry | exit |
+synthetic_stop | replacement | external` + a one-sentence `whyResting`, reusing
+`order-provenance.ts` read-only.  Wired into `GET /api/dashboard` (`dashboard.ts`, via
+`attachOrderRoles`) for the console Orders screen's role badge + `scripts/fetch-prod-ops-snapshot.sh
+OPS_SNAPSHOT_ORDERS_DETAIL=1`) for a per-working-order detail array (capped 100/account, no
+account numbers or raw client-order-ids).  iOS untouched (follow-up).  Also found and fixed a
+real SHORT-bracket entry/exit misclassification bug during review (side-agnostic
+`bracketSiblingWorkingCount` fix — see the rollout note).
+PR #3755, branch `claude/st-order-roles`, worktree `~/apps/trading-claude-st-order-roles`.
+Rollout: `docs/rollouts/2026-09-24-st-order-roles.md`.
 ## 2026-09-24 CLAUDE — Detect IRA withdrawals and deposits so drawdown math is not fooled (board 687a5fb4, lane F2)
 
 **What.**  The Roth IRA HWM recompute found zero transfers after ~$96 was withdrawn: the ledger

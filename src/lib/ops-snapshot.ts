@@ -13,6 +13,7 @@ import { pineconeTrialState } from "./pinecone-trial-window";
 import { pineconeWuExhaustedUntil } from "./pinecone-wu-breaker";
 import { isWorkingOrderState } from "./broker-held-orders";
 import { isLiveOrderState } from "./broker-side";
+import { buildOpsWorkingOrderDetails, type OpsWorkingOrderDetail } from "./order-role-context";
 import type { EquityOrder } from "./types";
 import { statSync, statfsSync, readdirSync } from "fs";
 import { dirname, join } from "path";
@@ -86,6 +87,11 @@ export interface OpsAccountSnapshot {
   tradingLivenessDegraded: boolean | null;
   /** Present when `?orders=1` — broker order-list breakdown for open-vs-history diagnosis. */
   orders?: OpsOrderListSummary | null;
+  /** Present when `?ordersDetail=1` — per-working-order role classification (see
+   *  `order-role-context.ts`'s `buildOpsWorkingOrderDetails`): why each resting order exists (a
+   *  protective stop, a bracket leg, an app-tracked entry/exit, or external) instead of just a
+   *  bare open-order count. No account numbers or raw broker/client order ids. */
+  ordersDetail?: OpsWorkingOrderDetail[] | null;
 }
 
 export interface OpsOrderListSummary {
@@ -546,24 +552,30 @@ export function buildOpsSnapshot(input: { runsPerUser?: number; auditPerUser?: n
 const DEFAULT_ORDERS_TIMEOUT_MS = 8_000;
 
 /** Best-effort: attach per-account broker order-list summaries (for open-vs-history diagnosis).
- *  Never throws — failures land in `orders.error`. Opt-in from `/api/ops/snapshot?orders=1`. */
+ *  Never throws — failures land in `orders.error`. Opt-in from `/api/ops/snapshot?orders=1`.
+ *  `includeDetail` (opt-in from `?ordersDetail=1`) additionally attaches `account.ordersDetail`
+ *  — see `order-role-context.ts`'s `buildOpsWorkingOrderDetails`; counts in `account.orders` are
+ *  unaffected either way. */
 export async function attachOpsOrderSummaries(
   snapshot: OpsSnapshot,
-  input: { timeoutMs?: number } = {}
+  input: { timeoutMs?: number; includeDetail?: boolean } = {}
 ): Promise<OpsSnapshot> {
   const timeoutMs = input.timeoutMs ?? DEFAULT_ORDERS_TIMEOUT_MS;
+  const includeDetail = input.includeDetail ?? false;
   const { getBrokerGateway } = await import("./broker");
 
   for (const user of snapshot.users) {
     for (const account of user.accounts) {
       if (!account.accountNumber || account.policyReadError) {
         account.orders = null;
+        if (includeDetail) account.ordersDetail = null;
         continue;
       }
       try {
         const policy = peekPolicy(user.userId, account.connectedAccountId);
         if (!policy.accountNumber) {
           account.orders = null;
+          if (includeDetail) account.ordersDetail = null;
           continue;
         }
         const gateway = getBrokerGateway(policy, user.userId);
@@ -574,6 +586,9 @@ export async function attachOpsOrderSummaries(
           })
         ]);
         account.orders = summarizeBrokerOrderList(orders);
+        if (includeDetail) {
+          account.ordersDetail = buildOpsWorkingOrderDetails(orders, user.userId, policy.accountNumber);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         account.orders = {
@@ -584,6 +599,7 @@ export async function attachOpsOrderSummaries(
           topStates: [],
           error: message.slice(0, 400)
         };
+        if (includeDetail) account.ordersDetail = null;
       }
     }
   }

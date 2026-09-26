@@ -10,6 +10,10 @@ AUDIT="${OPS_SNAPSHOT_AUDIT:-40}"
 # Opt-in broker order-list breakdown (live vs listed vs done_for_day). Off by default —
 # getEquityOrders can paginate large Alpaca histories and slow the snapshot.
 ORDERS="${OPS_SNAPSHOT_ORDERS:-}"
+# Opt-in per-working-order role classification (protective stop, bracket leg, app-tracked
+# entry/exit, external, ...) with a one-sentence whyResting. Implies ORDERS=1. Off by default
+# for the same reason as ORDERS.
+ORDERS_DETAIL="${OPS_SNAPSHOT_ORDERS_DETAIL:-}"
 OUT="${OPS_SNAPSHOT_OUT:-}"
 
 TOKEN="${OPS_DIAGNOSTIC_TOKEN:-}"
@@ -23,6 +27,9 @@ fi
 URL="${HOST}/api/ops/snapshot?runs=${RUNS}&audit=${AUDIT}"
 if [ "${ORDERS}" = "1" ] || [ "${ORDERS}" = "true" ]; then
   URL="${URL}&orders=1"
+fi
+if [ "${ORDERS_DETAIL}" = "1" ] || [ "${ORDERS_DETAIL}" = "true" ]; then
+  URL="${URL}&ordersDetail=1"
 fi
 echo "==> GET ${URL}" >&2
 

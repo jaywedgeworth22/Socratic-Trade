@@ -79,6 +79,7 @@ import { getMarketSignals, type MarketSignals } from "./market-signals";
 import { fetchMassiveNews } from "./market-signals/massive";
 import { weeklyMarketDigestForScan } from "./weekly-market-digest";
 import { fetchMacroHistory } from "./macro-history";
+import { attachOrderRoles } from "./order-role-context";
 import type { BrokerageAccount, BrokerQuote, ConnectedAccount, EquityOrder, EquityPosition, OptionPosition, FillEvent, MarketQuote, MarketScan, NotificationEvent, NotificationEventType, Portfolio, TradeProposal, TradingPolicy } from "./types";
 import { isAdminEmail } from "./auth/admin";
 import { messageFromUnknownError, recordRecoverableIssue } from "./recoverable-issue";
@@ -629,7 +630,12 @@ async function computeDashboardSnapshot(userId: string = "local", currentUser?: 
         }
       }
 
-      return { accountNumber: targetAccountNumber, portfolio, positions, options, orders, currentPrices };
+      // Attach WHY each working order is resting (protective stop, bracket leg, app-tracked
+      // entry/exit, external, ...) so the console Orders screen can show more than a bare
+      // "open order" — src/lib/order-role-context.ts. No-ops (returns orders unchanged) when there's no
+      // resolved account number to scope the underlying tracking-table reads to.
+      const rolesAttachedOrders = attachOrderRoles(orders, userId, targetAccountNumber ?? "");
+      return { accountNumber: targetAccountNumber, portfolio, positions, options, orders: rolesAttachedOrders, currentPrices };
     })();
 
     const [rawAccounts, portfolioData] = await Promise.all([accountsPromise, portfolioChainPromise]);

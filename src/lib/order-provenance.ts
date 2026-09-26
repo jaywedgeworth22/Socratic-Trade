@@ -95,8 +95,10 @@ export function isAppPlacedBrokerOrder(
   }
 }
 
-/** Legs of one bracket/OTO/OCO are created together; Alpaca stamps them within milliseconds. */
-const CONTINGENT_SIBLING_WINDOW_MS = 5_000;
+/** Legs of one bracket/OTO/OCO are created together; Alpaca stamps them within milliseconds.
+ *  Exported so order-role-context.ts's bracket-sibling grouping uses the same "created together"
+ *  window as this file's own contingent-leg detection instead of a second, driftable constant. */
+export const CONTINGENT_SIBLING_WINDOW_MS = 5_000;
 
 function brokerWireSide(side: EquityOrder["side"] | undefined): "buy" | "sell" | "" {
   const normalized = String(side ?? "").trim().toLowerCase();

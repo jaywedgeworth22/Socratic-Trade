@@ -61,7 +61,7 @@ import { createEvidencePack, createEvidenceRef } from "./evidence-pack";
 import { derivePromptRagConsumption, type PromptRagCandidate, type PromptRagConsumptionResult } from "./rag/evidence-consumption";
 import { summarizeSourceCoverage } from "./source-value";
 import { deriveExecutionState, fillSourceForExecutionMode, llmExecutionMode, llmModeClarification, type ExecutionAccount } from "./execution-mode";
-import { applyBrokerOrderPlacementPause, checkBrokerHealth, isOrderPlacementInfrastructureFailure } from "./broker-health";
+import { applyBrokerOrderPlacementPause, brokerHealthRunSkip, checkBrokerHealth, isOrderPlacementInfrastructureFailure } from "./broker-health";
 import { greenFailoverExhaustedSuffix, interactiveStrategyReasoningEffort, isFailoverLlmStatus, isRetryableLlmError, LLM_OUTPUT_TOKEN_CAPS, LLM_REQUEST_DEFAULTS, LLM_TIMEOUT_MS, llmFetch, llmFetchCapturing, resolveLlmWireOutputCap, strategyLlmTimeoutMs, type LlmCallOutcome } from "./llm-request";
 import { buildBullSystem, STRATEGY_PROMPT_VERSION, THESIS_PLAYBOOK } from "./strategy-prompts";
 import { resolveLlmEndpoint } from "./llm-provider";
@@ -652,11 +652,13 @@ export async function runStrategyOnce(
         return result;
       }
       if (!healthSignals.isHealthy) {
-        const reason = `Broker health check failed: ${healthSignals.reason}. Skipping strategy run to avoid consuming budget.`;
+        // A probe that timed out on a stalled event loop is not a broker failure (board 687a5fb4).
+        const skip = brokerHealthRunSkip(healthSignals);
+        const reason = skip.summary;
         console.warn(`[Strategy] ${reason}`);
-        audit("run_skipped_broker_unhealthy", { runId, userId, reason, pauseAction: pauseResult.action }, userId, connectedAccountId);
-        result = { runId, status: "skipped_broker_unhealthy", summary: reason, proposals: [] };
-        finishStrategyRun(runId, "skipped_broker_unhealthy", reason, userId);
+        audit(skip.auditKind, { runId, userId, reason, pauseAction: pauseResult.action, processStall: healthSignals.processStall }, userId, connectedAccountId);
+        result = { runId, status: skip.status, summary: reason, proposals: [] };
+        finishStrategyRun(runId, skip.status, reason, userId);
         return result;
       }
     }
@@ -882,13 +884,23 @@ export async function runStrategyOnce(
         ...(cashFlows ?? {})
       });
       if (breaker.breached) {
-        const breakerAction = policy.riskRules.drawdownBreakerAction ?? "advisory";
+        const configuredBreakerAction = policy.riskRules.drawdownBreakerAction ?? "advisory";
+        // Equity fell hard since the last run with no deposit/withdrawal on the broker ledger (or the
+        // ledger was unreadable): most likely a cash-out whose ledger row has not posted.  Hold an
+        // opted-in hard action as advisory for this ONE run; risk-breaker never defers the same
+        // baseline twice, so a real loss is enforced next run.
+        const breakerAction = breaker.deferHardAction ? "advisory" : configuredBreakerAction;
+        const breakerLedgerContext = {
+          ...(breaker.deferHardAction && configuredBreakerAction !== "advisory" ? { deferredHardAction: configuredBreakerAction } : {}),
+          ...(breaker.unexplainedEquityChange ? { unexplainedEquityChange: breaker.unexplainedEquityChange } : {}),
+          ...(breaker.flowsUnavailable ? { flowsUnavailable: true } : {})
+        };
         const drawdownPct = breaker.highWaterMark > 0 ? ((breaker.highWaterMark - equity) / breaker.highWaterMark) * 100 : 0;
         if (breakerAction === "advisory") {
           // Advisory (default): receipt + prompt context, NO state change. The account boundary is the
           // only absolute; the agent decides whether to de-risk, and the deviation is logged/coachable.
           drawdownAdvisory = { reason: breaker.reason ?? "drawdown/daily-loss threshold breached", equity, highWaterMark: breaker.highWaterMark, drawdownPct };
-          audit("policy_violation_drawdown", { runId, reason: breaker.reason, equity, highWaterMark: breaker.highWaterMark, startOfDayEquity: breaker.startOfDayEquity, from: "active", action: "advisory" }, userId, connectedAccountId);
+          audit("policy_violation_drawdown", { runId, reason: breaker.reason, equity, highWaterMark: breaker.highWaterMark, startOfDayEquity: breaker.startOfDayEquity, from: "active", action: "advisory", ...breakerLedgerContext }, userId, connectedAccountId);
           // Advisory must still REACH the owner, not just the logs (guard enablement 2026-07-28,
           // proposal row 8) — but without spamming: notify at most once per
           // (user, account, source, day), deduped via the same internal-settings KV pattern as the
@@ -921,7 +933,7 @@ export async function runStrategyOnce(
           const revertedTo = breakerAction === "close_only" ? "close_only" : "halted";
           policy.systemState = revertedTo;
           setPolicy(policy, userId, connectedAccountId);
-          audit("policy_violation_drawdown", { runId, reason: breaker.reason, equity, highWaterMark: breaker.highWaterMark, startOfDayEquity: breaker.startOfDayEquity, from: "active", revertedTo, action: breakerAction }, userId, connectedAccountId);
+          audit("policy_violation_drawdown", { runId, reason: breaker.reason, equity, highWaterMark: breaker.highWaterMark, startOfDayEquity: breaker.startOfDayEquity, from: "active", revertedTo, action: breakerAction, ...breakerLedgerContext }, userId, connectedAccountId);
           await sendNotification(
             {
               type: "kill_switch",

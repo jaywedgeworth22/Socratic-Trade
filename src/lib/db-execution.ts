@@ -4,6 +4,7 @@ import "server-only";
 import { audit, getDb } from "./db";
 import { isStrategyRunExecutionLive } from "./strategy-run-execution-registry";
 import { CENTRAL_TRADING_DAY_ZONE, startOfCentralTradingDay } from "./trading-day";
+import type { StrategyRunOrigin } from "./strategy-run-origin";
 import type { StrategyRunFinishStatus } from "./strategy-run-status";
 import type { StrategyRunRow } from "./types";
 
@@ -346,7 +347,16 @@ export function hasLiveStrategyRunLease(
   }
 }
 
-export function insertStrategyRun(id: string, userId: string = "local", connectedAccountId?: string, accountNumber?: string, policyRevision?: string): void {
+export function insertStrategyRun(
+  id: string,
+  userId: string = "local",
+  connectedAccountId?: string,
+  accountNumber?: string,
+  policyRevision?: string,
+  /** Who launched the run (strategy-run-origin.ts).  Omitted -> NULL, which the restart retry
+   *  treats as not retry-eligible. */
+  origin?: StrategyRunOrigin
+): void {
   const existing = getDb()
     .prepare("SELECT status FROM strategy_runs WHERE id = ? AND user_id = ?")
     .get(id, userId) as { status: string } | undefined;
@@ -357,8 +367,10 @@ export function insertStrategyRun(id: string, userId: string = "local", connecte
     throw new Error(`Cannot reuse strategy run ${id} after status=${existing.status}`);
   }
   getDb()
-    .prepare("INSERT INTO strategy_runs (id, user_id, connected_account_id, account_number, policy_revision, started_at, status) VALUES (?, ?, ?, ?, ?, ?, 'running')")
-    .run(id, userId, connectedAccountId ?? null, accountNumber ?? null, policyRevision ?? null, new Date().toISOString());
+    .prepare(
+      "INSERT INTO strategy_runs (id, user_id, connected_account_id, account_number, policy_revision, started_at, status, origin) VALUES (?, ?, ?, ?, ?, ?, 'running', ?)"
+    )
+    .run(id, userId, connectedAccountId ?? null, accountNumber ?? null, policyRevision ?? null, new Date().toISOString(), origin ?? null);
 }
 
 /**

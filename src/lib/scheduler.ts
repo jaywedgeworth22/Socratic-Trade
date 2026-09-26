@@ -626,9 +626,21 @@ export async function reconcileAutonomyOnBoot(): Promise<void> {
     console.log("[scheduler] AUTONOMY_RESUME_ON_BOOT=1 — persisted 'active' autonomy will resume");
     return;
   }
-  // Collect halted accounts per user so we can fire ONE summary notification per boot (not one
+  // Collect affected accounts per user so we can fire ONE summary notification per boot (not one
   // per account) after the reconcile loop finishes, rather than notifying inline per account.
-  const haltedByUser = new Map<string, string[]>();
+  // Two different facts, kept apart so the notification tells the truth about each account:
+  // `reverted` were `active` and this boot flipped them to `halted`; `autoPauseReleased` were
+  // ALREADY halted by a broker-health auto-pause before the restart and only lost the marker that
+  // would have auto-resumed them (board 687a5fb4 review round).
+  const affectedByUser = new Map<string, BootInterlockAccounts>();
+  const affected = (userId: string): BootInterlockAccounts => {
+    let entry = affectedByUser.get(userId);
+    if (!entry) {
+      entry = { reverted: [], autoPauseReleased: [] };
+      affectedByUser.set(userId, entry);
+    }
+    return entry;
+  };
   for (const userId of listUsers()) {
     // Per-user autoResumeOnBoot setting (default false) — the individual opt-in replaces
     // the old global env var. Each user independently decides whether their accounts resume.
@@ -659,25 +671,26 @@ export async function reconcileAutonomyOnBoot(): Promise<void> {
           );
           console.warn(`[scheduler] autonomy was 'active' for ${userId}/${accountId ?? "(base)"} at boot; reverted to 'halted' (enable autoResumeOnBoot in Settings to auto-resume).`);
           const label = accountId ? (accounts.find((a) => a.id === accountId)?.label ?? accountId) : "(base account)";
-          const labels = haltedByUser.get(userId) ?? [];
-          labels.push(label);
-          haltedByUser.set(userId, labels);
+          affected(userId).reverted.push(label);
         } else if (policy.systemState === "halted") {
           // A broker-health AUTO-pause is "active, paused for the broker" — without this, the
           // first healthy probe after boot would auto-resume it even though the owner opted out
           // of resuming autonomy after a restart.  Hand the halt to the owner like any other
-          // active account at boot (board 687a5fb4).
-          const released = releaseBrokerPlacementPauseToOwner({
-            userId,
-            connectedAccountId: accountId,
-            accountNumber: policy.accountNumber,
-            source: "boot-autonomy-interlock"
-          });
+          // active account at boot (board 687a5fb4).  Same boot-time contention as the branch
+          // above, so the same SQLITE_BUSY hardening: the release is one transaction (rolls back
+          // as a unit), retried with yields instead of throwing into the per-account catch and
+          // leaving the stale auto-resume marker behind.
+          const released = await sqliteYieldRetry(() =>
+            releaseBrokerPlacementPauseToOwner({
+              userId,
+              connectedAccountId: accountId,
+              accountNumber: policy.accountNumber,
+              source: "boot-autonomy-interlock"
+            })
+          );
           if (released) {
             const label = accountId ? (accounts.find((a) => a.id === accountId)?.label ?? accountId) : "(base account)";
-            const labels = haltedByUser.get(userId) ?? [];
-            labels.push(label);
-            haltedByUser.set(userId, labels);
+            affected(userId).autoPauseReleased.push(label);
           }
         }
       } catch (err) {
@@ -688,11 +701,57 @@ export async function reconcileAutonomyOnBoot(): Promise<void> {
   // Fire-and-forget: notification delivery must never block or fail boot. sendNotification already
   // catches its own channel errors internally, but this catch is the backstop against a synchronous
   // throw (e.g. a policy lookup failure) reaching the caller of reconcileAutonomyOnBoot().
-  for (const [userId, accountLabels] of haltedByUser) {
-    notifyAutonomyHaltedOnBoot(userId, accountLabels).catch((err) => {
+  for (const [userId, accounts] of affectedByUser) {
+    notifyAutonomyHaltedOnBoot(userId, accounts).catch((err) => {
       console.error(`[scheduler] boot-halt notification failed for ${userId}:`, err);
     });
   }
+}
+
+type BootInterlockAccounts = {
+  /** Were `active`; this boot reverted them to `halted`. */
+  reverted: string[];
+  /** Were already `halted` by a broker-health auto-pause; this boot only removed the auto-resume. */
+  autoPauseReleased: string[];
+};
+
+/**
+ * Title and body of the boot-interlock summary.  Pure; exported for tests.  Each account is
+ * described by what actually happened to it: a restart never "reverted from active" an account that
+ * a broker auto-pause had already halted (board 687a5fb4 review round).
+ */
+export function autonomyBootInterlockNotificationCopy(accounts: BootInterlockAccounts): { title: string; body: string } {
+  const { reverted, autoPauseReleased } = accounts;
+  const total = reverted.length + autoPauseReleased.length;
+  const title =
+    autoPauseReleased.length === 0
+      ? reverted.length === 1
+        ? `Autonomy halted on boot: ${reverted[0]}`
+        : `Autonomy halted on boot for ${reverted.length} accounts`
+      : reverted.length === 0
+        ? autoPauseReleased.length === 1
+          ? `Broker auto-pause kept after restart: ${autoPauseReleased[0]}`
+          : `Broker auto-pause kept after restart for ${autoPauseReleased.length} accounts`
+        : `Autonomy halted on boot for ${total} accounts`;
+  const lines: string[] = [];
+  if (reverted.length > 0) {
+    lines.push(
+      `Autonomy was reverted from 'active' to 'halted' because the app restarted (deploy or crash restart).\n` +
+        `Affected account(s): ${reverted.join(", ")}.`
+    );
+  }
+  if (autoPauseReleased.length > 0) {
+    lines.push(
+      `Already halted before the restart by a broker auto-pause (the broker order path or connection was failing): ` +
+        `${autoPauseReleased.join(", ")}.  ` +
+        `Auto-resume on boot is off, so autonomy will no longer re-arm on its own when the broker recovers.`
+    );
+  }
+  lines.push(
+    `Re-arm autonomy in Settings when ready.  To skip this halt on future restarts, enable ` +
+      `"auto-resume on boot" for this user in Settings, or set AUTONOMY_RESUME_ON_BOOT=1.`
+  );
+  return { title, body: lines.join("\n") };
 }
 
 /** One summary notification per user per boot when reconcileAutonomyOnBoot halted at least one of
@@ -701,21 +760,20 @@ export async function reconcileAutonomyOnBoot(): Promise<void> {
  *  (owner ruling 2026-08-12, "ALL toggles must be real" — no force-include). A legacy stored
  *  enabledEvents array predating this event type was backfilled once by migration 78 (db.ts);
  *  after that the toggle is genuinely the user's. */
-async function notifyAutonomyHaltedOnBoot(userId: string, accountLabels: string[]): Promise<void> {
-  const accountsList = accountLabels.join(", ");
+async function notifyAutonomyHaltedOnBoot(userId: string, accounts: BootInterlockAccounts): Promise<void> {
   const activeAccountId = getActiveConnectedAccount(userId)?.id;
   const policy = getPolicy(userId, activeAccountId);
-  const title =
-    accountLabels.length === 1
-      ? `Autonomy halted on boot: ${accountsList}`
-      : `Autonomy halted on boot for ${accountLabels.length} accounts`;
-  const body =
-    `Autonomy was reverted from 'active' to 'halted' because the app restarted (deploy or crash restart).\n` +
-    `Affected account(s): ${accountsList}.\n` +
-    `Re-arm autonomy in Settings when ready. To skip this halt on future restarts, enable ` +
-    `"auto-resume on boot" for this user in Settings, or set AUTONOMY_RESUME_ON_BOOT=1.`;
+  const { title, body } = autonomyBootInterlockNotificationCopy(accounts);
   await sendNotification(
-    { type: "autonomy_halted_on_boot", title, payload: { accountLabels } },
+    {
+      type: "autonomy_halted_on_boot",
+      title,
+      payload: {
+        accountLabels: [...accounts.reverted, ...accounts.autoPauseReleased],
+        revertedAccountLabels: accounts.reverted,
+        autoPauseReleasedAccountLabels: accounts.autoPauseReleased
+      }
+    },
     { userId, policy, directBody: body }
   );
 }

@@ -80,7 +80,7 @@ export function queueStrategyRunRequest(input: { userId: string; manual?: boolea
     .prepare(
       `SELECT id, user_id, manual, status, result, created_at, started_at, finished_at
        FROM strategy_run_requests
-       WHERE user_id = ? AND status IN ('queued', 'running')
+       WHERE user_id = ? AND status IN ('queued', 'running') AND retry_of_run_id IS NULL
        ORDER BY created_at ASC
        LIMIT 1`
     )
@@ -96,8 +96,12 @@ export function queueStrategyRunRequest(input: { userId: string; manual?: boolea
         finished_at: string | null;
       }
     | undefined;
-  // Dedupes on any remaining open request for this user.  Do not ignore `running` here —
+  // Dedupes on any remaining open OWNER request for this user.  Do not ignore `running` here —
   // a live overlapping run must still serialize.  Sweep-failed orphans are closed above.
+  // Restart retries (retry_of_run_id set) are never dedupe targets (board 687a5fb4 review round):
+  // the owner's click would otherwise get the retry's id back — an autonomous run on the killed
+  // run's account — and their own run would never happen.  A running retry serializes with the
+  // owner's run through the per-account strategy run lock, exactly like a scheduler run does.
   if (existing) {
     return { request: rowToRequest(existing), deduped: true };
   }
@@ -117,6 +121,16 @@ export function queueStrategyRunRequest(input: { userId: string; manual?: boolea
       (id, user_id, manual, status, result, created_at, started_at, finished_at)
      VALUES (?, ?, ?, 'queued', NULL, ?, NULL, NULL)`
   ).run(request.id, request.userId, request.manual ? 1 : 0, request.createdAt);
+  // The owner's request supersedes a restart retry that has not started yet.  (The drain-time
+  // re-check would drop it anyway — "open_request" — but only after spending the kick's slot on it.)
+  const queuedRetries = db
+    .prepare(
+      `SELECT id, user_id, connected_account_id, retry_of_run_id
+       FROM strategy_run_requests
+       WHERE user_id = ? AND status = 'queued' AND retry_of_run_id IS NOT NULL`
+    )
+    .all(input.userId) as Array<{ id: string; user_id: string; connected_account_id: string | null; retry_of_run_id: string | null }>;
+  for (const retry of queuedRetries) dropRestartRetryRequest(retry, "superseded_by_owner_request", "queued");
   return { request, deduped: false };
 }
 

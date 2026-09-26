@@ -3345,6 +3345,23 @@ const MIGRATIONS: Migration[] = [
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_strategy_run_requests_retry_of ON strategy_run_requests (retry_of_run_id) WHERE retry_of_run_id IS NOT NULL"
       );
     }
+  },
+  {
+    // Board 687a5fb4 review round (2026-09-25, follow-up to PR #3752): record WHO launched a
+    // strategy run on the run row itself (`autonomous` | `manual` | `run_state_override` |
+    // `request`, see src/lib/strategy-run-origin.ts).  The restart retry inferred "scheduler run"
+    // from the absence of a strategy_run_requests row, but the iOS Run once calls runStrategyOnce
+    // with `manual: true` directly and writes no request row — so a propose-only owner run killed
+    // by a restart could be retried as an autonomous one.  Nullable: rows written before this
+    // migration stay NULL, and the retry fails closed on NULL.
+    version: 93,
+    name: "strategy_runs_origin",
+    up: (database) => {
+      if (!tableExists(database, "strategy_runs")) return;
+      if (!columnExists(database, "strategy_runs", "origin")) {
+        database.exec("ALTER TABLE strategy_runs ADD COLUMN origin TEXT");
+      }
+    }
   }
 ];
 

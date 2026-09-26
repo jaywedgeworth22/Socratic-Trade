@@ -1,5 +1,21 @@
 # Current Status
 
+## 2026-09-25 CLAUDE — Run resilience review round (follow-up to merged PR #3752)
+
+**What/why.**  PR #3752 merged before its independent review findings were handled, so the six
+verified P2 findings ship as a follow-up (board `687a5fb4`, lane B, branch
+`claude/st-run-resilience-followup`).  (1) The restart retry treated "no request row" as "scheduler
+run", but the iOS Run once calls `runStrategyOnce({ manual: true })` directly: a killed propose-only
+run could come back autonomous.  `strategy_runs.origin` (migration 93) is now written with the run
+row from the same options that set authority, and only `autonomous` runs are retried (NULL fails
+closed).  (2) Restart retries are no longer manual-dedupe targets; an owner request drops a queued
+retry.  (3) No retry, and no non-manual run, on a draining or missing account.  (4) The boot
+interlock's marker release is one transaction under `sqliteYieldRetry`.  (5) The connectivity
+streak resets on auto-halt and on every marker clear, which also covers the ops-token halt in open
+PR #3754.  (6) The boot notification no longer says "reverted from 'active'" for an account a
+broker auto-pause had already halted.  Rollout: `docs/rollouts/2026-09-24-st-run-resilience.md`
+section 7.
+
 ## 2026-09-25 CLAUDE — Add 2026-09-25 trading performance report to docs
 
 **What/why.**  Docs-only.  Added the owner-facing performance analysis (produced by CLAUDE's

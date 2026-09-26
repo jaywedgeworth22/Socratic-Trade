@@ -140,6 +140,21 @@ trade-off: the diagnostic token can now cancel orders and change trading state (
 `ops_account_control`).  Wrapper `scripts/ops/account-control.sh`; runbook
 `docs/runbooks/ops-account-control.md`.  Branch `claude/st-ops-account-control`, PR #3754 (auto-merge not armed; review stage arms it).
 Rollout: `docs/rollouts/2026-09-24-st-ops-account-control.md`.
+## 2026-09-24 CLAUDE — Strategy run halt and restart resilience (board 687a5fb4, lane B)
+
+**What.**  Probe timeouts (`checkBrokerHealth timeout`, `alpaca.getAccount 16000+8000ms`) no longer
+auto-halt Autopilot on the first strike — they join the 3-in-a-row streak via a structural
+`__deadlineTimeout` flag.  A probe that timed out while the event loop was stalled for ≥75% of its
+window skips the tick with "App process was stalled (event loop blocked Xs of Ys); broker not at
+fault" and never touches the streak.  The pause decision now reads the durable policy and writes only
+`systemState`, and an owner Pause / mobile Stop / boot interlock drops the auto-resume marker, so an
+owner halt is never auto-lifted.  Restart-killed runs that wrote no proposal, fill, or decision get
+exactly one account-targeted retry (migration 92, `strategy-run-retry.ts`).  Broker-lane ceiling
+15s → 30s (was below Alpaca's 16s first wait).
+**Why.**  Last 50 Alpaca Paper runs: 21 first-strike halts during RTH stalls, 2 more timeouts, 11
+restart-killed runs never retried, 14 completed.
+**PR.**  Branch `claude/st-run-resilience`; money-path adjacent — adversarial review before merge.
+Rollout: `docs/rollouts/2026-09-24-st-run-resilience.md`.
 
 ## 2026-09-24 MUSE — LLM stats console review-findings sweep (PR #3452)
 

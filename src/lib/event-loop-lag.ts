@@ -36,10 +36,16 @@ const MAX_SAMPLES = 1_200;
 
 type LagSample = { at: number; lagMs: number };
 
+/** Called from the sampler's own tick, i.e. on the first callback after the loop frees. */
+export type EventLoopStallListener = (lagMs: number, observedAt: number) => void;
+
+type StallListenerEntry = { minLagMs: number; fn: EventLoopStallListener };
+
 type LagHost = {
   __eventLoopLagSamples?: LagSample[];
   __eventLoopLagTimer?: NodeJS.Timeout;
   __eventLoopLagLastTickAt?: number;
+  __eventLoopLagListeners?: StallListenerEntry[];
 };
 
 // globalThis-pinned so Next.js HMR module duplication cannot start a second sampler or split
@@ -48,6 +54,44 @@ const lagHost = globalThis as unknown as LagHost;
 
 function samples(): LagSample[] {
   return lagHost.__eventLoopLagSamples ?? (lagHost.__eventLoopLagSamples = []);
+}
+
+function listeners(): StallListenerEntry[] {
+  return lagHost.__eventLoopLagListeners ?? (lagHost.__eventLoopLagListeners = []);
+}
+
+/**
+ * Subscribe to "the loop just came back from a block of at least `minLagMs`".
+ *
+ * Added 2026-09-24 for the stall profiler (src/lib/stall-profiler.ts): the first sampler tick
+ * after a long block is the earliest moment any JS can run again, which is exactly when a CPU
+ * profile covering the block should be cut and saved — before the loop blocks again or an
+ * operator restarts the container.  Listeners run synchronously inside the sampler tick, each in
+ * its own try/catch, AFTER the sample is recorded (so `stalledMsSince` already includes it).  A
+ * throwing listener can never stop the sampler.  The registry lives on globalThis for the same
+ * HMR reason as the sampler itself.  Returns an unsubscribe function.
+ */
+export function onEventLoopStall(minLagMs: number, fn: EventLoopStallListener): () => void {
+  const entry: StallListenerEntry = { minLagMs: Math.max(LAG_FLOOR_MS, minLagMs), fn };
+  listeners().push(entry);
+  return () => {
+    const list = listeners();
+    const index = list.indexOf(entry);
+    if (index >= 0) list.splice(index, 1);
+  };
+}
+
+function notifyStallListeners(lagMs: number, observedAt: number): void {
+  const list = lagHost.__eventLoopLagListeners;
+  if (!list || list.length === 0) return;
+  for (const entry of [...list]) {
+    if (lagMs < entry.minLagMs) continue;
+    try {
+      entry.fn(lagMs, observedAt);
+    } catch {
+      // Observability must never break the sampler the safety lanes depend on.
+    }
+  }
 }
 
 /**
@@ -69,6 +113,7 @@ export function startEventLoopLagSampler(): void {
     const buf = samples();
     buf.push({ at: now, lagMs });
     if (buf.length > MAX_SAMPLES) buf.splice(0, buf.length - MAX_SAMPLES);
+    notifyStallListeners(lagMs, now);
   }, SAMPLE_PERIOD_MS);
   timer.unref?.();
   lagHost.__eventLoopLagTimer = timer;
@@ -106,6 +151,7 @@ export function _resetEventLoopLagForTest(): void {
   lagHost.__eventLoopLagTimer = undefined;
   lagHost.__eventLoopLagSamples = [];
   lagHost.__eventLoopLagLastTickAt = undefined;
+  lagHost.__eventLoopLagListeners = [];
 }
 
 /** Test-only: inject an observed stall without having to actually pin the loop. */

@@ -357,6 +357,49 @@ describe("placeExitReleasingOwnStops", () => {
   });
 });
 
+describe("re-plan inside the lease", () => {
+  it("releases the CURRENT app stop when the reconciler replaced it after the plan was made", async () => {
+    const account = "RP-1";
+    const oldStop = seedAppStop(account, "MFC", 111, 27.6, "stop-MFC-old");
+    const broker = fakeBroker({ positions: [pos("MFC", 111, 30)], orders: [oldStop] });
+    const proposal = sellProposal("MFC", 111);
+    const stalePlan = releasePlan(account, broker, proposal);
+    // Between the plan and the placement lease, the reconciler cancel-replaced the stop.
+    broker.orders[0].state = "canceled";
+    const newStop = seedAppStop(account, "MFC", 111, 27.6, "stop-MFC-new");
+    broker.orders.push(newStop);
+    broker.marketFillPrice = 30;
+
+    await placeExitReleasingOwnStops(
+      { userId: USER, policy: alpacaPolicy(account), accountNumber: account, gateway: broker as never, executionMode: "broker/paper", proposal, plan: stalePlan, lane: "autopilot", cancelSettleMs: 0 },
+      (verifiedPositionQuantity) => broker.placeEquityOrder({ accountNumber: account, ...proposal, refId: "ref-MFC", verifiedPositionQuantity })
+    );
+
+    expect(broker.cancelled).toEqual(["stop-MFC-new"]);
+    expect(broker.placed.map((o) => [o.side, o.type, o.quantity])).toEqual([["sell", "market", 111]]);
+  });
+
+  it("an owner order that appeared after the plan keeps the exit blocked and cancels nothing", async () => {
+    const account = "RP-2";
+    const appStop = seedAppStop(account, "BSX", 60, 80);
+    const broker = fakeBroker({ positions: [pos("BSX", 60, 87)], orders: [appStop] });
+    const proposal = sellProposal("BSX", 60);
+    const plan = releasePlan(account, broker, proposal);
+    // The app stop is gone and the owner placed their own GTC stop for the whole position.
+    broker.orders[0].state = "canceled";
+    broker.orders.push(stopOrder("owner-BSX", "BSX", 60, 79, "owner-typed-in-alpaca-ui"));
+
+    const err = await placeExitReleasingOwnStops(
+      { userId: USER, policy: alpacaPolicy(account), accountNumber: account, gateway: broker as never, executionMode: "broker/paper", proposal, plan, lane: "approval", cancelSettleMs: 0 },
+      (verifiedPositionQuantity) => broker.placeEquityOrder({ accountNumber: account, ...proposal, refId: "ref-BSX", verifiedPositionQuantity })
+    ).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(ExitStopReleaseError);
+    expect(broker.cancelled).toEqual([]);
+    expect(broker.placed).toHaveLength(0);
+  });
+});
+
 describe("owner and external orders are never cancelled", () => {
   it("an owner-placed stop holding the shares keeps the exit blocked and is never touched", async () => {
     const account = "EXT-1";

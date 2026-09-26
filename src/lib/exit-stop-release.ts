@@ -44,6 +44,7 @@ import {
   type ReleasedStopSnapshot
 } from "./exit-stop-release-intents";
 import { normalizeSymbol } from "./money";
+import { sqliteYieldRetry } from "./sqlite-event-loop";
 import { CANCEL_SETTLE_POLL_MAX_MS, CANCEL_SETTLE_POLL_MS, pollCancelSettlement } from "./order-replacement";
 import { isAppPlacedBrokerOrder, isContingentOrderLeg } from "./order-provenance";
 import {
@@ -284,15 +285,42 @@ function hadExecutedFill(order: EquityOrder): boolean {
  * position, or other orders still hold the shares.  Errors from `place` propagate unchanged —
  * the restore runs either way and never throws.
  */
-export async function placeExitReleasingOwnStops<T>(run: ExitStopReleaseRun, place: (verifiedPositionQuantity: number) => Promise<T>): Promise<T> {
+export async function placeExitReleasingOwnStops<T>(input: ExitStopReleaseRun, place: (verifiedPositionQuantity: number) => Promise<T>): Promise<T> {
+  let run = input;
   const symbol = normalizeSymbol(run.plan.symbol);
-  const exitSide = run.plan.side;
   const { userId, accountNumber, gateway } = run;
   const connectedAccountId = run.connectedAccountId ?? run.policy.connectedAccountId;
+
+  // Re-plan from FRESH broker state inside the lease.  The caller's plan came from an order list
+  // read before LLM deliberation / human approval; since then the reconciler may have replaced the
+  // stop (a Robinhood ratchet cancel-replaces it as price rises) or the owner may have placed an
+  // order.  Only the fresh plan decides what is cancelled.  A failed read keeps the caller's plan:
+  // every step below re-verifies against the broker anyway.
+  try {
+    const [freshPositions, freshOrders] = await Promise.all([
+      gateway.getEquityPositions(accountNumber),
+      gateway.getEquityOrders(accountNumber)
+    ]);
+    const fresh = planExitStopRelease({ proposal: run.proposal, positions: freshPositions, orders: freshOrders, policy: run.policy, userId, accountNumber });
+    if (fresh.kind === "none") {
+      audit("exit_stop_release_not_needed", { symbol, side: run.plan.side, lane: run.lane, proposalId: run.proposalId, runId: run.runId }, userId, connectedAccountId);
+      return await place(backingQuantity(freshPositions, symbol, run.plan.side).signed);
+    }
+    if (fresh.kind === "blocked") {
+      audit("exit_stop_release_replan_blocked", { symbol, side: run.plan.side, lane: run.lane, proposalId: run.proposalId, runId: run.runId, reason: fresh.reason }, userId, connectedAccountId);
+      throw new ExitStopReleaseError(fresh.reason, "still_held");
+    }
+    run = { ...run, plan: fresh.plan };
+  } catch (err) {
+    if (err instanceof ExitStopReleaseError) throw err;
+    audit("exit_stop_release_replan_unavailable", { symbol, lane: run.lane, proposalId: run.proposalId, error: errMsg(err) }, userId, connectedAccountId);
+  }
+
+  const exitSide = run.plan.side;
   const auditBase = { symbol, side: exitSide, lane: run.lane, proposalId: run.proposalId, runId: run.runId };
   const now = new Date().toISOString();
 
-  putExitStopReleaseIntent({
+  await sqliteYieldRetry(() => putExitStopReleaseIntent({
     userId,
     accountNumber,
     connectedAccountId,
@@ -306,7 +334,7 @@ export async function placeExitReleasingOwnStops<T>(run: ExitStopReleaseRun, pla
     restoreAttempts: 0,
     createdAt: now,
     updatedAt: now
-  });
+  }));
   audit(
     "exit_stop_release_started",
     {
@@ -444,7 +472,7 @@ export async function placeExitReleasingOwnStops<T>(run: ExitStopReleaseRun, pla
     throw aborted;
   }
 
-  updateExitStopReleasePhase(userId, accountNumber, symbol, "released");
+  await sqliteYieldRetry(() => updateExitStopReleasePhase(userId, accountNumber, symbol, "released"));
   audit(
     "exit_stop_released",
     { ...auditBase, positionQuantity: signedPosition, requestedQuantity: run.plan.requestedQuantity, releasedStopOrderIds: run.plan.stops.map((s) => s.brokerOrderId) },

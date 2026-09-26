@@ -58,6 +58,7 @@ import {
   removePendingBracketTeardown,
   bumpPendingBracketTeardownAttempts,
   getBrokerStopPlacementIntent,
+  listSyntheticStops,
   upsertBrokerStopPlacementIntent,
   deleteBrokerStopPlacementIntent,
   type BrokerStopPlacementIntent
@@ -413,6 +414,15 @@ function resolveRestoreIntents(args: ReconcileBrokerProtectiveStopsArgs, intents
     return; // keep every intent; the next pass retries
   }
   const accountKind = desiredBrokerStopKind(policy, executionMode);
+  // A broker trail the reconciler refuses to arm (mark below the released stop's high-water mark)
+  // is covered by the always-on synthetic monitor instead — that is the designed fallback, so an
+  // active synthetic stop row also counts as protection restored.
+  let syntheticSymbols = new Set<string>();
+  try {
+    syntheticSymbols = new Set(listSyntheticStops(accountNumber, userId).map((row) => normalizeSymbol(row.symbol)));
+  } catch {
+    syntheticSymbols = new Set();
+  }
   for (const intent of intents) {
     const sym = normalizeSymbol(intent.symbol);
     const pos = positions.find((p) => normalizeSymbol(p.symbol) === sym && Math.abs(p.quantity) > 0.000001);
@@ -420,6 +430,7 @@ function resolveRestoreIntents(args: ReconcileBrokerProtectiveStopsArgs, intents
     if (!pos) outcome = "position_closed";
     else if (rows.some((r) => normalizeSymbol(r.symbol) === sym && (r.status === "resting" || r.status === "pending_cancel"))) outcome = "stop_in_place";
     else if (accountKind === null || args.stopPlanBySymbol?.[sym] === "none") outcome = "no_broker_stop_configured";
+    else if (syntheticSymbols.has(sym)) outcome = "synthetic_monitor_covers";
     else if ((args.ordersListed ?? true) && liveOrders.length > 0) {
       const cov = liveExitOrderCoverage(liveOrders, sym, protectiveSideOf(pos));
       if (!cov.unknownQty && cov.coveredQty >= Math.abs(pos.quantity) - 0.000001) outcome = "covered_by_live_exit_orders";

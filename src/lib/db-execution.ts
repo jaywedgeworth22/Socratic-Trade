@@ -591,6 +591,22 @@ export function finishStrategyRun(id: string, status: StrategyRunFinishStatus, s
   );
 }
 
+/** A run the sweep just transitioned running -> failed because its process restarted mid-run. */
+export type RestartKilledRun = {
+  id: string;
+  userId: string;
+  connectedAccountId: string | null;
+  startedAt: string;
+  finishedAt: string;
+};
+
+export type StaleRunningSweepResult = {
+  /** strategy_runs rows this sweep transitioned to failed (either cause). */
+  repaired: number;
+  /** The subset whose cause was `process_restarted_mid_run` — retry candidates for the caller. */
+  restartKilled: RestartKilledRun[];
+};
+
 /**
  * Sweep strategy_runs rows left in status='running' after a process crash / kill / unhandled
  * rejection (the normal `finishStrategyRun` exit paths never ran). A run that hasn't finished
@@ -603,12 +619,22 @@ export function finishStrategyRun(id: string, status: StrategyRunFinishStatus, s
  * is not left locked after the run is marked failed.  A later tick heals already-failed
  * runs whose request was left `running` by an older process.
  *
- * Returns the number of repaired strategy_runs rows for logging/auditing.
+ * Returns the repaired count plus the restart-killed rows this call itself transitioned (the
+ * caller decides on retries — strategy-run-retry.ts — so this module stays getDb-only).
  */
-export function markStaleRunningRuns(now: number = Date.now()): number {
+export function sweepStaleRunningRuns(now: number = Date.now()): StaleRunningSweepResult {
   const cutoff = new Date(now - STALE_RUN_THRESHOLD_MS).toISOString();
   const processStarted = processStartedAtMs();
   const processBootCutoff = new Date(processStarted - PROCESS_RESTART_DETECT_SKEW_MS).toISOString();
+  // Liveness evidence for a run that started BEFORE this process booted must itself postdate the
+  // boot (board 687a5fb4).  Audit rows written before boot were written by the process that is
+  // now gone (stop-old-first) — they prove the run WAS alive, not that it is.  Counting them held
+  // every restart-killed run in `running` for up to 30 more minutes, by which time the next
+  // cadence run had started and the lost run could never be retried.  A run another node really
+  // adopted still has its two cross-process graces: the unexpired strategy run lease below
+  // (renewed every 60s) and any audit row it writes after this boot.
+  const processBootIso = new Date(processStarted).toISOString();
+  const preBootActivityFloor = processBootIso > cutoff ? processBootIso : cutoff;
   const db = getDb();
   const stale = db
     .prepare(
@@ -622,6 +648,7 @@ export function markStaleRunningRuns(now: number = Date.now()): number {
       started_at: string;
     }>;
   let count = 0;
+  const restartKilled: RestartKilledRun[] = [];
   for (const row of stale) {
     if (isStrategyRunExecutionLive(row.id)) continue;
     // Pre-boot grace (money path).  `started_at >= cutoff` means this row is NOT time-stale — the
@@ -639,10 +666,12 @@ export function markStaleRunningRuns(now: number = Date.now()): number {
     const preBootOnly = row.started_at >= cutoff;
     if (preBootOnly && hasLiveStrategyRunLease(row.id, row.user_id, now)) continue;
     const cause = staleRunningRunSweepCause(row.started_at, processStarted);
-    // Unconditional audit activity grace: check if the run is still emitting audit rows recently
+    // Unconditional audit activity grace: check if the run is still emitting audit rows recently.
+    // For a pre-boot (restart) row only activity since this boot counts — see preBootActivityFloor.
+    const activityFloor = cause === "process_restarted_mid_run" ? preBootActivityFloor : cutoff;
     const recentActivity = db
       .prepare(`SELECT 1 FROM audit_events WHERE json_extract(payload, '$.runId') = ? AND created_at >= ? LIMIT 1`)
-      .get(row.id, cutoff);
+      .get(row.id, activityFloor);
     if (recentActivity) continue;
 
     const finishedAt = new Date(now).toISOString();
@@ -673,9 +702,24 @@ export function markStaleRunningRuns(now: number = Date.now()): number {
       row.connected_account_id ?? undefined
     );
     count++;
+    if (cause === "process_restarted_mid_run") {
+      restartKilled.push({
+        id: row.id,
+        userId: row.user_id,
+        connectedAccountId: row.connected_account_id,
+        startedAt: row.started_at,
+        finishedAt
+      });
+    }
   }
   closeOrphanedStrategyRunRequests(now);
-  return count;
+  return { repaired: count, restartKilled };
+}
+
+/** Back-compat wrapper: the repaired count only.  Retries are the scheduler's job
+ *  (`sweepStaleRunsAndRetry` in strategy-run-retry.ts). */
+export function markStaleRunningRuns(now: number = Date.now()): number {
+  return sweepStaleRunningRuns(now).repaired;
 }
 
 /**

@@ -40,6 +40,33 @@ export function equityOrdersDefaultSinceIso(nowMs = Date.now()): string {
   return new Date(nowMs - EQUITY_ORDERS_TERMINAL_LOOKBACK_MS).toISOString();
 }
 
+/**
+ * Structural marker for "this wait ran out of time" (2026-09-24, board 687a5fb4).
+ *
+ * Set on the error `withDeadline` manufactures on expiry and on whatever `onFinalTimeout` throws
+ * from `awaitWithFirstCallRetry` (`Timed out waiting for alpaca.getAccount after 16000+8000ms.`).
+ * Consumers classify on this flag instead of regexing prose: the broker-health auto-pause needs to
+ * know a probe TIMED OUT (streak-eligible — usually a pinned event loop, not a broker outage)
+ * without widening `isTransientNetworkError` to match the words "timed out" globally.
+ * Duck-typed rather than a subclass because errors cross Next.js HMR module-instance boundaries.
+ */
+export type DeadlineTimeoutError = Error & { __deadlineTimeout: true };
+
+export function markDeadlineTimeout<E>(error: E): E {
+  if (error && typeof error === "object") {
+    try {
+      (error as { __deadlineTimeout?: boolean }).__deadlineTimeout = true;
+    } catch {
+      /* frozen / exotic error object — classification falls back to the caller's other checks */
+    }
+  }
+  return error;
+}
+
+export function isDeadlineTimeoutError(error: unknown): error is DeadlineTimeoutError {
+  return Boolean(error) && typeof error === "object" && (error as { __deadlineTimeout?: unknown }).__deadlineTimeout === true;
+}
+
 /** Race a broker promise against a hard timeout.  Lives here (not safety-maintenance) so
  *  alpaca/tradier can import it without a circular broker-gateway load.
  *
@@ -60,7 +87,7 @@ export async function withDeadline<T>(
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      const error = new Error(message);
+      const error = markDeadlineTimeout(new Error(message));
       options?.controller?.abort(error);
       reject(error);
     }, ms);
@@ -210,7 +237,12 @@ export async function awaitWithFirstCallRetry<T>(
         );
         options.timedOutSections?.push(options.label);
       }
-      return options.onFinalTimeout();
+      try {
+        return options.onFinalTimeout();
+      } catch (error) {
+        // A throwing onFinalTimeout IS this helper's timeout, whatever its prose says.
+        throw markDeadlineTimeout(error);
+      }
     default:
       return assertNever(raced);
   }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fetch the production ops diagnostic PERFORMANCE rollup (realized P&L, win rate, profit
 # factor, expectancy, thesis/Red-Team/model attribution, proposal funnel, equity curve).
-# Requires OPS_DIAGNOSTIC_TOKEN in the environment (Cursor Cloud Secrets or local export) —
+# Requires OPS_DIAGNOSTIC_TOKEN in the environment (Cursor Cloud Secrets or local export) --
 # the same token /api/ops/snapshot uses.  See docs/runbooks/ops-performance-endpoint.md.
 set -euo pipefail
 

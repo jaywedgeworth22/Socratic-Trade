@@ -12,6 +12,33 @@ the breaker holds an opted-in hard action one run on an unexplained ≥ 20% fall
 `GET /api/ops/account-activity`.  **Next:** after deploy, run the diagnostic then the recompute
 for the Roth account (exact commands in the rollout).  Branch `claude/st-cashflow-detection`.
 Rollout: `docs/rollouts/2026-09-24-st-cashflow-detection.md`.
+## 2026-09-25 CLAUDE — Ops performance endpoint: review round 2 (follow-up to merged PR #3751, board 687a5fb4)
+
+Five independent-reviewer findings against the Round-1 fix (`#3751`, already merged to `main`).
+Two P1s, same root cause: `buildOpsPerformanceSnapshot` called `getRedTeamEfficacy(...)` unguarded
+at three sites in `src/lib/ops-performance.ts`, including once inside its own per-account `catch`
+fallback re-invoking the identical call that could have been what threw in the first place.
+`getRedTeamEfficacy` -> `listAuditByKind` (`src/lib/db-learning.ts`) does an unguarded
+`JSON.parse(row.payload)` per audit row with no try/catch, so one malformed
+`proposal_rejected_by_red_team` audit row for any account would 500 the whole diagnostic
+endpoint — confirmed by writing the regression test first and watching it fail with exactly that
+`SyntaxError`, thrown through the catch-fallback call site. Fixed with a small `safeRedTeamEfficacy()`
+try/catch wrapper (static empty `RedTeamEfficacy` fallback shape) at all three call sites —
+finer-grained than the module's existing per-account isolation, since a Red-Team-only read
+failure for one account no longer blanks that account's otherwise-correct P&L/trade-stats/funnel/
+equity-curve too (previously it would have hit the outer catch and zeroed everything). One P2
+fixed: a non-ASCII em dash in the new `scripts/fetch-prod-ops-performance.sh` (line 4), replaced
+with `--`; `grep -nP '[^\x00-\x7F]' scripts/*.sh` now clean for that file. Two P2s verified real
+but declined this round with a concrete reason — per-account-only event-loop-yield granularity,
+and no cap on accounts processed by an unfiltered request — both explicitly scoped by the
+reviewers themselves as narrow/conditional at today's single-owner, small-account-count scale;
+documented as deliberate, revisit-if-scale-changes deferrals rather than fixed speculatively.
+New regression: `test/ops-performance.test.ts` "survives a malformed Red Team audit payload...".
+Gate: targeted test file 11/11 (post-fix), `npm run lint` 0 errors, `npx tsc --noEmit` clean —
+see rollout doc for exact output; full `npm test`/`npm run build` left to the required `verify`
+CI check per this lane's own load note. Auto-merge intentionally NOT armed (`do-not-automerge`
+label kept). Rollout: `docs/rollouts/2026-09-24-st-ops-performance.md` ("Review round 2" section).
+
 ## 2026-09-25 CLAUDE — Add 2026-09-25 trading performance report to docs
 
 **What/why.**  Docs-only.  Added the owner-facing performance analysis (produced by CLAUDE's
@@ -151,6 +178,21 @@ the breaker holds an opted-in hard action one run on an unexplained ≥ 20% fall
 `GET /api/ops/account-activity`.  **Next:** after deploy, run the diagnostic then the recompute
 for the Roth account (exact commands in the rollout).  Branch `claude/st-cashflow-detection`.
 Rollout: `docs/rollouts/2026-09-24-st-cashflow-detection.md`.
+## 2026-09-24 CLAUDE — Strategy run halt and restart resilience (board 687a5fb4, lane B)
+
+**What.**  Probe timeouts (`checkBrokerHealth timeout`, `alpaca.getAccount 16000+8000ms`) no longer
+auto-halt Autopilot on the first strike — they join the 3-in-a-row streak via a structural
+`__deadlineTimeout` flag.  A probe that timed out while the event loop was stalled for ≥75% of its
+window skips the tick with "App process was stalled (event loop blocked Xs of Ys); broker not at
+fault" and never touches the streak.  The pause decision now reads the durable policy and writes only
+`systemState`, and an owner Pause / mobile Stop / boot interlock drops the auto-resume marker, so an
+owner halt is never auto-lifted.  Restart-killed runs that wrote no proposal, fill, or decision get
+exactly one account-targeted retry (migration 92, `strategy-run-retry.ts`).  Broker-lane ceiling
+15s → 30s (was below Alpaca's 16s first wait).
+**Why.**  Last 50 Alpaca Paper runs: 21 first-strike halts during RTH stalls, 2 more timeouts, 11
+restart-killed runs never retried, 14 completed.
+**PR.**  Branch `claude/st-run-resilience`; money-path adjacent — adversarial review before merge.
+Rollout: `docs/rollouts/2026-09-24-st-run-resilience.md`.
 
 ## 2026-09-24 MUSE — LLM stats console review-findings sweep (PR #3452)
 

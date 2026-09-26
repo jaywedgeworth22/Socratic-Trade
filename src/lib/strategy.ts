@@ -125,7 +125,7 @@ import { getTaxSummary, getUserWashSaleLockProvenance, overlayAccountTaxationTyp
 import { getBrokerGateway } from "./broker";
 import { normalizeExitSidesForHeldPositions, withPositionSides } from "./order-position-invariant";
 import { describeBrokerMinimumOrderBlock, planBrokerMinimumBump, shouldAlertBrokerMinimumOrderBlock } from "./broker-minimum-guard";
-import { brokerHeldExitBlockReason, evaluateBrokerHeldExitAvailability } from "./broker-held-orders";
+import { placeExitReleasingOwnStops, planExitStopRelease } from "./exit-stop-release";
 import { notifyStaleLimitOrders } from "./stale-limit-orders";
 import { checkBudgetAndAlert, evaluateBudgetForRun, formatBudgetAdvisory, getBudgetStatusCached, notifyBudgetSkip, previewBudgetDecision, usageBudgetEnforceEnabled } from "./usage-budget";
 import { avgReturnCorrelation, correlationProfile } from "./correlation";
@@ -3825,9 +3825,22 @@ export async function runStrategyOnce(
         continue;
       }
 
-      const heldExit = evaluateBrokerHeldExitAvailability(normalizedProposal, workingPositions, orders);
-      if (heldExit) {
-        const heldReason = brokerHeldExitBlockReason(heldExit);
+      // An exit whose shares are held at the broker is blocked — UNLESS the only thing holding them
+      // is the app's OWN resting protective stop and the owner toggle "Exits release the app's own
+      // stop" is on (default): then the stop is released inside the placement lease below, the
+      // exit placed, and protection re-placed for any remainder (src/lib/exit-stop-release.ts).
+      const heldExitDecision = planExitStopRelease({
+        proposal: normalizedProposal,
+        positions: workingPositions,
+        orders,
+        policy,
+        userId,
+        accountNumber: policy.accountNumber
+      });
+      const exitStopRelease = heldExitDecision.kind === "release" ? heldExitDecision.plan : undefined;
+      if (heldExitDecision.kind === "blocked") {
+        const heldExit = heldExitDecision.heldExit;
+        const heldReason = heldExitDecision.reason;
         const heldDecision: PolicyDecision = { approved: false, reasons: [heldReason] };
         insertRunProposal({
           userId,
@@ -3845,7 +3858,7 @@ export async function runStrategyOnce(
         recordSocraticDecision({ proposalId, proposal: normalizedProposal, decision: heldDecision, status: "blocked", review, overrideResolution });
         audit(
           "proposal_blocked_broker_held_exit",
-          { runId, proposalId, symbol: heldExit.symbol, side: heldExit.side, heldExit },
+          { runId, proposalId, symbol: heldExit.symbol, side: heldExit.side, heldExit, appStopOrderIds: heldExitDecision.appStopOrderIds },
           userId,
           connectedAccountId
         );
@@ -4085,7 +4098,26 @@ export async function runStrategyOnce(
           try {
             // Mutation-lease fence: fail closed if the window lost its lease before the risk-creating call.
             mutationCtx.assertOwned();
-            execution = await gateway.placeEquityOrder({ accountNumber: policy.accountNumber, ...normalizedProposal, refId });
+            execution = exitStopRelease
+              ? await placeExitReleasingOwnStops(
+                  {
+                    userId,
+                    policy,
+                    accountNumber: policy.accountNumber,
+                    connectedAccountId,
+                    gateway,
+                    executionMode,
+                    proposal: normalizedProposal,
+                    plan: exitStopRelease,
+                    lane: "autopilot",
+                    proposalId,
+                    runId,
+                    assertOwned: () => mutationCtx.assertOwned()
+                  },
+                  (verifiedPositionQuantity) =>
+                    gateway.placeEquityOrder({ accountNumber: policy.accountNumber, ...normalizedProposal, refId, verifiedPositionQuantity })
+                )
+              : await gateway.placeEquityOrder({ accountNumber: policy.accountNumber, ...normalizedProposal, refId });
           } catch (placeError) {
             const message = placeError instanceof Error ? placeError.message : String(placeError);
             const sym = normalizedProposal.symbol;

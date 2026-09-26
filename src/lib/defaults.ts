@@ -121,6 +121,9 @@ export const DEFAULT_POLICY: TradingPolicy = {
   // Broker-held buy-stops for shorts (Alpaca). Default ON so enabling short
   // selling also arms the designed protection lane. Owner can turn off.
   brokerStopsForShorts: true,
+  // Approved exits may cancel the app's OWN resting protective stop that holds their shares, then
+  // re-place a stop for any remainder (src/lib/exit-stop-release.ts). Owner can turn off.
+  exitsReleaseAppStops: true,
   // Options + Kalshi event contracts:
   optionsTradingEnabled: true,
   eventContractsEnabled: true,

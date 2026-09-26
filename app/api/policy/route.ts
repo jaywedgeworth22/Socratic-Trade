@@ -325,6 +325,7 @@ async function validatePolicy(
   if (policy.atrStops !== undefined && typeof policy.atrStops !== "boolean") return "atrStops must be a boolean.";
   if (policy.brokerTrailingStops !== undefined && typeof policy.brokerTrailingStops !== "boolean") return "brokerTrailingStops must be a boolean.";
   if (policy.brokerStopsForShorts !== undefined && typeof policy.brokerStopsForShorts !== "boolean") return "brokerStopsForShorts must be a boolean.";
+  if (policy.exitsReleaseAppStops !== undefined && typeof policy.exitsReleaseAppStops !== "boolean") return "exitsReleaseAppStops must be a boolean.";
   if (policy.optionsTradingEnabled !== undefined && typeof policy.optionsTradingEnabled !== "boolean") return "optionsTradingEnabled must be a boolean.";
   if (policy.eventContractsEnabled !== undefined && typeof policy.eventContractsEnabled !== "boolean") return "eventContractsEnabled must be a boolean.";
   if (policy.kalshiMacroEnabled !== undefined && typeof policy.kalshiMacroEnabled !== "boolean") return "kalshiMacroEnabled must be a boolean.";

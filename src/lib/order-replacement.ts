@@ -983,13 +983,20 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Default settle poll interval / ceiling, shared with exit-stop-release.ts. */
+export const CANCEL_SETTLE_POLL_MS = CANCEL_SETTLE_MS;
+export const CANCEL_SETTLE_POLL_MAX_MS = CANCEL_SETTLE_MAX_MS;
+
 /**
  * P2.7 — poll the broker after a cancel request until the original is no longer
  * active, or until maxWaitMs elapses. When settleMs is 0 (tests), one immediate
  * list is enough. The row remains `cancel_confirmed` if still active so a later
  * pump tick can finish the replacement (no abort-and-forget).
+ *
+ * Exported for the exit-stop-release sequence (exit-stop-release.ts), which cancels the app's
+ * own resting protective stop before an approved exit and must see that cancel settle first.
  */
-async function pollCancelSettlement(input: {
+export async function pollCancelSettlement(input: {
   gateway: BrokerGateway;
   accountNumber: string;
   orderId: string;

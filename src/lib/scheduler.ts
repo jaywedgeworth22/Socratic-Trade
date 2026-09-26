@@ -1467,11 +1467,11 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
           health: healthSignals,
           policy
         });
-        if (pauseResult.action === "halted" || pauseResult.action === "resumed") {
-          // Policy may have flipped; re-read so the rest of this tick sees durable state.
-          const refreshed = getPolicy(userId, accountId);
-          policy.systemState = refreshed.systemState;
-        }
+        // Re-read unconditionally so the rest of this tick sees durable state: the pause may have
+        // flipped it, and an operator (console Stop, POST /api/ops/account-control) may have
+        // changed it while the health probe was in flight.  A healthy probe must not launch a run
+        // on an account the operator halted or set close_only mid-probe.
+        policy.systemState = getPolicy(userId, accountId).systemState;
         if (!healthSignals.isHealthy) {
           // De-duplicated: logs on first occurrence and on any reason/halt-state change, then a
           // low-rate heartbeat — see logHealthGateSkip doc comment for why (1,364 identical

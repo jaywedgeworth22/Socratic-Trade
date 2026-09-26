@@ -160,3 +160,85 @@ npm run build
   position check at the single placement choke point for every OTHER lane.
 - Alpaca's notional (dollar) sell converts dollars to shares on the broker side; that conversion,
   not the app's, produced the VZ 0.027910851 request.
+
+## 7. Review Round (2026-09-25)
+
+PR #3759 merged to `main` while an independent review was in flight, so the fixes below land as a
+follow-up PR from the same branch name (`claude/st-order-correctness`, re-created from the merged
+head plus `origin/main`; no force-push).  Each finding was verified against the code first.
+
+**Fixed.**
+
+- **P1 (raised twice): a dollar-sized buy against a held short bypassed the cover reshape.**
+  Confirmed: both passes gated the buy -> cover rewrite on `quantity`, and
+  `applyDeterministicSizing` (`strategy-risk.ts`) sets `quantity: undefined` +
+  `dollarAmount: targetNotional` on every autopilot buy, so the default autopilot buy against a
+  short reached the broker as a bracketed `buy` (Alpaca 422, Tradier needs `buy_to_cover`).  Both
+  `applyPositionInvariant` and `normalizeExitSideForHeldPosition` now resolve the dollars against
+  the short's own per-share value (`|marketValue| / shares`): within 2% of the short -> the full
+  short; below it -> that many whole shares (floored; an equity short is always whole shares);
+  larger than the short, sub-share, or unpriceable -> unchanged, exactly like a quantity buy above
+  the short.  Receipt `dollar_exit_resolved_to_quantity` records the resolution.
+- **P2: autopilot flipped an LLM `sell` of a held short into a buy on shorting-enabled venues,
+  kept its limit, and grew a dollar sell into a full cover.**  Confirmed.  The sell -> cover flip
+  now requires `convertSellToCover: true` (default is now false), and the autopilot passes it only
+  on a LONG-ONLY venue (`deriveVenueContract(runPolicy, activeAccount)` has no `short`), where a
+  short can only be unintended and `sell` can only mean "exit".  Only a MARKET sell flips (a
+  sell's limit/stop is on the wrong side of the market for a buy-to-cover; a stray price field is
+  stripped); a dollar sell covers that many whole shares (the whole short only when the dollars
+  reach it, within 2%).  On a
+  shorting-enabled venue the sell is left for policy (`Sell quantity exceeds`) and the choke point
+  (`sell_against_short`) to refuse with the correct verb.
+- **P2: the long-only prompt named `cover` but the strict schema enum and the repair filter
+  forbade it.**  Confirmed (`venue-contract.ts` sides `["buy","sell"]` -> `side: { enum }` and
+  `filterRepairedProposals`).  New `proposalSidesForHeldPositions` adds `cover` to a long-only
+  enum only while the account holds a short (policy already permits a risk-reducing cover);
+  shorting venues and parked venues are unchanged.  The prompt now also says cover is offered only
+  while such a short is held; prompt `agentic-strategy@2.19.1`.
+- **P2: a transient position-read failure booked an approved or protective exit as terminal
+  `blocked`.**  Confirmed.  `position_unverified` is now retryable: both lanes check
+  `isRetryablePositionInvariantError` before the `OrderValidationError` branch and book
+  `not_placed` (audit `order_not_placed_position_unverified`, "safe to retry" notification).  The
+  approval lane passes the position it read at the start of `executeProposal` (same call, under
+  the strategy lock, seconds earlier) as `verifiedPositionQuantity` for sell/cover, so a read blip
+  no longer refuses an owner-approved exit.  The refusal text no longer promises a retry that the
+  approval lane never made.
+
+**Declined.**
+
+- **P2: an oversized sell on a shorting-enabled account clamps instead of flipping long -> short.**
+  The premise is wrong: Alpaca does not reverse a position in one order (a sell above the held
+  long is refused "insufficient qty available"; the reversal takes a close then a separate
+  short), Tradier's `sell` verb only closes a long (`sell_short` opens one), and Robinhood cannot
+  short.  So before #3759 the oversized sell never flipped either; it was refused.  The app's
+  vocabulary opens a short with side `short`, and the clamp is audited
+  (`order_position_invariant_reshaped` / `quantity_clamped_to_position`) while the broker's order
+  echo in `ExecutedOrder.raw` carries the placed quantity.
+- **Autopilot position hint from `workingPositions`.**  Part of the P2 read-failure fix proposed
+  passing `workingPositions` as the hint for proactive exits.  Not done: that snapshot is read at
+  run start, minutes before placement (LLM latency), which is exactly the cached-snapshot hazard the
+  fresh read exists to close.  The autopilot instead books the refusal `not_placed`, and the next
+  run re-proposes against a fresh read.
+
+**Files touched (review round):** `src/lib/order-position-invariant.ts`, `src/lib/strategy.ts`,
+`src/lib/strategy-execution.ts`, `src/lib/strategy-prompts.ts`,
+`test/order-position-invariant.test.ts`, `test/order-position-invariant-lanes.test.ts` (new),
+`test/strategy-prompt-safety.test.ts`, `STATUS.md`, `docs/EFFORT-LOG.md`, this note.
+
+**Verification (review round, Node 24, load average ~300):**
+
+```bash
+export PATH=/opt/homebrew/opt/node@24/bin:$PATH
+npx vitest run test/order-position-invariant.test.ts test/order-position-invariant-lanes.test.ts \
+  test/pg-short-replay.test.ts test/strategy-prompt-safety.test.ts test/venue-contract.test.ts
+npx tsc --noEmit
+npm run lint
+```
+
+Results: `tsc` exit 0; `lint` 0 errors (836 existing warnings, none in the touched files); the six
+targeted vitest files (the five above plus `test/run-strategy-offline.test.ts`) passed 75/75.
+Test-first check: the new unit tests run against the #3759 module gave 10 failed and 29 passed
+(the one new case passing there, "oversized or sub-share dollar buy stays unchanged", is behavior
+the old code already had).  Full `npm test` + `npm run build` are the required `verify` CI
+check.  Follow-up PR: #3792 (hold label `do-not-automerge`; the repo's auto-merge workflow
+armed it at creation and it was disabled again).

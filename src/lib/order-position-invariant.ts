@@ -13,7 +13,11 @@
 //   2. A cover only ever reduces a short.  Cover with no short held -> refused (it would buy a
 //      LONG).  Cover above the held short -> clamped.
 //   3. A buy against a held short (quantity <= the short) IS a cover: it is re-expressed as side
-//      "cover" (Tradier needs buy_to_cover; Alpaca's wire side is "buy" either way).
+//      "cover" (Tradier needs buy_to_cover; Alpaca's wire side is "buy" either way).  A DOLLAR-sized
+//      buy (deterministic sizing turns every autopilot buy into one) resolves against the short's
+//      own per-share value first: at most the short -> a whole-share cover of that many shares;
+//      larger than the short -> unchanged (the broker judges a reversal, exactly as for a quantity
+//      buy above the short).
 //   4. Closing orders carry no bracket legs (Alpaca 422 "bracket orders must be entry orders"),
 //      and a closing MARKET order carries no limit/stop price (Alpaca 422 "market orders require
 //      no stop or limit price").  A full-exit DOLLAR order resolves to the exact held quantity so
@@ -31,7 +35,9 @@
 // the pre-fill long, and the second would short.  Placements are a handful per run, so the extra
 // broker read (~100-300 ms on Alpaca REST) is cheap next to an unintended position.
 //
-// READ FAILURE (fail-open vs fail-closed, per side and broker):
+// READ FAILURE (fail-open vs fail-closed, per side and broker).  A fail-closed refusal is code
+// "position_unverified": nothing reached the broker and the cause is transient, so the lanes book
+// it as retryable "not_placed", never terminal "blocked" (isRetryablePositionInvariantError):
 //   - buy / short: fail OPEN.  A buy is only reshaped when a short is proven; a short is never
 //     inspected.
 //   - sell / cover on Alpaca (and the test broker): fail CLOSED, unless the caller passes
@@ -55,6 +61,7 @@ import {
   type EquityOrderInput,
   type EquityPosition,
   type ExecutedOrder,
+  type OrderSide,
   type TradeProposal,
   type TradingPolicy
 } from "./types";
@@ -141,6 +148,47 @@ function stripLegs<T extends Pick<EquityOrderInput, "bracketTakeProfit" | "brack
   return { next, changedFields };
 }
 
+type DollarResolution = { kind: "full" | "partial"; quantity: number } | { kind: "exceeds" };
+
+/**
+ * Resolve a dollar-sized close against a held position (absolute quantity and market value) to a
+ * share quantity, using the position's OWN per-share value.  Within FULL_EXIT_DOLLAR_TOLERANCE of
+ * the whole position -> the exact held quantity; beyond it -> "exceeds"; below it -> that many
+ * shares, floored to whole shares when the position is whole shares (an equity short always is).
+ * undefined when it cannot be priced honestly or rounds to zero shares.
+ */
+function resolveDollarsAgainstHeld(dollarAmount: number, heldQuantity: number, heldMarketValue: number): DollarResolution | undefined {
+  if (!(dollarAmount > 0) || !(heldQuantity > 0) || !(heldMarketValue > 0)) return undefined;
+  if (dollarAmount > heldMarketValue * (1 + FULL_EXIT_DOLLAR_TOLERANCE)) return { kind: "exceeds" };
+  if (dollarAmount >= heldMarketValue * (1 - FULL_EXIT_DOLLAR_TOLERANCE)) return { kind: "full", quantity: heldQuantity };
+  const raw = dollarAmount / (heldMarketValue / heldQuantity);
+  const wholeShares = Math.abs(heldQuantity - Math.round(heldQuantity)) < QTY_EPSILON;
+  const quantity = Math.min(heldQuantity, wholeShares ? Math.floor(raw + QTY_EPSILON) : Math.floor(raw * 1e9) / 1e9);
+  return quantity > 0 ? { kind: "partial", quantity } : undefined;
+}
+
+/**
+ * True for a fail-closed refusal caused by a failed position read (`position_unverified`): nothing
+ * reached the broker and the cause is transient, so the lanes book it retryable "not_placed", not
+ * terminal "blocked".
+ */
+export function isRetryablePositionInvariantError(error: unknown): error is OrderPositionInvariantError {
+  return error instanceof OrderPositionInvariantError && error.code === "position_unverified";
+}
+
+/**
+ * The strategist's side enum for this run.  A long-only venue offers buy/sell, but an account can
+ * still HOLD a short (the PG short, opened by a flat sell before the choke point existed).  The
+ * prompt tells the model to close it with "cover", so the schema must offer "cover" while such a
+ * short is held (policy.ts always permits a risk-reducing cover).  Parked venues (no sides) stay
+ * parked; shorting-enabled venues already carry cover.
+ */
+export function proposalSidesForHeldPositions(sides: OrderSide[], positions: EquityPosition[]): OrderSide[] {
+  if (sides.length === 0 || sides.includes("cover")) return sides;
+  const holdsShort = positions.some((position) => Number(position.quantity) < -QTY_EPSILON);
+  return holdsShort ? [...sides, "cover"] : sides;
+}
+
 /** Signed held quantity for one symbol from a broker position list (short = negative). */
 export function heldPositionFor(positions: EquityPosition[], symbol: string): HeldPosition {
   const target = normalizeSymbol(symbol);
@@ -182,9 +230,9 @@ export function applyPositionInvariant(
   if (!position) {
     if (side === "buy") return { input, receipts };
     throw new OrderPositionInvariantError(
-      `${symbol} ${side.toUpperCase()} refused: could not verify the broker's ${symbol} position just before placement, ` +
+      `${symbol} ${side.toUpperCase()} not placed: could not verify the broker's ${symbol} position just before placement, ` +
         `and a ${side} of an unverified position can open an unintended ${side === "sell" ? "SHORT" : "LONG"}.  ` +
-        "Nothing was sent to the broker; the next run or reconcile retries with a fresh position read.",
+        "Nothing was sent to the broker, so this is safe to retry once the position read succeeds.",
       "position_unverified"
     );
   }
@@ -198,8 +246,29 @@ export function applyPositionInvariant(
   let closable: number;
   if (side === "buy") {
     // A buy only changes shape when it provably closes (part of) a held short.
-    const quantity = input.quantity;
-    if (!(heldShort > 0) || quantity == null || !(quantity > 0) || quantity > heldShort + QTY_EPSILON) {
+    if (!(heldShort > 0)) return { input, receipts };
+    let quantity = input.quantity;
+    if (quantity == null && input.dollarAmount != null) {
+      // Dollar-sized buy (the autopilot's default sizing): resolve it against the short's own
+      // per-share value before deciding.  Unpriceable, sub-share, or larger than the short ->
+      // unchanged, exactly like a quantity buy above the short.
+      const resolved = resolveDollarsAgainstHeld(input.dollarAmount, heldShort, heldMarketValue);
+      if (!resolved || resolved.kind === "exceeds") return { input, receipts };
+      const dollars = input.dollarAmount;
+      const next = { ...input, quantity: resolved.quantity };
+      delete next.dollarAmount;
+      input = next;
+      quantity = resolved.quantity;
+      receipts.push({
+        kind: "dollar_exit_resolved_to_quantity",
+        detail:
+          `$${dollars.toFixed(2)} buy against a $${heldMarketValue.toFixed(2)} ${symbol} short ` +
+          (resolved.kind === "full" ? "is a full cover" : "is a partial cover") +
+          `; placed as ${formatQty(resolved.quantity)} shares.`,
+        changedFields: ["dollarAmount", "quantity"]
+      });
+    }
+    if (quantity == null || !(quantity > 0) || quantity > heldShort + QTY_EPSILON) {
       return { input, receipts };
     }
     input = { ...input, side: "cover" };
@@ -409,13 +478,19 @@ export interface ExitSideNormalization {
 }
 
 /**
- * Closing a short is side "cover".  Upstream of policy, rewrite:
- *   - a SELL of a symbol held SHORT (a sell would ADD to the short) -> cover of the held quantity
- *     (or of the proposal's smaller quantity); a dollar sell covers the whole short.  Disabled with
- *     `convertSellToCover: false` where the owner already confirmed a "sell" (the approval lane):
- *     flipping the wire direction there must not happen behind the owner's back — the choke point
- *     refuses it with the correct verb instead.
- *   - a BUY of at most the held short -> cover (same wire direction; strips its bracket legs).
+ * Closing a short is side "cover".  Upstream of sizing, Red Team, and policy, rewrite:
+ *   - a BUY of at most the held short -> cover (same wire direction; strips its bracket legs).  A
+ *     DOLLAR buy resolves against the short's own per-share value (a partial cover of that many
+ *     whole shares); a dollar buy larger than the short is left alone.
+ *   - a SELL of a symbol held SHORT -> cover, ONLY with `convertSellToCover: true`, which the
+ *     autopilot passes only on a LONG-ONLY venue (there a short can only be unintended and a
+ *     "sell" can only mean "exit").  On a shorting-enabled venue a sell of a short is ambiguous
+ *     (it may mean "add to the short"), and in the approval lane the owner confirmed a sell, so
+ *     both leave it for the choke point to refuse with the correct verb.  Even then only a MARKET
+ *     sell flips: a sell's limit/stop price sits on the wrong side of the market for a
+ *     buy-to-cover (a sell limit 55 above a 50 market would become a buy limit 55 that fills at
+ *     once).  Quantity -> min(quantity, short); dollars -> that many whole shares of the short,
+ *     never the whole short; size-less -> the whole short (sizing's full-exit rule).
  * Returns the SAME object when nothing changes.
  */
 export function normalizeExitSideForHeldPosition(
@@ -424,31 +499,53 @@ export function normalizeExitSideForHeldPosition(
   options: { convertSellToCover?: boolean } = {}
 ): { proposal: TradeProposal; change?: ExitSideNormalization } {
   if (proposal.side !== "sell" && proposal.side !== "buy") return { proposal };
-  const { signedQuantity } = heldPositionFor(positions, proposal.symbol);
-  const heldShort = signedQuantity < -QTY_EPSILON ? -signedQuantity : 0;
+  const held = heldPositionFor(positions, proposal.symbol);
+  const heldShort = held.signedQuantity < -QTY_EPSILON ? -held.signedQuantity : 0;
   if (!(heldShort > 0)) return { proposal };
+  const heldMarketValue = Math.abs(Number(held.marketValue ?? 0));
   const symbol = normalizeSymbol(proposal.symbol);
+  const byQuantity = proposal.quantity != null && proposal.quantity > 0;
+  const byDollars = !byQuantity && proposal.dollarAmount != null && proposal.dollarAmount > 0;
 
   let quantity: number;
   if (proposal.side === "sell") {
-    if (options.convertSellToCover === false) return { proposal };
-    quantity = proposal.quantity != null && proposal.quantity > 0 ? Math.min(proposal.quantity, heldShort) : heldShort;
-  } else {
-    if (proposal.quantity == null || !(proposal.quantity > 0) || proposal.quantity > heldShort + QTY_EPSILON) {
-      return { proposal };
+    if (options.convertSellToCover !== true) return { proposal };
+    if (proposal.type !== "market") return { proposal };
+    if (byQuantity) {
+      quantity = Math.min(proposal.quantity as number, heldShort);
+    } else if (byDollars) {
+      const resolved = resolveDollarsAgainstHeld(proposal.dollarAmount as number, heldShort, heldMarketValue);
+      if (!resolved) return { proposal };
+      quantity = resolved.kind === "partial" ? resolved.quantity : heldShort;
+    } else {
+      quantity = heldShort;
     }
-    quantity = Math.min(proposal.quantity, heldShort);
+  } else if (byQuantity) {
+    if ((proposal.quantity as number) > heldShort + QTY_EPSILON) return { proposal };
+    quantity = Math.min(proposal.quantity as number, heldShort);
+  } else if (byDollars) {
+    const resolved = resolveDollarsAgainstHeld(proposal.dollarAmount as number, heldShort, heldMarketValue);
+    if (!resolved || resolved.kind === "exceeds") return { proposal };
+    quantity = resolved.quantity;
+  } else {
+    return { proposal };
   }
 
   const { next, changedFields } = stripLegs(proposal);
   const rewritten: TradeProposal = { ...next, side: "cover", quantity };
   delete rewritten.dollarAmount;
   const from = proposal.side;
+  if (from === "sell") {
+    // A flipped sell is always a market order here; a stray price field would 422 at Alpaca.
+    delete rewritten.limitPrice;
+    delete rewritten.stopPrice;
+  }
+  const sizedFromDollars = byDollars ? ` (resolved from $${(proposal.dollarAmount as number).toFixed(2)})` : "";
   rewritten.rationale =
     `${proposal.rationale} [Side normalized: ${symbol} is held SHORT ${formatQty(heldShort)}; ` +
     (from === "sell"
-      ? `a sell would add to the short, so this exit is a cover of ${formatQty(quantity)}.]`
-      : `a buy of ${formatQty(quantity)} closes it, so it is a cover${changedFields.length > 0 ? " (bracket legs removed — exits carry none)" : ""}.]`);
+      ? `a sell would add to the short, so this exit is a cover of ${formatQty(quantity)}${sizedFromDollars}.]`
+      : `a buy of ${formatQty(quantity)}${sizedFromDollars} closes it, so it is a cover${changedFields.length > 0 ? " (bracket legs removed — exits carry none)" : ""}.]`);
   return {
     proposal: rewritten,
     change: { symbol, from, to: "cover", heldShortQuantity: heldShort, quantity, strippedLegs: changedFields }

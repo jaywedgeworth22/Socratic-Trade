@@ -2,7 +2,11 @@ import { LANE_WAITS, withAccountMutation } from "./account-mutation";
 import { loadApprovalQuoteScan } from "./approval-quote-scan";
 import { repriceStoredLimitProposal } from "./approval-reprice";
 import { getBrokerGateway } from "./broker";
-import { normalizeExitSidesForHeldPositions } from "./order-position-invariant";
+import {
+  heldPositionFor,
+  isRetryablePositionInvariantError,
+  normalizeExitSidesForHeldPositions
+} from "./order-position-invariant";
 import { evaluateBrokerHeldExitAvailability, brokerHeldExitBlockReason } from "./broker-held-orders";
 import { describeBrokerMinimumOrderBlock, planBrokerMinimumBump, shouldAlertBrokerMinimumOrderBlock } from "./broker-minimum-guard";
 import { hasBrokerReportedFill, hasBrokerReportedPricedFill, isLiveOrderState, isRejectedOrCanceledState } from "./broker-side";
@@ -1278,7 +1282,15 @@ export async function executeProposal(
         try {
           // Mutation-lease fence: fail closed if the window lost its lease before the risk-creating call.
           mutationCtx.assertOwned();
-          execution = await gateway.placeEquityOrder({ accountNumber, ...proposal, refId });
+          // An exit carries the position this approval read at its start (same call, under the
+          // strategy lock) as the caller-verified hint: the placement choke point still reads the
+          // position FRESH and uses the hint only if that read fails, so one read timeout cannot
+          // kill an owner-approved exit (PR #3759 review round).
+          const verifiedPositionHint =
+            proposal.side === "sell" || proposal.side === "cover"
+              ? { verifiedPositionQuantity: heldPositionFor(positions, proposal.symbol).signedQuantity }
+              : {};
+          execution = await gateway.placeEquityOrder({ accountNumber, ...proposal, refId, ...verifiedPositionHint });
         } catch (placeError) {
           const message = placeError instanceof Error ? placeError.message : String(placeError);
           const sym = proposal.symbol;
@@ -1300,6 +1312,26 @@ export async function executeProposal(
           // HTTP 429/408 → not_placed (retryable). HTTP 409 (duplicate client_order_id) is
           // not a rejection — fall through to reconcilePlacementError. Reserve uncertain
           // for timeouts / 5xx.
+          // The one transient OrderValidationError: the placement-time position read failed and
+          // the sell/cover failed closed.  Nothing reached the broker — retryable not_placed.
+          if (isRetryablePositionInvariantError(placeError)) {
+            updateProposalStatus(proposalId, "not_placed", undefined, review, review.estimatedNotional, userId, undefined, message);
+            audit(
+              "order_not_placed_position_unverified",
+              { proposalId, refId, symbol: sym, side: proposal.side, error: message, path: "approval" },
+              userId,
+              policy.connectedAccountId
+            );
+            await sendNotification(
+              {
+                type: "run_failed",
+                title: `${sym} order not placed — position unverified (safe to retry)`,
+                payload: { proposalId, refId, error: message, reconcile: "not_placed" }
+              },
+              { policy, userId }
+            );
+            throw new Error([message].join(" "));
+          }
           if (placeError instanceof OrderValidationError) {
             const blockedDecision: PolicyDecision = {
               ...decision,

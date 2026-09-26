@@ -123,7 +123,12 @@ import { fetchDailyOHLC } from "./history";
 import { expireStalePendingProposals, revalidatePendingProposals } from "./proposal-revalidation";
 import { getTaxSummary, getUserWashSaleLockProvenance, overlayAccountTaxationType } from "./tax";
 import { getBrokerGateway } from "./broker";
-import { normalizeExitSidesForHeldPositions, withPositionSides } from "./order-position-invariant";
+import {
+  isRetryablePositionInvariantError,
+  normalizeExitSidesForHeldPositions,
+  proposalSidesForHeldPositions,
+  withPositionSides
+} from "./order-position-invariant";
 import { describeBrokerMinimumOrderBlock, planBrokerMinimumBump, shouldAlertBrokerMinimumOrderBlock } from "./broker-minimum-guard";
 import { brokerHeldExitBlockReason, evaluateBrokerHeldExitAvailability } from "./broker-held-orders";
 import { notifyStaleLimitOrders } from "./stale-limit-orders";
@@ -2346,15 +2351,19 @@ export async function runStrategyOnce(
           : {})
       });
       lockGuard.assertOwned();
-      // Closing a short is "cover": an LLM "sell" of a symbol held short (which would ADD to the
-      // short) or a bracketed "buy" of at most the short is rewritten to a cover BEFORE sizing,
-      // Red Team, and policy (the PG short: 12 buy-to-cover 422s + 7 policy-blocked sells).
-      llmProposals = normalizeExitSidesForHeldPositions(proposed.proposals, workingPositions, {
-        userId,
-        connectedAccountId,
-        lane: "autopilot",
-        runId
-      });
+      // Closing a short is "cover": a bracketed or dollar-sized "buy" of at most the held short is
+      // rewritten to a cover BEFORE sizing, Red Team, and policy (the PG short: 12 buy-to-cover
+      // 422s).  A market "sell" of a held short flips to a cover only on a LONG-ONLY venue, where
+      // the short can only be unintended and "sell" can only mean "exit" (the PG short's 7
+      // policy-blocked sells).  On a shorting-enabled venue a sell of a short may mean "add to
+      // it", so it is left for policy and the placement choke point to refuse with the right verb.
+      const venueAllowsShorts = deriveVenueContract(runPolicy, activeAccount).sides.includes("short");
+      llmProposals = normalizeExitSidesForHeldPositions(
+        proposed.proposals,
+        workingPositions,
+        { userId, connectedAccountId, lane: "autopilot", runId },
+        { convertSellToCover: !venueAllowsShorts }
+      );
       llmSteps = proposed.llmSteps;
       adversaryContext = proposed.adversaryContext;
       // Only complete prompt evidence earns outcome attribution/usefulness credit. Truncated rows
@@ -4107,6 +4116,21 @@ export async function runStrategyOnce(
             // the order already exists and must be reconciled rather than marked rejected.
             // OrderValidationError means the adapter blocked it before sending.
             // Neither terminal case is "uncertain", so we abort the placement loop immediately.
+            // A failed placement-time position read (fail-closed sell/cover on Alpaca) is the ONE
+            // OrderValidationError that is transient: nothing reached the broker, and the next run
+            // re-proposes against a fresh read.  Book it retryable not_placed, never terminal
+            // "blocked" — a stop-loss or take-profit exit must not die on one read timeout.
+            if (isRetryablePositionInvariantError(placeError)) {
+              updateProposalStatus(proposalId, "not_placed", undefined, review, review.estimatedNotional, userId, undefined, message);
+              audit("order_not_placed_position_unverified", { runId, proposalId, refId, symbol: sym, side: normalizedProposal.side, error: message }, userId, connectedAccountId);
+              results.push({ id: proposalId, proposal: normalizedProposal, status: "error", reasons: [message] });
+              await sendNotification(
+                { type: "run_failed", title: `${sym} order not placed — position unverified (safe to retry)`, payload: { runId, proposalId, refId, error: message, reconcile: "not_placed" } },
+                { policy, userId }
+              );
+              lockGuard.assertOwned();
+              return { done: "continue" } as const;
+            }
             if (
               placeError instanceof OrderValidationError ||
               (/\bHTTP 4\d\d\b/i.test(message) && !isIdempotencyConflictHttpError(message))
@@ -5077,8 +5101,11 @@ async function proposeTrades(input: {
   // and the model cannot emit a short/cover. The policy.ts gate enforces the same two-layer check at
   // execution time as a backstop. Declared here (before the prompt) so both the prompt and schema use it.
   const venue = deriveVenueContract(input.policy, input.activeAccount);
-  const allowedSides = venue.sides;
-  const shortAllowed = allowedSides.includes("short");
+  const shortAllowed = venue.sides.includes("short");
+  // A long-only venue still offers "cover" while the account HOLDS a short: the prompt tells the
+  // model to close an unintended short with cover, so the schema (and the repair path's filter)
+  // must accept that verb (PR #3759 review round).
+  const allowedSides = proposalSidesForHeldPositions(venue.sides, input.positions);
   // The owner strategy is the sole trusted prompt-text source and is preserved byte-for-byte.
   const trustedStrategyPrompt = containPromptText({ source: "owner_strategy", text: input.prompt }).sanitizedText;
   const systemPrompt = buildBullSystem({
@@ -6000,7 +6027,8 @@ async function proposeTrades(input: {
           properties: {
             symbol: proposalSymbolSchema,
             // SHORT_SELLING: short/cover included only when `allowedSides` (computed above) permits —
-            // i.e. policy.shortSellingEnabled AND the connected account reports shortSelling. Default long-only.
+            // i.e. policy.shortSellingEnabled AND the connected account reports shortSelling. Default long-only,
+            // plus "cover" alone while a long-only account holds an (unintended) short.
             side: { enum: allowedSides },
             type: { enum: venue.orderTypes },
             quantity: { type: ["number", "null"] },

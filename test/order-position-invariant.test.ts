@@ -338,11 +338,12 @@ describe("normalizeExitSideForHeldPosition — the correct verb for closing a sh
     } as TradeProposal;
   }
 
-  it("rewrites an LLM SELL on a held short into a COVER for the held quantity", async () => {
+  it("rewrites an LLM market SELL on a held short into a COVER for the held quantity (long-only venue)", async () => {
     const { normalizeExitSideForHeldPosition } = await import("../src/lib/order-position-invariant");
     const { proposal: next, change } = normalizeExitSideForHeldPosition(
       proposal({ bracketStopLoss: 160 }),
-      [position({ quantity: -12, marketValue: -1797 })]
+      [position({ quantity: -12, marketValue: -1797 })],
+      { convertSellToCover: true }
     );
     expect(next.side).toBe("cover");
     expect(next.quantity).toBe(12);
@@ -351,11 +352,12 @@ describe("normalizeExitSideForHeldPosition — the correct verb for closing a sh
     expect(change).toMatchObject({ from: "sell", to: "cover", heldShortQuantity: 12 });
   });
 
-  it("rewrites a dollar SELL on a held short into a COVER of the whole short", async () => {
+  it("rewrites a dollar SELL at least the size of a held short into a COVER of the whole short (long-only venue)", async () => {
     const { normalizeExitSideForHeldPosition } = await import("../src/lib/order-position-invariant");
     const { proposal: next } = normalizeExitSideForHeldPosition(
       proposal({ quantity: undefined, dollarAmount: 5000 }),
-      [position({ quantity: -12, marketValue: -1797 })]
+      [position({ quantity: -12, marketValue: -1797 })],
+      { convertSellToCover: true }
     );
     expect(next.side).toBe("cover");
     expect(next.quantity).toBe(12);
@@ -415,5 +417,221 @@ describe("strategist prompt — the correct verb for a held short", () => {
     });
     const disabled = lines.find((line) => line.includes("SHORT SELLING IS DISABLED")) ?? "";
     expect(disabled).toMatch(/close it with side='cover'/);
+  });
+});
+
+// Review round 2026-09-25 (PR #3759 follow-up): dollar-sized buys against a held short, the
+// autopilot sell -> cover flip on shorting-enabled venues, the long-only schema/prompt mismatch,
+// and a transient position-read failure booked as terminal "blocked".
+describe("review round — dollar-sized buys against a held short (P1)", () => {
+  it("reshapes a DOLLAR buy of less than the held short into a whole-share cover without legs", async () => {
+    const { applyPositionInvariant } = await import("../src/lib/order-position-invariant");
+    const { input, receipts } = applyPositionInvariant(
+      order({
+        symbol: "TSLA",
+        side: "buy",
+        type: "limit",
+        limitPrice: 250,
+        quantity: undefined,
+        dollarAmount: 500,
+        bracketStopLoss: 230,
+        bracketTakeProfit: 280
+      }),
+      { signedQuantity: -10, marketValue: -2500 }
+    );
+    expect(input.side).toBe("cover");
+    expect(input.quantity).toBe(2);
+    expect(input.dollarAmount).toBeUndefined();
+    expect(input.limitPrice).toBe(250);
+    expect(input.bracketStopLoss).toBeUndefined();
+    expect(input.bracketTakeProfit).toBeUndefined();
+    expect(receipts.map((r) => r.kind)).toEqual(
+      expect.arrayContaining(["buy_against_short_is_cover", "dollar_exit_resolved_to_quantity", "closing_bracket_legs_stripped"])
+    );
+  });
+
+  it("resolves a DOLLAR buy within 2% of the held short to the full short (the PG shape, dollar-sized)", async () => {
+    const { applyPositionInvariant } = await import("../src/lib/order-position-invariant");
+    const { input } = applyPositionInvariant(
+      order({ side: "buy", type: "market", quantity: undefined, dollarAmount: 1790, bracketStopLoss: 160 }),
+      { signedQuantity: -12, marketValue: -1797 }
+    );
+    expect(input).toMatchObject({ side: "cover", quantity: 12 });
+    expect(input.dollarAmount).toBeUndefined();
+    expect(input.bracketStopLoss).toBeUndefined();
+  });
+
+  it("leaves a DOLLAR buy larger than the held short, or smaller than one share of it, unchanged", async () => {
+    const { applyPositionInvariant } = await import("../src/lib/order-position-invariant");
+    const oversized = order({ symbol: "TSLA", side: "buy", type: "market", quantity: undefined, dollarAmount: 4000 });
+    expect(applyPositionInvariant(oversized, { signedQuantity: -10, marketValue: -2500 }).input).toEqual(oversized);
+    const subShare = order({ symbol: "TSLA", side: "buy", type: "market", quantity: undefined, dollarAmount: 100 });
+    expect(applyPositionInvariant(subShare, { signedQuantity: -10, marketValue: -2500 }).input).toEqual(subShare);
+  });
+
+  it("normalizes an LLM DOLLAR buy of a held short into a cover before sizing (upstream pass)", async () => {
+    const { normalizeExitSideForHeldPosition } = await import("../src/lib/order-position-invariant");
+    const { proposal: next, change } = normalizeExitSideForHeldPosition(
+      {
+        symbol: "TSLA",
+        side: "buy",
+        type: "limit",
+        limitPrice: 250,
+        dollarAmount: 500,
+        bracketStopLoss: 230,
+        timeInForce: "gfd",
+        marketHours: "regular_hours",
+        rationale: "Reduce the TSLA short.",
+        confidenceScore: 60,
+        tradeThesisTag: "Risk-Exit",
+        entryMarketRegime: "neutral"
+      } as TradeProposal,
+      [position({ symbol: "TSLA", quantity: -10, marketValue: -2500 })]
+    );
+    expect(next).toMatchObject({ side: "cover", quantity: 2, limitPrice: 250 });
+    expect(next.dollarAmount).toBeUndefined();
+    expect(next.bracketStopLoss).toBeUndefined();
+    expect(change).toMatchObject({ from: "buy", to: "cover", quantity: 2, heldShortQuantity: 10 });
+  });
+});
+
+describe("review round — the autopilot sell -> cover flip (P2)", () => {
+  function sellProposal(patch: Partial<TradeProposal> = {}): TradeProposal {
+    return {
+      symbol: "XYZ",
+      side: "sell",
+      type: "market",
+      quantity: 50,
+      timeInForce: "gfd",
+      marketHours: "regular_hours",
+      rationale: "Sell XYZ.",
+      confidenceScore: 60,
+      tradeThesisTag: "Risk-Exit",
+      entryMarketRegime: "neutral",
+      ...patch
+    } as TradeProposal;
+  }
+  const shortXyz = [position({ symbol: "XYZ", quantity: -100, marketValue: -5000 })];
+
+  it("does not flip a sell of a held short by default (a shorting-enabled venue refuses it with the correct verb)", async () => {
+    const { normalizeExitSideForHeldPosition } = await import("../src/lib/order-position-invariant");
+    const sell = sellProposal({ type: "limit", limitPrice: 55 });
+    expect(normalizeExitSideForHeldPosition(sell, shortXyz).proposal).toBe(sell);
+  });
+
+  it("never carries a sell-side limit/stop price onto a cover, even on a long-only venue", async () => {
+    const { normalizeExitSideForHeldPosition } = await import("../src/lib/order-position-invariant");
+    for (const patch of [
+      { type: "limit" as const, limitPrice: 55 },
+      { type: "stop_market" as const, stopPrice: 45 },
+      { type: "stop_limit" as const, stopPrice: 45, limitPrice: 44 }
+    ]) {
+      const sell = sellProposal(patch);
+      expect(normalizeExitSideForHeldPosition(sell, shortXyz, { convertSellToCover: true }).proposal).toBe(sell);
+    }
+  });
+
+  it("caps a DOLLAR sell at its own dollar size, not the whole short (long-only venue)", async () => {
+    const { normalizeExitSideForHeldPosition } = await import("../src/lib/order-position-invariant");
+    const { proposal: next } = normalizeExitSideForHeldPosition(
+      sellProposal({ quantity: undefined, dollarAmount: 200 }),
+      shortXyz,
+      { convertSellToCover: true }
+    );
+    expect(next).toMatchObject({ side: "cover", quantity: 4 });
+    expect(next.dollarAmount).toBeUndefined();
+  });
+
+  it("strips a stray limit/stop price off a flipped MARKET sell", async () => {
+    const { normalizeExitSideForHeldPosition } = await import("../src/lib/order-position-invariant");
+    const { proposal: next } = normalizeExitSideForHeldPosition(
+      sellProposal({ limitPrice: 55 }),
+      shortXyz,
+      { convertSellToCover: true }
+    );
+    expect(next).toMatchObject({ side: "cover", type: "market", quantity: 50 });
+    expect(next.limitPrice).toBeUndefined();
+  });
+});
+
+describe("review round — long-only schema offers the verb the prompt names (P2)", () => {
+  it("adds cover to a long-only side enum only while a short is held", async () => {
+    const { proposalSidesForHeldPositions } = await import("../src/lib/order-position-invariant");
+    const short = [position({ quantity: -12 })];
+    expect(proposalSidesForHeldPositions(["buy", "sell"], short)).toEqual(["buy", "sell", "cover"]);
+    expect(proposalSidesForHeldPositions(["buy", "sell"], [position()])).toEqual(["buy", "sell"]);
+    expect(proposalSidesForHeldPositions(["buy", "sell", "short", "cover"], short)).toEqual(["buy", "sell", "short", "cover"]);
+    // A parked venue (no sides at all) stays parked.
+    expect(proposalSidesForHeldPositions([], short)).toEqual([]);
+  });
+
+  it("the long-only prompt's close verb is in the schema enum, and the repair path keeps it", async () => {
+    const { proposalSidesForHeldPositions } = await import("../src/lib/order-position-invariant");
+    const { buildBullSystem } = await import("../src/lib/strategy-prompts");
+    const { filterRepairedProposals } = await import("../src/lib/strategy");
+    const { deriveVenueContract } = await import("../src/lib/venue-contract");
+    const venue = deriveVenueContract({ shortSellingEnabled: false }, { broker: "alpaca", capabilities: undefined } as never);
+    expect(venue.sides).toEqual(["buy", "sell"]);
+    const enumSides = proposalSidesForHeldPositions(venue.sides, [position({ quantity: -12, marketValue: -1797 })]);
+    const prompt = buildBullSystem({
+      shortAllowed: venue.sides.includes("short"),
+      venueLines: venue.promptLines,
+      executionMode: "broker/paper",
+      executionModeClarification: "",
+      strategyPrompt: "",
+      hasTaxContext: false
+    } as never);
+    const instructed = [...prompt.matchAll(/side='(buy|sell|short|cover)'/g)].map((m) => m[1]);
+    expect(instructed).toContain("cover");
+    for (const side of instructed) expect(enumSides).toContain(side);
+    const { kept } = filterRepairedProposals(
+      [
+        {
+          symbol: "PG",
+          side: "cover",
+          type: "market",
+          quantity: 12,
+          dollarAmount: null,
+          limitPrice: null,
+          stopPrice: null,
+          timeInForce: "gfd",
+          marketHours: "regular_hours",
+          rationale: "Close the unintended PG short.",
+          tradeThesisTag: "Risk-Exit",
+          confidenceScore: 80,
+          autonomyOverride: null,
+          bracketStopLoss: null,
+          bracketTakeProfit: null,
+          exitPlan: "Full exit.",
+          stopPlan: null
+        }
+      ],
+      enumSides,
+      ["PG"]
+    );
+    expect(kept.map((p) => p.side)).toEqual(["cover"]);
+  });
+});
+
+describe("review round — a transient position-read failure is retryable, not blocked (P2)", () => {
+  it("marks position_unverified retryable and says so in the refusal text", async () => {
+    const { applyPositionInvariant, isRetryablePositionInvariantError } = await import("../src/lib/order-position-invariant");
+    let caught: unknown;
+    try {
+      applyPositionInvariant(order(), undefined);
+    } catch (error) {
+      caught = error;
+    }
+    expect(isRetryablePositionInvariantError(caught)).toBe(true);
+    expect(String((caught as Error).message)).toMatch(/safe to retry/i);
+    expect(String((caught as Error).message)).not.toMatch(/next run or reconcile/i);
+    let refused: unknown;
+    try {
+      applyPositionInvariant(order(), { signedQuantity: 0 });
+    } catch (error) {
+      refused = error;
+    }
+    expect(isRetryablePositionInvariantError(refused)).toBe(false);
+    expect(isRetryablePositionInvariantError(new Error("x"))).toBe(false);
   });
 });

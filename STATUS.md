@@ -1,5 +1,14 @@
 # Current Status
 
+## 2026-09-25 CLAUDE — Add 2026-09-25 trading performance report to docs
+
+**What/why.**  Docs-only.  Added the owner-facing performance analysis (produced by CLAUDE's
+performance-analysis workflow from `GET /api/ops/performance?days=120` at 2026-09-25 19:21Z) to
+`docs/reviews/2026-09-25-trading-performance-report.md`, so it has a permanent, reviewable home
+alongside the rest of the review corpus instead of living only in a scratch/durable session file.
+No code changes.  Board `687a5fb4`, lane G5, branch `claude/st-perf-report-docs`.
+Rollout: `docs/rollouts/2026-09-25-st-perf-report-docs.md`.
+
 ## 2026-09-24 CLAUDE — Order correctness: no accidental shorts, clamp exits, closing orders carry no brackets
 
 **What.**  A position invariant at the single placement choke point (`getBrokerGateway` ->

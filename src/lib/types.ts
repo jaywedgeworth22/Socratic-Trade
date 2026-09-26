@@ -2689,6 +2689,47 @@ export interface BrokerGateway {
    * and may throttle internally. Optional — gateways without a probe skip this check.
    */
   probeOrderCapability?(accountNumber: string): Promise<{ ok: boolean; reason?: string }>;
+  /**
+   * Broker truth for ONE order id, independent of the order listing's window.  Tradier's order
+   * listing only covers the current market session, so a receipt that did not reconcile the same
+   * day (halted account, missed tick, bracket container the listing flattens away) could never
+   * match again.  Resolves `undefined` only when the broker definitively reports the id as not
+   * found; any transport or server failure throws so callers never read absence into an error.
+   * Optional — gateways without it keep the listing-only reconciliation.
+   */
+  getEquityOrder?(accountNumber: string, orderId: string): Promise<BrokerOrderLookup | undefined>;
+  /**
+   * Executed orders (and bracket legs) visible in the broker's recent order listing, with the
+   * structure the flattened `getEquityOrders` view loses: which rows are a bracket's entry leg vs
+   * its contingent exit legs.  Feeds broker-originated fill ingestion (owner orders and bracket
+   * exits that no app lane books).  Optional.
+   */
+  listRecentExecutions?(accountNumber: string): Promise<BrokerExecution[]>;
+}
+
+/** Result of `BrokerGateway.getEquityOrder`. */
+export interface BrokerOrderLookup {
+  /**
+   * Reconciliation view of the id that was asked for.  For a multi-leg bracket container (Tradier
+   * OTO/OTOCO) the state and execution fields are the ENTRY leg's, while `id` and `clientOrderId`
+   * stay the container's — the id the app stored at placement.
+   */
+  order: EquityOrder;
+  /** The entry leg's own broker id when the order is a container whose entry is a separate leg. */
+  entryLegId?: string;
+  /** Contingent exit legs of a bracket container, each with its own id and execution truth. */
+  exitLegs?: EquityOrder[];
+}
+
+/** One order or bracket leg from the broker's recent order listing, with its bracket role. */
+export interface BrokerExecution {
+  order: EquityOrder;
+  /** `single` = a plain order; `entry`/`exit` = a leg of a bracket container. */
+  role: "single" | "entry" | "exit";
+  /** Container id for a bracket leg. */
+  parentOrderId?: string;
+  /** The container's idempotency tag, when the container carried one (app-placed brackets). */
+  parentClientOrderId?: string;
 }
 
 /** Strategy run status — see `src/lib/strategy-run-status.ts` for skip taxonomy (UX PR-A1). */

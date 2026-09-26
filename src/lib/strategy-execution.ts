@@ -46,7 +46,19 @@ import { buildSocraticDecisionCase } from "./socratic-runtime";
 import { notifyStaleLimitOrders } from "./stale-limit-orders";
 import { freshPlacementBlockReason } from "./system-state-placement-guard";
 import { getUserWashSaleLockProvenance } from "./tax";
-import { ExecutionMode, FillEvent, OrderValidationError, PolicyDecision, BrokerGateway, TradeProposal, ReviewedOrder, MarketScan, EquityOrder, EquityPosition, FillSource } from "./types";
+import { ExecutionMode, FillEvent, OrderValidationError, PolicyDecision, BrokerGateway, BrokerOrderLookup, TradeProposal, ReviewedOrder, MarketScan, EquityOrder, EquityPosition, FillSource } from "./types";
+import {
+  DEFAULT_ORDER_LOOKUP_BUDGET,
+  LIVE_MATCH_RECHECK_AGE_MS,
+  bookBracketExitLegs,
+  bump,
+  linkReplacementExecution,
+  lookupBrokerOrder,
+  runBrokerTruthSweeps,
+  type BrokerTruthContext,
+  type FillReconcileSummary,
+  type OrderLookupBudget
+} from "./fill-reconciliation";
 import { applyRedTeamHalfSize, approvedEscalationsFromDecision, isRiskAddingOpening, shouldEscalateDecision } from "./strategy-risk";
 import {
   createExecuteProposalLockOwner,
@@ -1559,7 +1571,60 @@ export async function executeProposal(
     releaseStrategyLock(lockOwner, userId, policy.connectedAccountId);
   }
 }
-export async function reconcilePendingFills(gateway: BrokerGateway, accountNumber: string, userId: string = "local", connectedAccountId?: string): Promise<void> {
+export interface PendingFillReconcileOptions {
+  /** Per-order broker lookups allowed this pass (default DEFAULT_ORDER_LOOKUP_BUDGET). */
+  lookupBudget?: number;
+  /** Ops backfill: ignore the per-order and per-account throttles (the budget still applies). */
+  ignoreThrottle?: boolean;
+  /** Filled with counters (ops backfill route, tests). */
+  summary?: FillReconcileSummary;
+}
+
+/**
+ * Converge local fills and proposals with broker truth for one account.  Runs every scheduler tick.
+ *  1. Pending receipts (pending_reconciliation / partially_filled) are matched against the order
+ *     listing; a receipt whose order is absent from it — or still reads as working after
+ *     LIVE_MATCH_RECHECK_AGE_MS — is looked up by id when the gateway supports it
+ *     (BrokerGateway.getEquityOrder).  Tradier's listing is current-session only, so without the
+ *     lookup a receipt that missed its session could never reconcile.
+ *  2. Broker-truth sweeps (fill-reconciliation.ts): bracket exit legs, broker-originated executions
+ *     from the listing, and "placed" proposals whose order already reached a final state.
+ * Every broker lookup is budgeted and throttled; every booking is deduped by broker order id.
+ */
+export async function reconcilePendingFills(
+  gateway: BrokerGateway,
+  accountNumber: string,
+  userId: string = "local",
+  connectedAccountId?: string,
+  options: PendingFillReconcileOptions = {}
+): Promise<void> {
+  const ctx: BrokerTruthContext = {
+    gateway,
+    accountNumber,
+    userId,
+    connectedAccountId,
+    budget: { remaining: options.lookupBudget ?? DEFAULT_ORDER_LOOKUP_BUDGET },
+    ignoreThrottle: options.ignoreThrottle,
+    summary: options.summary
+  };
+  await reconcilePendingReceipts(ctx);
+  await runBrokerTruthSweeps(ctx);
+}
+
+/** Should a pending receipt be looked up by id this pass?  Only when the listing cannot settle it:
+ *  the order is absent, or it still reads as working (or final without a price) past the recheck
+ *  age — a bracket container's listing row can show the container while its entry already filled. */
+function pendingReceiptNeedsLookup(gateway: BrokerGateway, fill: FillEvent, matched: EquityOrder | undefined): boolean {
+  if (typeof gateway.getEquityOrder !== "function") return false;
+  if (!matched) return true;
+  if (hasBrokerReportedPricedFill(matched) && !isLiveOrderState(matched.state)) return false;
+  const placedAtMs = Date.parse(fill.filledAt);
+  return Number.isFinite(placedAtMs) && Date.now() - placedAtMs >= LIVE_MATCH_RECHECK_AGE_MS;
+}
+
+async function reconcilePendingReceipts(ctx: BrokerTruthContext): Promise<void> {
+  const { gateway, accountNumber, userId, connectedAccountId } = ctx;
+  const budget: OrderLookupBudget = ctx.budget;
   // Forward guard: fills with empty/literal-"undefined" broker_order_id can never match a broker
   // order (historical String(undefined) bug; insertion path fixed in PR #284). Flip to terminal
   // unreconcilable so they leave the pending list and stop forcing reconcile work every run.
@@ -1606,16 +1671,28 @@ export async function reconcilePendingFills(gateway: BrokerGateway, accountNumbe
     };
     const escalationCandidates = new Map<string, PendingFillEscalationCandidate>();
     for (const fill of pending) {
-      const matched = brokerOrders.find((bo) => bo.id === fill.brokerOrderId);
-      if (!matched) {
-        // Absent from the order listing. fill_events is NOT a complete ledger of the broker
+      let resolvedOrder: EquityOrder | undefined = brokerOrders.find((bo) => bo.id === fill.brokerOrderId);
+      let lookup: BrokerOrderLookup | undefined;
+      if (budget.remaining > 0 && pendingReceiptNeedsLookup(gateway, fill, resolvedOrder)) {
+        const result = await lookupBrokerOrder(ctx, fill.brokerOrderId!);
+        if (result.kind === "found") {
+          lookup = result.lookup;
+          resolvedOrder = result.lookup.order;
+          const executionMode: ExecutionMode = fill.executionMode ?? (fill.source === "live" ? "broker/live" : "broker/paper");
+          bookBracketExitLegs(ctx, result.lookup, executionMode);
+        }
+      }
+      if (!resolvedOrder) {
+        // Absent from the order listing (and, when the gateway supports it, not resolvable by a
+        // per-order lookup this pass). fill_events is NOT a complete ledger of the broker
         // account — the owner trades manually and via the Robinhood MCP outside the app, and
         // pre-app holdings exist — so no amount of position arithmetic can prove THIS order
         // executed: an identical position delta is produced by an external trade plus this order
         // canceling/expiring, and flipping on it would fabricate a fill (wrong P&L, phantom
-        // opening-stop plans). No gateway exposes a direct per-order lookup that could supply
-        // broker truth for a single order id either (BrokerGateway has no getOrder-style method).
-        // So an absent order NEVER auto-flips: the receipt stays pending and, past the age
+        // opening-stop plans). Broker truth for this ONE order id can only come from a per-order
+        // lookup (BrokerGateway.getEquityOrder, Tradier today); when that is unsupported, throttled,
+        // out of budget, or reports the id not found, an absent order NEVER auto-flips: the receipt
+        // stays pending and, past the age
         // threshold, escalates to the owner with the observed position evidence attached
         // (collectAbsentOrderPositionEvidence) so one look at the broker resolves it.
         escalationCandidates.set(fill.id, {
@@ -1624,6 +1701,7 @@ export async function reconcilePendingFills(gateway: BrokerGateway, accountNumbe
         });
         continue;
       }
+      const matched: EquityOrder = resolvedOrder;
 
       // The stop plan couldn't be committed at placement time — this order was still
       // pending_reconciliation then, and a canceled/expired-with-nothing-executed order must never
@@ -1679,6 +1757,16 @@ export async function reconcilePendingFills(gateway: BrokerGateway, accountNumbe
       const merged = mergedExecutionTruth(matched, fill);
       const receiptStatus = reconciledFillStatus(matched, fill);
       const raw = reconciliationRaw(fill, matched, merged.knownQuantity);
+      const executedPerBroker = Boolean(merged.truth) && (receiptStatus === "filled" || receiptStatus === "partially_filled");
+      const replacement = !executedPerBroker && fill.proposalId && isRejectedOrCanceledState(matched.state) && merged.knownQuantity <= 0
+        ? linkReplacementExecution({
+            userId,
+            accountNumber,
+            proposalId: fill.proposalId,
+            orderIds: [fill.brokerOrderId, lookup?.entryLegId],
+            proposal: (fill.raw as { proposal?: TradeProposal } | undefined)?.proposal
+          })
+        : undefined;
 
       if (merged.truth && (receiptStatus === "filled" || receiptStatus === "partially_filled")) {
         const truth = merged.truth;
@@ -1740,6 +1828,22 @@ export async function reconcilePendingFills(gateway: BrokerGateway, accountNumbe
                 console.warn("[reconciliation] experience-memory re-fire failed:", err instanceof Error ? err.message : String(err));
               });
           }
+        }
+      } else if (replacement) {
+        // The app's own cancel-and-replace canceled this order and booked the market replacement as
+        // a separate fill (order-replacement.ts): the proposal's intent executed through that
+        // replacement, so it must not read "rejected_by_broker".  linkReplacementExecution tied the
+        // replacement fill to this proposal; flip the proposal once the replacement has executed.
+        getDb().transaction(() => {
+          updateFillEvent(fill.id, { status: matched.state, raw: { ...raw, replacedBy: replacement.replacementOrderId ?? null } }, userId);
+          if (replacement.status === "filled" && fill.proposalId) {
+            updateProposalStatus(fill.proposalId, "filled", undefined, undefined, replacement.notional, userId);
+          }
+        }).immediate();
+        audit("fill_reconciled", { fillId: fill.id, symbol: fill.symbol, status: matched.state, replacedBy: replacement.replacementOrderId ?? null, replacementStatus: replacement.status }, userId, connectedAccountId);
+        bump(ctx.summary, "receiptsReplaced");
+        if (replacement.status === "filled" && fill.proposalId) {
+          resolveBrokerVerificationNotifications(userId, { proposalId: fill.proposalId, resolution: "placed" });
         }
       } else if (isRejectedOrCanceledState(matched.state) && merged.knownQuantity <= 0) {
         const declinedMessage = `Broker terminated the order without a fill (state: ${matched.state}).`;

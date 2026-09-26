@@ -1,5 +1,22 @@
 # Current Status
 
+## 2026-09-25 CLAUDE — Tradier fill reconciliation: placed orders now become filled
+
+**What.**  `reconcilePendingFills` can now ask the broker about ONE order id
+(`BrokerGateway.getEquityOrder`, Tradier `GET /accounts/{id}/orders/{orderId}`) when a pending
+receipt's order is absent from the order listing or still reads as working after 5 minutes.  A
+bracket container id resolves to its entry leg's execution, and the bracket's executed exit legs
+are booked as broker-originated fills.  New sweeps (`src/lib/fill-reconciliation.ts`) book executed
+owner orders and bracket exit legs from the Tradier listing, flip "placed" proposals whose receipt
+is already final, link the app's own cancel-and-replace fills to their proposal, and backfill a
+receipt for a "placed" proposal that never got one.  Everything is budgeted (12 lookups per tick),
+throttled, and deduped by broker order id.  New ops route `/api/ops/fill-reconcile` (GET preview,
+POST one pass with a larger budget).  **Why.**  Tradier's order listing is current-session only and
+bracket entries are stored under the container id, so the Tradier Sandbox had 40 proposals stuck at
+"placed", 17 stalled receipts, and $0 realized P&L while about $64K of buys and $20.8K of exits
+traded.  Alpaca and Robinhood keep their listing-only behavior.  Board `687a5fb4`, lane G1, branch
+`claude/st-tradier-fill-reconciliation`.  Rollout: `docs/rollouts/2026-09-25-st-tradier-fill-reconciliation.md`.
+
 ## 2026-09-25 CLAUDE — Ops account control review round (board 687a5fb4, lane F1, PR #3754)
 
 Five reviewer findings on #3754, all verified real, all fixed test-first on the same branch.  The

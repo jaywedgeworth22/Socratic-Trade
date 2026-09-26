@@ -1,5 +1,25 @@
 # Current Status
 
+## 2026-09-25 CLAUDE — Approved exits release the app's own resting protective stop (lane G2, board 687a5fb4)
+
+**What.**  An approved exit (autopilot or human-approved sell of a long / cover of a short) that is
+blocked only because the app's OWN resting protective stop holds the shares at the broker no
+longer blocks.  Inside the placement lease the app records a durable intent, cancels its stop,
+polls until the cancel settles, places the exit (the #3759 position invariant still clamps it),
+and then runs the normal protective-stop reconcile so a stop is re-placed for any shares left.
+A stop that fills during the cancel is booked like any broker-held stop fill, and if it closed
+the position the exit is moot and is not sent.  A cancel that never settles aborts the exit and
+leaves the stop in charge.  Owner and external orders are never touched: only a
+`broker_protective_stops` row whose order the app placed, and never a bracket/OCO leg.  The
+intent (key/value `settings`, no migration) survives a restart: every later protective-stop pass
+restores protection, even while halted, and audits `exit_stop_release_restore_pending` until it
+does.  Owner toggle `exitsReleaseAppStops` ("Exits release the app's own stop", Guardrails ->
+Protective stops), default on; off restores the old block with an honest pointer to the toggle.
+**Why.**  About 62 of Alpaca Paper's 115 blocked proposals in 120 days were exits held by the
+app's own stops (BAC 24, KO 14, PYPL 30, BRK-B 2 on 2026-09-24), so those positions could only
+leave through the stop.  Branch `claude/st-exit-vs-resting-stop`, held with `do-not-automerge`.
+Rollout: `docs/rollouts/2026-09-25-st-exit-vs-resting-stop.md`.
+
 ## 2026-09-24 CLAUDE — Order correctness: no accidental shorts, clamp exits, closing orders carry no brackets
 
 **What.**  A position invariant at the single placement choke point (`getBrokerGateway` ->

@@ -57,6 +57,8 @@ import {
 } from "./types";
 
 const QTY_EPSILON = 1e-6;
+/** Owner copy rule: sentence gap that survives HTML whitespace collapse (NBSP + space). */
+const GAP = "\u00a0 ";
 
 export type ExitProposalSizing = Pick<TradeProposal, "symbol" | "side" | "quantity" | "dollarAmount" | "limitPrice" | "stopPrice" | "referencePrice">;
 
@@ -191,7 +193,7 @@ export function planExitStopRelease(input: {
       kind: "blocked",
       heldExit,
       appStopOrderIds,
-      reason: `${baseReason}  The app's own protective stop holds only part of those shares; other orders hold the rest, so the stop was left in place.`
+      reason: `${baseReason}${GAP}The app's own protective stop holds only part of those shares; other orders hold the rest, so the stop was left in place.`
     };
   }
   if (!exitStopReleaseEnabled(input.policy)) {
@@ -199,7 +201,7 @@ export function planExitStopRelease(input: {
       kind: "blocked",
       heldExit,
       appStopOrderIds,
-      reason: `${baseReason}  The shares are held by the app's own protective stop.  Turn on "Exits release the app's own stop" in Guardrails to let approved exits cancel it and re-place it for any remaining shares.`
+      reason: `${baseReason}${GAP}The shares are held by the app's own protective stop.${GAP}Turn on "Exits release the app's own stop" in Guardrails to let approved exits cancel it and re-place it for any remaining shares.`
     };
   }
   return {
@@ -392,7 +394,7 @@ export async function placeExitReleasingOwnStops<T>(run: ExitStopReleaseRun, pla
   const unresolved = results.filter((r) => r.outcome === "still_active" || r.outcome === "unknown");
   if (unresolved.length > 0) {
     aborted = new ExitStopReleaseError(
-      `${symbol} exit not placed: the app's own protective stop did not confirm its cancel in time (${unresolved.map((r) => `${r.stop.brokerOrderId}: ${r.brokerState ?? r.error ?? "unknown"}`).join(", ")}).  The stop stays in charge, or is re-placed on the next protective-stop pass if the cancel lands later.`,
+      `${symbol} exit not placed: the app's own protective stop did not confirm its cancel in time (${unresolved.map((r) => `${r.stop.brokerOrderId}: ${r.brokerState ?? r.error ?? "unknown"}`).join(", ")}).${GAP}The stop stays in charge, or is re-placed on the next protective-stop pass if the cancel lands later.`,
       "stop_cancel_unconfirmed"
     );
   }
@@ -404,7 +406,7 @@ export async function placeExitReleasingOwnStops<T>(run: ExitStopReleaseRun, pla
       positions = await gateway.getEquityPositions(accountNumber);
     } catch (err) {
       aborted = new ExitStopReleaseError(
-        `${symbol} exit not placed: the position could not be re-read after releasing the app's own protective stop (${errMsg(err)}).  The stop is re-placed on the next protective-stop pass.`,
+        `${symbol} exit not placed: the position could not be re-read after releasing the app's own protective stop (${errMsg(err)}).${GAP}The stop is re-placed on the next protective-stop pass.`,
         "position_unverified"
       );
       positions = [];
@@ -418,7 +420,7 @@ export async function placeExitReleasingOwnStops<T>(run: ExitStopReleaseRun, pla
         deleteExitStopReleaseIntent(userId, accountNumber, symbol);
         audit("exit_stop_release_moot", { ...auditBase, results: results.map((r) => ({ brokerOrderId: r.stop.brokerOrderId, outcome: r.outcome, filledQuantity: r.filledQuantity })) }, userId, connectedAccountId);
         throw new ExitStopReleaseError(
-          `${symbol} exit not placed: the app's own protective stop filled while it was being released and the position is already closed.  Nothing was left to ${exitSide}.`,
+          `${symbol} exit not placed: the app's own protective stop filled while it was being released and the position is already closed.${GAP}Nothing was left to ${exitSide}.`,
           "exit_moot_stop_filled"
         );
       }
@@ -430,7 +432,7 @@ export async function placeExitReleasingOwnStops<T>(run: ExitStopReleaseRun, pla
       );
       if (stillHeld) {
         aborted = new ExitStopReleaseError(
-          `${symbol} exit not placed after releasing the app's own protective stop: ${brokerHeldExitBlockReason(stillHeld)}  The released stop is re-placed for the position.`,
+          `${symbol} exit not placed after releasing the app's own protective stop: ${brokerHeldExitBlockReason(stillHeld)}${GAP}The released stop is re-placed for the position.`,
           "still_held"
         );
       }

@@ -1,5 +1,24 @@
 # Current Status
 
+## 2026-09-25/26 CLAUDE — PR #3755 build fix: split order-role.ts + resolve Sentry threads
+
+**What/why.**  `verify-hosted` was failing on PR #3755 (`next build`: "You're importing a module
+that depends on 'server-only'" — `app/console/orders/page.tsx` is a client component importing
+`ORDER_ROLE_LABELS` from `src/lib/order-role.ts`, which also imported `getDb`/`order-provenance.ts`
+directly).  Split `order-role.ts` into a PURE module (types, `classifyOrderRole`,
+`ORDER_ROLE_LABELS`) and a new server-only `src/lib/order-role-context.ts`
+(`loadOrderRoleContexts`, `attachOrderRoles`, `buildOpsWorkingOrderDetails`); `dashboard.ts` and
+`ops-snapshot.ts` now import the DB-backed functions from the new module.  Also merged local
+commit `8e2ed49e1` (fixes Sentry threads 4102974343 + 4102974351: dangling "that level" reference
+in the protective-stop fallback copy, and a settling bracket exit leg in `pending_cancel`
+misclassified as an entry) — both threads replied to and resolved.  New
+`test/dashboard-order-role-api.test.ts` asserts the actual `GET /api/dashboard` contract:
+`getDashboardSnapshot` attaches `role`/`whyResting` server-side.  CI `verify`/`verify-hosted`/
+`verify-ios` all green on PR #3755 at commit `a0b7ac255`.  Board `687a5fb4`, lane E1, branch
+`claude/st-order-roles`.  `do-not-automerge` label kept; auto-merge NOT armed per task
+instructions (owner arms it after independent review).
+Rollout: `docs/rollouts/2026-09-24-st-order-roles.md` (section 7).
+
 ## 2026-09-25 CLAUDE — Add 2026-09-25 trading performance report to docs
 
 **What/why.**  Docs-only.  Added the owner-facing performance analysis (produced by CLAUDE's

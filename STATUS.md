@@ -1,5 +1,13 @@
 # Current Status
 
+## 2026-09-25 CLAUDE — PR #3756 re-synced with main
+
+Merged `origin/main` into `claude/st-stall-profiler` to pick up #3761, #3774, #3778 (no file
+overlap with this lane besides `STATUS.md`/`docs/EFFORT-LOG.md`, both sides kept).  Re-verified
+on the merged tree: `npx tsc --noEmit` clean, `npm run lint` 0 errors, targeted
+`stall-profiler`/`cpuprofile-summary`/`lane-deadline-stall-attribution` vitest files (55 tests)
+pass.  Hold label kept; auto-merge not armed.  Detail: `docs/rollouts/2026-09-24-st-stall-profiler.md`.
+
 ## 2026-09-24 CLAUDE — Order correctness: no accidental shorts, clamp exits, closing orders carry no brackets
 
 **What.**  A position invariant at the single placement choke point (`getBrokerGateway` ->
@@ -95,6 +103,22 @@ are index-covered and row-capped; whole snapshot cached in-process 60s, single-f
 `scripts/fetch-prod-ops-performance.sh` + `npm run ops:performance` mirror the existing
 `fetch-prod-ops-snapshot.sh`.  Docs: `docs/runbooks/ops-performance-endpoint.md`.
 Rollout: `docs/rollouts/2026-09-24-st-ops-performance.md`.
+## 2026-09-24 CLAUDE — Stall-triggered CPU profiler (Lane A, board 687a5fb4)
+
+**What.**  Production's recurring RTH event-loop stall (40-140s chunks, ~97% blocked, board
+`e7b49943`) has no named culprit because every lane that logs it is a victim.  New
+`src/lib/stall-profiler.ts` keeps a 10ms V8 sampling profile running via `node:inspector`, cuts it
+into ~60s windows, and saves a window to `/app/data/profiles` only when the event-loop lag
+sampler saw >= 5s of stall in it (and immediately when the loop resumes after a >= 30s block).
+Each save gets a `cat`-able `.top.json` (top 40 by self/total time as `fn@url:line:col`, the
+longest busy run, hottest stacks) and one `[stall-profiler] wrote ... topSelf=...` log line.
+`scripts/ops/summarize-cpuprofile.mjs` prints the same table.  Retention 30 files / 300 MB, <= 1
+write per 2 min, skips below 1 GiB free.  Kill switch `STALL_PROFILER=0`; default ON only in
+production.  **Why the restart is bridged:** a plain `Profiler.stop` + `Profiler.start` makes V8
+re-walk the heap (measured 3.4-56 s on a 575-631 MB heap), so each rotation is bracketed by a
+keepalive `console.profile()` (~5 ms); a missing keepalive or a slow start self-disables.
+**Next:** after deploy, on the next stall read the newest `.top.json` (command in the rollout).
+Rollout: `docs/rollouts/2026-09-24-st-stall-profiler.md`.
 
 ## 2026-09-24 MUSE — LLM stats console review-findings sweep (PR #3452)
 

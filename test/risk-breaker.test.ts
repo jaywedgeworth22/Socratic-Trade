@@ -247,3 +247,170 @@ describe("recordAndEvaluateDrawdownBreaker (stateful HWM + start-of-day persiste
     expect(afterDeposit.breached).toBe(true);
   });
 });
+
+// 2026-09-24 (board 687a5fb4): the Roth IRA was halted for two weeks on "Trailing drawdown 72.10%
+// from HWM $101.62" after the owner WITHDREW funds.  The breaker must not halt on a drop the
+// ledger explains, must say so when it cannot tell, and must still enforce a real loss.
+describe("recordAndEvaluateDrawdownBreaker — withdrawals, lagged ledger rows, unexplained drops", () => {
+  const rules: RiskRules = { maxDrawdownPct: 15 };
+  const base = { source: "live" as const, riskRules: rules, userId: "local" };
+
+  it("does not breach when a same-run IRA distribution + withholding explains the drop", async () => {
+    const { recordAndEvaluateDrawdownBreaker } = await import("../src/lib/risk-breaker");
+    const acct = { ...base, accountNumber: "ROTH-EXPLAINED" };
+    recordAndEvaluateDrawdownBreaker({ ...acct, equity: 101.62, now: new Date("2026-09-08T15:00:00Z") });
+    recordAndEvaluateDrawdownBreaker({ ...acct, equity: 98, now: new Date("2026-09-08T19:00:00Z") });
+    const r = recordAndEvaluateDrawdownBreaker({
+      ...acct,
+      equity: 28.35,
+      now: new Date("2026-09-09T15:00:00Z"),
+      externalFlows: [
+        { amount: -62.69, day: "2026-09-09" },
+        { amount: -6.96, day: "2026-09-09" }
+      ]
+    });
+    expect(r.breached).toBe(false);
+    expect(r.appliedExternalFlowTotal).toBeCloseTo(-69.65, 2);
+    expect(r.unexplainedEquityChange).toBeUndefined();
+    expect(r.deferHardAction).toBe(false);
+    // 101.62 × 28.35/98 ≈ 29.40 — the 3.5% trading drift survives, the cash-out does not count.
+    expect(r.highWaterMark).toBeCloseTo(29.4, 1);
+  });
+
+  it("holds a hard action for one run when the balance drops before the withdrawal row posts, then neutralizes it", async () => {
+    const { recordAndEvaluateDrawdownBreaker } = await import("../src/lib/risk-breaker");
+    const acct = { ...base, accountNumber: "ROTH-LAGGED" };
+    recordAndEvaluateDrawdownBreaker({ ...acct, equity: 101.62, now: new Date("2026-09-09T14:00:00Z") });
+    const dropRun = recordAndEvaluateDrawdownBreaker({
+      ...acct,
+      equity: 28.35,
+      now: new Date("2026-09-09T16:00:00Z"),
+      externalFlows: []
+    });
+    expect(dropRun.breached).toBe(true);
+    expect(dropRun.deferHardAction).toBe(true);
+    expect(dropRun.unexplainedEquityChange?.dropPct).toBeCloseTo(72.1, 1);
+    expect(dropRun.unexplainedEquityChange?.flowsUnavailable).toBe(false);
+    expect(dropRun.reason).toContain("held as advisory for one run");
+
+    const posted = recordAndEvaluateDrawdownBreaker({
+      ...acct,
+      equity: 28.35,
+      now: new Date("2026-09-09T18:00:00Z"),
+      externalFlows: [{ amount: -73.27, day: "2026-09-09" }]
+    });
+    expect(posted.breached).toBe(false);
+    expect(posted.highWaterMark).toBeCloseTo(28.35, 2);
+    expect(posted.deferHardAction).toBe(false);
+  });
+
+  it("enforces a real loss on the next run (never defers the same drop twice)", async () => {
+    const { recordAndEvaluateDrawdownBreaker } = await import("../src/lib/risk-breaker");
+    const acct = { ...base, accountNumber: "REAL-LOSS" };
+    recordAndEvaluateDrawdownBreaker({ ...acct, equity: 1000, now: new Date("2026-09-09T14:00:00Z") });
+    const first = recordAndEvaluateDrawdownBreaker({ ...acct, equity: 700, now: new Date("2026-09-09T15:00:00Z"), externalFlows: [] });
+    expect(first.breached).toBe(true);
+    expect(first.deferHardAction).toBe(true);
+    const second = recordAndEvaluateDrawdownBreaker({ ...acct, equity: 700, now: new Date("2026-09-09T16:00:00Z"), externalFlows: [] });
+    expect(second.breached).toBe(true);
+    expect(second.deferHardAction).toBe(false);
+    expect(second.highWaterMark).toBeCloseTo(1000, 2);
+  });
+
+  it("does not launder a real loss into a withdrawal when a smaller cash-out posts afterwards", async () => {
+    const { recordAndEvaluateDrawdownBreaker } = await import("../src/lib/risk-breaker");
+    const acct = { ...base, accountNumber: "LOSS-THEN-WITHDRAW" };
+    recordAndEvaluateDrawdownBreaker({ ...acct, equity: 100, now: new Date("2026-09-09T14:00:00Z") });
+    recordAndEvaluateDrawdownBreaker({ ...acct, equity: 75, now: new Date("2026-09-09T15:00:00Z"), externalFlows: [] });
+    const after = recordAndEvaluateDrawdownBreaker({
+      ...acct,
+      equity: 35,
+      now: new Date("2026-09-09T16:00:00Z"),
+      externalFlows: [{ amount: -40, day: "2026-09-09" }]
+    });
+    // 25% loss, then a neutral cash-out: HWM 100 × 35/75 ≈ 46.67 → still a 25% drawdown.
+    expect(after.highWaterMark).toBeCloseTo(46.67, 1);
+    expect(after.breached).toBe(true);
+    expect(after.deferHardAction).toBe(false);
+  });
+
+  it("reports an unreadable ledger honestly and defers only once while it stays unreadable", async () => {
+    const { recordAndEvaluateDrawdownBreaker } = await import("../src/lib/risk-breaker");
+    const acct = { ...base, accountNumber: "LEDGER-DOWN" };
+    recordAndEvaluateDrawdownBreaker({ ...acct, equity: 100, now: new Date("2026-09-09T14:00:00Z") });
+    const down = { externalFlows: [], appliedActivityIds: [], advanceObservation: false, flowsUnavailable: true };
+    const r1 = recordAndEvaluateDrawdownBreaker({ ...acct, ...down, equity: 50, now: new Date("2026-09-09T15:00:00Z") });
+    expect(r1.flowsUnavailable).toBe(true);
+    expect(r1.deferHardAction).toBe(true);
+    expect(r1.unexplainedEquityChange?.flowsUnavailable).toBe(true);
+    expect(r1.reason).toContain("ledger unreadable this run");
+    const r2 = recordAndEvaluateDrawdownBreaker({ ...acct, ...down, equity: 50, now: new Date("2026-09-09T16:00:00Z") });
+    expect(r2.deferHardAction).toBe(false);
+    expect(r2.breached).toBe(true);
+    expect(r2.reason).toContain("could not be read this run");
+    const r3 = recordAndEvaluateDrawdownBreaker({ ...acct, ...down, equity: 50, now: new Date("2026-09-09T17:00:00Z") });
+    expect(r3.deferHardAction).toBe(false);
+    expect(r3.breached).toBe(true);
+  });
+
+  it("keeps the plain ratchet for accounts with no cash-flow ledger (non-Alpaca brokers)", async () => {
+    const { recordAndEvaluateDrawdownBreaker } = await import("../src/lib/risk-breaker");
+    const acct = { ...base, accountNumber: "NO-LEDGER" };
+    recordAndEvaluateDrawdownBreaker({ ...acct, equity: 250_000, now: new Date("2026-09-09T14:00:00Z") });
+    const r = recordAndEvaluateDrawdownBreaker({ ...acct, equity: 100_000, now: new Date("2026-09-09T15:00:00Z") });
+    expect(r.breached).toBe(true);
+    expect(r.unexplainedEquityChange).toBeUndefined();
+    expect(r.deferHardAction).toBe(false);
+  });
+
+  it("treats a small drop with no flows as ordinary (no unexplained flag)", async () => {
+    const { recordAndEvaluateDrawdownBreaker } = await import("../src/lib/risk-breaker");
+    const acct = { ...base, accountNumber: "SMALL-DIP" };
+    recordAndEvaluateDrawdownBreaker({ ...acct, equity: 100, now: new Date("2026-09-09T14:00:00Z") });
+    const r = recordAndEvaluateDrawdownBreaker({ ...acct, equity: 84, now: new Date("2026-09-09T15:00:00Z"), externalFlows: [] });
+    expect(r.breached).toBe(true);
+    expect(r.unexplainedEquityChange).toBeUndefined();
+    expect(r.deferHardAction).toBe(false);
+  });
+});
+
+describe("replayHighWaterMarkFromDailyHistory (ops recompute)", () => {
+  const rothDaily = [
+    { day: "2026-08-03", equity: 101.62 },
+    { day: "2026-08-20", equity: 99.1 },
+    { day: "2026-09-08", equity: 98 },
+    { day: "2026-09-09", equity: 28.35 },
+    { day: "2026-09-17", equity: 28.45 },
+    { day: "2026-09-18", equity: 1.68 },
+    { day: "2026-09-24", equity: 1.68 }
+  ];
+  const rothFlows = [
+    { day: "2026-08-03", amount: 101.62 },
+    { day: "2026-09-09", amount: -62.69 },
+    { day: "2026-09-09", amount: -6.96 },
+    { day: "2026-09-18", amount: -26.77 }
+  ];
+
+  it("rebuilds the Roth IRA HWM to its real trading drawdown, not the withdrawal", async () => {
+    const { replayHighWaterMarkFromDailyHistory } = await import("../src/lib/risk-breaker");
+    const r = replayHighWaterMarkFromDailyHistory({ flows: rothFlows, dailyEquity: rothDaily, currentEquity: 1.68 });
+    expect(r.netTransfers).toBeCloseTo(101.62 - 62.69 - 6.96 - 26.77, 2);
+    expect(r.highWaterMark).toBeCloseTo(1.74, 2);
+    expect(impliedDrawdownPct(1.68, r.highWaterMark)).toBeLessThan(5);
+    expect(r.unexplainedDrops).toEqual([]);
+  });
+
+  it("the flow-only replay it replaces leaves a phantom drawdown on a near-total cash-out", () => {
+    const r = recomputeHighWaterMarkFromTransferFlows({ flows: rothFlows.map((f) => f.amount), currentEquity: 1.68 });
+    expect(r.highWaterMark).toBeCloseTo(5.2, 1);
+    expect(impliedDrawdownPct(1.68, r.highWaterMark)).toBeGreaterThan(60);
+  });
+
+  it("lists close-to-close falls with no ledger flow instead of silently absorbing them", async () => {
+    const { replayHighWaterMarkFromDailyHistory } = await import("../src/lib/risk-breaker");
+    const r = replayHighWaterMarkFromDailyHistory({ flows: [], dailyEquity: rothDaily, currentEquity: 1.68 });
+    expect(r.unexplainedDrops.map((d) => d.day)).toEqual(["2026-09-09", "2026-09-18"]);
+    expect(r.unexplainedDrops[0].dropPct).toBeCloseTo(71.07, 1);
+    expect(r.highWaterMark).toBeCloseTo(101.62, 2);
+  });
+});

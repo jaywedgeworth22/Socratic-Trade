@@ -159,12 +159,18 @@ Fixed:
    halt or close_only during the probe became an auto-resumable halt; a close_only on an
    auto-halted account was resumed to active; `setPolicy(snapshot)` also overwrote any console edit
    made during the probe.  Fix (both halves the reviewer proposed): `applyBrokerOrderPlacementPause`
-   re-reads the durable policy (no await between that read and its writes), decides on it, writes
-   only `systemState` onto the fresh read, and syncs the caller's snapshot so the rest of the tick
-   (including "do not launch a run unless active") sees it; and `set_system_state` now clears the
-   broker auto-pause marker for ANY explicit operator state, inside the same write transaction.
-   This closes the race for the console Start/Stop too, since the scheduler side is shared.
-   Tests: four in `test/broker-health-auto-pause.test.ts` plus one ops test.
+   re-reads the durable policy (no await between that read and its writes), decides on it, and
+   writes only `systemState` onto the fresh read; and `set_system_state` now clears the broker
+   auto-pause marker for ANY explicit operator state, inside the same write transaction.  This
+   closes the race for the console Start/Stop too, since the scheduler side is shared.  Merge
+   note: #3752 landed the same durable-read change in `applyBrokerOrderPlacementPause` on main
+   while this round was in flight, so the merge keeps main's version (it deliberately does not
+   overwrite a strategy run's run-scoped policy) and adds two things on top: a guard that does
+   nothing when the account was removed mid-probe (the durable read would otherwise fall back to,
+   and flip, the user-level policy), and an unconditional systemState re-read in the scheduler
+   after the pause call, so a healthy probe does not launch a run on an account an operator halted
+   or set close_only mid-probe.  Tests: five in `test/broker-health-auto-pause.test.ts` plus one
+   ops test.
 3. **P2: `describeNextEligibleRun` reported blockers in a different order than the scheduler.**
    `tickInner` checks the test broker, then `!policy.accountNumber -> continue`, and only then
    `isDraining`, so a draining account with no account number is never wound down.  The account
@@ -186,7 +192,8 @@ Fixed:
 Declined: none.
 
 Files touched this round: `src/lib/order-cancel.ts`, `src/lib/ops-account-control.ts`,
-`src/lib/autonomy-arming.ts`, `src/lib/broker-health.ts`, `test/ops-account-control.test.ts`,
+`src/lib/autonomy-arming.ts`, `src/lib/broker-health.ts`, `src/lib/scheduler.ts`,
+`test/ops-account-control.test.ts`,
 `test/broker-health-auto-pause.test.ts`, `docs/runbooks/ops-account-control.md`, this note,
 `STATUS.md`, `docs/EFFORT-LOG.md`.
 
@@ -195,14 +202,28 @@ Verification this round (worktree `~/apps/claude-st-ops-account-control`, Node 2
 
 ```bash
 npx vitest run test/broker-health-auto-pause.test.ts test/ops-account-control.test.ts \
-  test/transient-network-resilience.test.ts test/strategy-enable-route.test.ts
+  test/transient-network-resilience.test.ts test/strategy-enable-route.test.ts \
+  test/broker-health-probe-resilience.test.ts
 npx vitest run test/mobile-order-cancel.test.ts test/scheduler-tick-reentrancy.test.ts \
   test/account-mutation-pr2-strategy-loop.test.ts
-npm run lint
+npx eslint <the seven touched source and test files>
 npx tsc --noEmit
 ```
 
-Results are recorded in the PR comment for this round; CI `verify` is the binding gate.
+Results:
+
+- Red first: the 10 new tests failed on the pre-fix code (10 failed, 34 passed across the two
+  files).
+- After the fixes and the merge of origin/main (0dc3e4b86): the first command, 5 files, 73/73
+  passed; `npx tsc --noEmit` clean (before and after the merge); eslint on the touched files 0
+  errors (2 pre-existing unused-import warnings in `src/lib/scheduler.ts`).
+- The second command's suites hit 60s test timeouts at load average 280 to 400 (cold imports and a
+  1s `vi.waitFor`), not assertion failures in the changed code.  `mobile-order-cancel` passed with
+  `--testTimeout=900000`; `account-mutation-pr2-strategy-loop` (which runs the real pause path)
+  passed 1/1 from a temporary copy with its hard-coded 60s timeout raised;
+  `scheduler-tick-reentrancy` seeds no connected account, so it never reaches the changed code.
+- Full `npm run lint`, `npm test` and `npm run build` were not run locally under this load; CI
+  `verify` is the binding gate.
 
 ## 6. Zero-Code Findings
 

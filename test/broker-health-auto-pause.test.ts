@@ -160,8 +160,6 @@ describe("broker-health auto-pause when orders cannot be placed", () => {
       expect(result.action).not.toBe("halted");
       expect(getPolicy(userId).systemState).toBe(operatorState);
       expect(getBrokerPlacementPauseMarker(userId, accountScope)).toBeUndefined();
-      // The caller's snapshot now reflects durable state, so the rest of the tick does too.
-      expect(snapshot.systemState).toBe(operatorState);
     }
   });
 
@@ -186,7 +184,7 @@ describe("broker-health auto-pause when orders cannot be placed", () => {
     expect(getBrokerPlacementPauseMarker(userId, accountScope)).toBeUndefined();
   });
 
-  it("a healthy probe syncs an operator halt into the tick's snapshot so the tick does not launch a run", async () => {
+  it("a healthy probe leaves an operator halt made mid-probe alone and never writes the stale snapshot", async () => {
     const { getPolicy, setPolicy } = await import("../src/lib/db");
     const { applyBrokerOrderPlacementPause } = await import("../src/lib/broker-health");
     const userId = "local";
@@ -195,8 +193,44 @@ describe("broker-health auto-pause when orders cannot be placed", () => {
     setPolicy({ ...getPolicy(userId), systemState: "halted" }, userId);
     const result = await applyBrokerOrderPlacementPause({ userId, accountScope: "acct-race-healthy", health: { isHealthy: true }, policy: snapshot });
     expect(result.action).toBe("none");
-    expect(snapshot.systemState).toBe("halted");
     expect(getPolicy(userId).systemState).toBe("halted");
+  });
+
+  it("does nothing for an account removed during the probe instead of flipping the user-level policy", async () => {
+    const { getPolicy, setPolicy, upsertConnectedAccount, purgeConnectedAccount, getDb } = await import("../src/lib/db");
+    const { applyBrokerOrderPlacementPause, getBrokerPlacementPauseMarker } = await import("../src/lib/broker-health");
+    const userId = `pause-removed-${Date.now()}`;
+    const accountId = `acct-removed-${Date.now()}`;
+    upsertConnectedAccount({
+      id: accountId,
+      userId,
+      broker: "tradier",
+      environment: "paper",
+      accountNumber: "VAREMOVED1",
+      label: "Tradier Sandbox",
+      apiKey: "k",
+      isActive: false
+    });
+    setPolicy({ ...getPolicy(userId, accountId), systemState: "active" }, userId, accountId);
+    const snapshot = getPolicy(userId, accountId);
+    const userLevelBefore = getDb()
+      .prepare("SELECT value FROM user_settings WHERE user_id = ? AND key = 'policy'")
+      .get(userId) as { value: string } | undefined;
+    purgeConnectedAccount(accountId, userId); // removed while the probe was in flight
+
+    const result = await applyBrokerOrderPlacementPause({
+      userId,
+      connectedAccountId: accountId,
+      accountScope: accountId,
+      health: { isHealthy: false, reason: "Tradier order path unavailable: HTTP 500 backend", category: "order_capability" },
+      policy: snapshot
+    });
+    expect(result.action).toBe("none");
+    const userLevelAfter = getDb()
+      .prepare("SELECT value FROM user_settings WHERE user_id = ? AND key = 'policy'")
+      .get(userId) as { value: string } | undefined;
+    expect(userLevelAfter?.value).toBe(userLevelBefore?.value);
+    expect(getBrokerPlacementPauseMarker(userId, accountId)).toBeUndefined();
   });
 
   it("auto-halt changes only systemState and keeps a console edit made during the probe", async () => {

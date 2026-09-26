@@ -85,6 +85,19 @@ export async function register() {
   // block or fail startup.  Runs after Sentry init so the fatal message is actually captured.
   void reportRestartLoop(restartAssessment).catch(() => {});
 
+  // Stall-triggered CPU profiler (board 687a5fb4; stall class e7b49943).  Keeps a low-rate V8
+  // sampling profile running and saves a window to /app/data/profiles (+ a cat-able .top.json)
+  // only when the event-loop lag sampler saw >= 5s of stall in it, so the next RTH stall names
+  // its culprit.  Armed before the scheduler and background workers so their stalls are covered.
+  // Production-only by default; STALL_PROFILER=0 kills it.  Never throws and never blocks boot.
+  // See src/lib/stall-profiler.ts and docs/rollouts/2026-09-24-st-stall-profiler.md.
+  try {
+    const { startStallProfiler } = await import("./src/lib/stall-profiler");
+    void startStallProfiler().catch(() => {});
+  } catch {
+    // Optional diagnostics must never take down boot.
+  }
+
   const { datadogApmEnabled, datadogLogsEnabled } = await import("./src/lib/datadog-env");
   if (datadogApmEnabled() || datadogLogsEnabled()) {
     const { startDatadogServer } = await import("./src/lib/datadog-server");

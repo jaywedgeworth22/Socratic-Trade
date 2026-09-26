@@ -61,7 +61,7 @@ import { createEvidencePack, createEvidenceRef } from "./evidence-pack";
 import { derivePromptRagConsumption, type PromptRagCandidate, type PromptRagConsumptionResult } from "./rag/evidence-consumption";
 import { summarizeSourceCoverage } from "./source-value";
 import { deriveExecutionState, fillSourceForExecutionMode, llmExecutionMode, llmModeClarification, type ExecutionAccount } from "./execution-mode";
-import { applyBrokerOrderPlacementPause, checkBrokerHealth, isOrderPlacementInfrastructureFailure } from "./broker-health";
+import { applyBrokerOrderPlacementPause, brokerHealthRunSkip, checkBrokerHealth, isOrderPlacementInfrastructureFailure } from "./broker-health";
 import { greenFailoverExhaustedSuffix, interactiveStrategyReasoningEffort, isFailoverLlmStatus, isRetryableLlmError, LLM_OUTPUT_TOKEN_CAPS, LLM_REQUEST_DEFAULTS, LLM_TIMEOUT_MS, llmFetch, llmFetchCapturing, resolveLlmWireOutputCap, strategyLlmTimeoutMs, type LlmCallOutcome } from "./llm-request";
 import { buildBullSystem, STRATEGY_PROMPT_VERSION, THESIS_PLAYBOOK } from "./strategy-prompts";
 import { resolveLlmEndpoint } from "./llm-provider";
@@ -652,11 +652,13 @@ export async function runStrategyOnce(
         return result;
       }
       if (!healthSignals.isHealthy) {
-        const reason = `Broker health check failed: ${healthSignals.reason}. Skipping strategy run to avoid consuming budget.`;
+        // A probe that timed out on a stalled event loop is not a broker failure (board 687a5fb4).
+        const skip = brokerHealthRunSkip(healthSignals);
+        const reason = skip.summary;
         console.warn(`[Strategy] ${reason}`);
-        audit("run_skipped_broker_unhealthy", { runId, userId, reason, pauseAction: pauseResult.action }, userId, connectedAccountId);
-        result = { runId, status: "skipped_broker_unhealthy", summary: reason, proposals: [] };
-        finishStrategyRun(runId, "skipped_broker_unhealthy", reason, userId);
+        audit(skip.auditKind, { runId, userId, reason, pauseAction: pauseResult.action, processStall: healthSignals.processStall }, userId, connectedAccountId);
+        result = { runId, status: skip.status, summary: reason, proposals: [] };
+        finishStrategyRun(runId, skip.status, reason, userId);
         return result;
       }
     }

@@ -12,6 +12,14 @@ the breaker holds an opted-in hard action one run on an unexplained ≥ 20% fall
 `GET /api/ops/account-activity`.  **Next:** after deploy, run the diagnostic then the recompute
 for the Roth account (exact commands in the rollout).  Branch `claude/st-cashflow-detection`.
 Rollout: `docs/rollouts/2026-09-24-st-cashflow-detection.md`.
+## 2026-09-25 CLAUDE — Add 2026-09-25 trading performance report to docs
+
+**What/why.**  Docs-only.  Added the owner-facing performance analysis (produced by CLAUDE's
+performance-analysis workflow from `GET /api/ops/performance?days=120` at 2026-09-25 19:21Z) to
+`docs/reviews/2026-09-25-trading-performance-report.md`, so it has a permanent, reviewable home
+alongside the rest of the review corpus instead of living only in a scratch/durable session file.
+No code changes.  Board `687a5fb4`, lane G5, branch `claude/st-perf-report-docs`.
+Rollout: `docs/rollouts/2026-09-25-st-perf-report-docs.md`.
 ## 2026-09-25 CLAUDE — PR #3756 re-synced with main
 
 Merged `origin/main` into `claude/st-stall-profiler` to pick up #3761, #3774, #3778 (no file

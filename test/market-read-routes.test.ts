@@ -14,7 +14,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { NextRequest } from "next/server";
 
 import type { OHLCBar } from "../src/lib/indicators";
-import { closesInRange, fetchPriceSeries, fetchSpxCloses, parseMarketRange } from "../src/lib/market-read";
+import { closesInRange, fetchCompanyProfile, fetchPriceSeries, fetchSpxCloses, parseMarketRange } from "../src/lib/market-read";
+import { GET as profileRoute } from "../app/api/market/profile/[symbol]/route";
 import { fetchDailyOHLC } from "../src/lib/history";
 import { GET as pricesRoute } from "../app/api/market/prices/[symbol]/route";
 import { GET as spxRoute } from "../app/api/market/spx/route";
@@ -253,6 +254,64 @@ describe("GET /api/market/spx", () => {
   });
 });
 
+
+// ── /api/market/profile/{symbol} ─────────────────────────────────────────────
+
+describe("GET /api/market/profile/{symbol}", () => {
+  function profileUrl(symbol: string): string {
+    return `http://x/api/market/profile/${symbol}`;
+  }
+
+  it("401 without bearer", async () => {
+    const res = await profileRoute(authedRequest(profileUrl("AAPL")), {
+      params: Promise.resolve({ symbol: "AAPL" })
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("404 { ref: null } envelope when screener has no row (no bare framework 404)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ data: { table: { rows: [] } } })
+      ) as unknown as typeof fetch
+    );
+    const res = await profileRoute(authedRequest(profileUrl("ZZZZNOPE"), TEST_TOKEN), {
+      params: Promise.resolve({ symbol: "ZZZZNOPE" })
+    });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ ref: null });
+  });
+
+  it("helper returns null when the injected lookup misses", async () => {
+    expect(await fetchCompanyProfile("ZZZZNOPE", async () => null)).toBeNull();
+  });
+
+  it("200 { ref } when lookup returns sector/industry/marketCap", async () => {
+    // Unit the helper with an injected lookup (no network / DB).
+    const ref = await fetchCompanyProfile("MSFT", async () => ({
+      ticker: "MSFT",
+      companyName: "Microsoft Corporation",
+      sector: "Technology",
+      industry: "Software",
+      marketCap: 3_000_000_000_000,
+      assetClass: "equity"
+    }));
+    expect(ref).toEqual({
+      ticker: "MSFT",
+      companyName: "Microsoft Corporation",
+      sector: "Technology",
+      industry: "Software",
+      marketCap: 3_000_000_000_000,
+      assetClass: "equity"
+    });
+  });
+
+  it("returns null from the helper for an empty symbol", async () => {
+    expect(await fetchCompanyProfile("   ", async () => ({ ticker: "X" }))).toBeNull();
+  });
+});
+
 // ── middleware pass-through ──────────────────────────────────────────────────
 
 describe("middleware — market read bearer pass-through", () => {
@@ -295,6 +354,14 @@ describe("middleware — market read bearer pass-through", () => {
     process.env.AUTH_SECRET = "test-secret";
     const middleware = await loadMiddleware();
     const res = await middleware(mwRequest("/api/market/intraday/AAPL", { authorization: `Bearer ${TEST_TOKEN}` }));
+    expect(res.status).not.toBe(401);
+  });
+
+  it("lets a bearer request through to /api/market/profile/{symbol} without a session", async () => {
+    vi.resetModules();
+    process.env.AUTH_SECRET = "test-secret";
+    const middleware = await loadMiddleware();
+    const res = await middleware(mwRequest("/api/market/profile/AAPL", { authorization: `Bearer ${TEST_TOKEN}` }));
     expect(res.status).not.toBe(401);
   });
 

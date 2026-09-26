@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const ACCT = "VA93389646";
+const ACCT = "VA00012345";
 
 beforeEach(() => {
   vi.resetModules();
@@ -59,7 +59,7 @@ describe("Tradier getEquityOrder", () => {
       : undefined);
     const { getTradierGateway } = await import("../src/lib/tradier");
     const lookup = await getTradierGateway("local").getEquityOrder!(ACCT, "35740897");
-    expect(urls[0]).toContain("/v1/accounts/VA93389646/orders/35740897");
+    expect(urls[0]).toContain("/v1/accounts/VA00012345/orders/35740897");
     expect(urls[0]).toContain("includeTags=true");
     expect(lookup?.order).toMatchObject({ id: "35740897", symbol: "TTE", side: "buy", state: "filled", filledQuantity: 20, averagePrice: 60.41, clientOrderId: "st-ref-1" });
     expect(lookup?.exitLegs).toBeUndefined();

@@ -312,6 +312,82 @@ describe("ops performance snapshot — shape and math", () => {
     expect(account.proposalFunnel.counts).toEqual([]);
   });
 
+  it("survives a malformed Red Team audit payload for an account — falls back to an empty " +
+    "redTeamEfficacy instead of throwing and losing the whole account's rollup", async () => {
+    const db = await import("../src/lib/db");
+    const userId = `ops-perf-badaudit-${randomUUID()}`;
+    const accountId = `acct-badaudit-${randomUUID()}`;
+    const accountNumber = `BADAUDIT-${randomUUID()}`;
+
+    db.upsertConnectedAccount({
+      id: accountId,
+      userId,
+      broker: "alpaca",
+      environment: "paper",
+      accountNumber,
+      label: "Bad Audit Test Account",
+      isActive: true
+    });
+    db.setPolicy({ ...db.getPolicy(userId, accountId), systemState: "active", strategyAuthority: "decide" }, userId, accountId);
+
+    const now = Date.now();
+    const daysAgo = (n: number) => new Date(now - n * 24 * 60 * 60 * 1000).toISOString();
+
+    // A real, valid round trip so this test can prove the REST of the account's rollup (P&L,
+    // trade stats) still computes correctly despite the corrupted Red Team audit row below —
+    // not just that the call doesn't throw.
+    db.insertFillEvent({
+      accountNumber,
+      source: "paper",
+      symbol: "AAPL",
+      side: "buy",
+      quantity: 10,
+      price: 100,
+      notional: 1000,
+      status: "filled",
+      userId,
+      filledAt: daysAgo(10)
+    });
+    db.insertFillEvent({
+      accountNumber,
+      source: "paper",
+      symbol: "AAPL",
+      side: "sell",
+      quantity: 10,
+      price: 120,
+      notional: 1200,
+      status: "filled",
+      userId,
+      filledAt: daysAgo(5)
+    });
+
+    // A malformed audit_events row of the exact kind getRedTeamEfficacy scans
+    // (proposal_rejected_by_red_team) — inserted directly via getDb() because db.audit() always
+    // JSON.stringifies its payload and can never produce invalid JSON on its own. This reproduces
+    // a partial write / historical bad row: listAuditByKind's JSON.parse(row.payload) throws a
+    // SyntaxError on this row with no per-row guard.
+    db.getDb()
+      .prepare(
+        "INSERT INTO audit_events (id, user_id, connected_account_id, created_at, kind, payload) VALUES (?, ?, ?, ?, ?, ?)"
+      )
+      .run(randomUUID(), userId, accountId, new Date().toISOString(), "proposal_rejected_by_red_team", "{not valid json");
+
+    const { buildOpsPerformanceSnapshot } = await import("../src/lib/ops-performance");
+    // Must not throw / reject — this is the regression this test guards against.
+    const snapshot = await buildOpsPerformanceSnapshot({ connectedAccountId: accountId, days: 30 });
+
+    expect(snapshot.accounts).toHaveLength(1);
+    const account = snapshot.accounts[0];
+    // The Red Team read failure is isolated to redTeamEfficacy alone — it does NOT flip the
+    // whole account into the generic error branch.
+    expect(account.error).toBeUndefined();
+    expect(account.redTeamEfficacy.totalVetoes).toBe(0);
+    expect(account.redTeamEfficacy.coverage).toBe("unavailable (read failed)");
+    // The rest of the account's rollup still computed correctly from the real fills.
+    expect(account.paperRealizedPnl).toBeCloseTo(200, 2);
+    expect(account.tradeStats.tradeCount).toBe(1);
+  });
+
   it("clamps an out-of-range days param and defaults a missing one", async () => {
     const db = await import("../src/lib/db");
     const userId = `ops-perf-clamp-${randomUUID()}`;

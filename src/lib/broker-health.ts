@@ -4,12 +4,107 @@ import { countRecentAuditEvents } from "./db-learning";
 import { ExecutionAccount, HealthSignals } from "./execution-mode";
 import { accountEquity } from "./risk-breaker";
 import { sendNotification } from "./notifications";
-import { isTransientNetworkError } from "./network-errors";
+import { isAbortOrTimeoutError, isTransientNetworkError } from "./network-errors";
+import { isDeadlineTimeoutError } from "./inflight-deadline";
+import { startEventLoopLagSampler, stalledMsSince } from "./event-loop-lag";
+import { safeErrorMessage } from "./telemetry-sanitize";
 import type { BrokerGateway, BrokerageAccount, SystemState, TradingPolicy } from "./types";
 
 /** Consecutive transient connectivity failures before an auto-halt.  One
- *  `fetch failed` / dead socket must skip this tick, not kill Autopilot. */
+ *  `fetch failed` / dead socket — or one probe TIMEOUT (board 687a5fb4) — must skip this tick,
+ *  not kill Autopilot. */
 export const BROKER_CONNECTIVITY_HALT_STREAK = 3;
+
+/**
+ * Fraction of a timed-out probe's window that must be measured event-loop stall before the
+ * timeout is blamed on THIS process instead of the broker.  Deliberately the same bar as
+ * `LANE_STALL_ATTRIBUTION_RATIO` (safety-maintenance.ts, see its doc for why 0.75 and not 0.25);
+ * duplicated as a literal because importing it would cycle
+ * broker-health -> safety-maintenance -> strategy-execution -> broker-health.  A test pins the two
+ * equal.
+ */
+export const PROBE_STALL_ATTRIBUTION_RATIO = 0.75;
+
+/** True when a probe failure is a TIMEOUT rather than an answer.  Structural first: the
+ *  `__deadlineTimeout` flag set where `withDeadline` / `awaitWithFirstCallRetry` manufacture the
+ *  error, the lane-deadline expiry marker, and AbortError/TimeoutError by name.  No prose regex. */
+export function isProbeTimeoutError(err: unknown): boolean {
+  if (isDeadlineTimeoutError(err)) return true;
+  if (err && typeof err === "object" && (err as { __laneDeadlineExpiry?: unknown }).__laneDeadlineExpiry === true) return true;
+  return isAbortOrTimeoutError(err);
+}
+
+/** Honest, owner-readable reason for a probe that timed out because the app itself was frozen. */
+export function processStallReason(stalledMs: number, elapsedMs: number): string {
+  return (
+    `App process was stalled (event loop blocked ${Math.round(stalledMs / 1000)}s of ` +
+    `${Math.round(elapsedMs / 1000)}s); broker not at fault`
+  );
+}
+
+/** Health signals for a probe whose timeout is attributed to a stalled event loop.  Unhealthy (we
+ *  still do not know the broker is fine, so this tick launches nothing) but never streak-counted. */
+export function processStallHealthSignals(stalledMs: number, elapsedMs: number): HealthSignals {
+  return {
+    isHealthy: false,
+    reason: processStallReason(stalledMs, elapsedMs),
+    category: "connectivity",
+    probeTimedOut: true,
+    processStall: { stalledMs: Math.round(stalledMs), elapsedMs: Math.round(elapsedMs) }
+  };
+}
+
+/**
+ * Convert the scheduler's probe-deadline rejection into health signals.  The scheduler wraps
+ * `checkBrokerHealth` in `withLaneDeadline`, whose expiry carries the measured stall; a
+ * stall-dominated expiry is the process's fault, anything else is a (streak-eligible) timeout.
+ */
+export function healthSignalsFromProbeFailure(err: unknown): HealthSignals {
+  const expiry = err as { __laneDeadlineExpiry?: unknown; stalledMs?: unknown; elapsedMs?: unknown; stallRatio?: unknown } | null;
+  if (
+    expiry &&
+    typeof expiry === "object" &&
+    expiry.__laneDeadlineExpiry === true &&
+    typeof expiry.stallRatio === "number" &&
+    typeof expiry.stalledMs === "number" &&
+    typeof expiry.elapsedMs === "number" &&
+    expiry.stallRatio >= PROBE_STALL_ATTRIBUTION_RATIO
+  ) {
+    return processStallHealthSignals(expiry.stalledMs, expiry.elapsedMs);
+  }
+  return {
+    isHealthy: false,
+    reason: `Broker health check timed out: ${safeErrorMessage(err)}`,
+    category: "connectivity",
+    ...(isProbeTimeoutError(err) ? { probeTimedOut: true } : {})
+  };
+}
+
+/**
+ * Terminal status + summary + audit kind for a strategy run that skips because the in-run broker
+ * probe was unhealthy.  A stall-attributed probe is NOT a broker problem, so it finishes as the
+ * generic `skipped` (every client — web `strategyRunStatusLabel`, iOS ActivityView — already
+ * renders that as "Skipped"; a brand-new status would render as "Completed" on the current iOS
+ * build, whose switch defaults unknown statuses to Completed).
+ */
+export function brokerHealthRunSkip(health: HealthSignals): {
+  status: "skipped" | "skipped_broker_unhealthy";
+  summary: string;
+  auditKind: "run_skipped_process_stalled" | "run_skipped_broker_unhealthy";
+} {
+  if (health.processStall) {
+    return {
+      status: "skipped",
+      summary: `${health.reason ?? processStallReason(health.processStall.stalledMs, health.processStall.elapsedMs)}. Skipping this strategy run; the next one retries.`,
+      auditKind: "run_skipped_process_stalled"
+    };
+  }
+  return {
+    status: "skipped_broker_unhealthy",
+    summary: `Broker health check failed: ${health.reason}. Skipping strategy run to avoid consuming budget.`,
+    auditKind: "run_skipped_broker_unhealthy"
+  };
+}
 
 export function brokerConnectivityStreakKey(userId: string, accountScope: string): string {
   return `broker:connectivity-fail-streak:${userId}:${accountScope}`;
@@ -35,6 +130,9 @@ export async function checkBrokerHealth(
     return { isHealthy: true };
   }
 
+  // Stall attribution window (board 687a5fb4).  Idempotent sampler start; no behavior change.
+  startEventLoopLagSampler();
+  const probeStartedAt = Date.now();
   try {
     const [accounts, portfolio] = await Promise.all([
       brokerGateway.getAccounts(),
@@ -107,10 +205,21 @@ export async function checkBrokerHealth(
 
     return { isHealthy: true };
   } catch (err) {
+    const timedOut = isProbeTimeoutError(err);
+    if (timedOut) {
+      // A read that never answered while the event loop was pinned for most of the wait says
+      // nothing about the broker — the 16s+8s timer could not even fire on time.
+      const elapsedMs = Date.now() - probeStartedAt;
+      const stalledMs = stalledMsSince(probeStartedAt);
+      if (elapsedMs > 0 && stalledMs / elapsedMs >= PROBE_STALL_ATTRIBUTION_RATIO) {
+        return processStallHealthSignals(stalledMs, elapsedMs);
+      }
+    }
     return {
       isHealthy: false,
       reason: `Broker connectivity failure: ${err instanceof Error ? err.message : String(err)}`,
-      category: "connectivity"
+      category: "connectivity",
+      ...(timedOut ? { probeTimedOut: true } : {})
     };
   }
 }
@@ -190,6 +299,19 @@ export function persistBrokerHealthSkipRun(input: {
  * burning LLM budget. When health recovers and the halt was ours (marker present), auto-resume
  * to `active`. Manual owner halts (no marker) are never auto-resumed.
  *
+ * Decides against the DURABLE policy, re-read here, not the caller's snapshot (board 687a5fb4).
+ * The scheduler reads its snapshot BEFORE a probe that can take 30s; deciding on that snapshot
+ * let an owner Pause issued mid-probe be claimed as our auto-pause (marker written, so the next
+ * healthy probe "resumed" it), and `setPolicy(snapshot)` rewrote every field the owner edited in
+ * that window.  Strategy runs pass a run-scoped policy (manual runs force `active` + `propose`)
+ * that must never be persisted at all.  Only `systemState` is ever written here; the caller's
+ * object is updated in place so it sees the new state.
+ *
+ * Streak gate: a transient socket failure OR a probe timeout (`health.probeTimedOut`) must repeat
+ * BROKER_CONNECTIVITY_HALT_STREAK times in a row before an auto-halt.  A probe attributed to a
+ * stalled event loop (`health.processStall`) is not the broker's failure: it neither counts toward
+ * nor resets the streak.
+ *
  * Safe to call every scheduler tick — notifications fire once per pause episode.
  */
 export async function applyBrokerOrderPlacementPause(input: {
@@ -197,20 +319,29 @@ export async function applyBrokerOrderPlacementPause(input: {
   connectedAccountId?: string;
   accountScope: string;
   health: HealthSignals;
-  /** Current policy snapshot (may be mutated in place when state flips). */
+  /** Caller's policy snapshot.  Read-only input for the decision; its `systemState` is updated in
+   *  place when the durable state flips. */
   policy: TradingPolicy;
 }): Promise<ApplyBrokerPauseResult> {
   const { userId, connectedAccountId, accountScope, health, policy } = input;
   const marker = getBrokerPlacementPauseMarker(userId, accountScope);
+  // Durable state, read synchronously right before any write (no await between read and write).
+  const current = getPolicy(userId, connectedAccountId);
+  if (connectedAccountId && current.connectedAccountId !== connectedAccountId) {
+    // The account was removed during the probe, so getPolicy fell back to the user-level policy.
+    // Writing would flip THAT policy (setPolicy stores an unresolvable id at user level), so do
+    // nothing: there is no longer an account to pause or resume.
+    return { action: "none" };
+  }
 
   if (health.isHealthy) {
     deleteInternalSetting(brokerConnectivityStreakKey(userId, accountScope));
     if (!marker) return { action: "none" };
     // Only auto-resume if we still own the halt (marker present) and state is still halted.
     // If the owner already re-armed to active, just clear the marker.
-    if (policy.systemState === "halted") {
+    if (current.systemState === "halted") {
+      setPolicy({ ...current, systemState: "active" }, userId, connectedAccountId);
       policy.systemState = "active";
-      setPolicy(policy, userId, connectedAccountId);
       audit(
         "broker_placement_auto_resumed",
         {
@@ -237,7 +368,7 @@ export async function applyBrokerOrderPlacementPause(input: {
             action: "auto_resume"
           }
         },
-        { policy, userId, connectedAccountId }
+        { policy: current, userId, connectedAccountId }
       );
       clearBrokerPlacementPauseMarker(userId, accountScope);
       return { action: "resumed", priorReason: marker.reason };
@@ -249,7 +380,7 @@ export async function applyBrokerOrderPlacementPause(input: {
   // Unhealthy.
   const reason = health.reason ?? "Broker cannot place orders";
 
-  if (policy.systemState === "halted") {
+  if (current.systemState === "halted") {
     // Already halted — ensure marker exists if this was (or becomes) our pause, so auto-resume works.
     if (!marker) {
       // Do NOT claim ownership of a pre-existing owner halt. Without a marker we won't auto-resume.
@@ -260,15 +391,22 @@ export async function applyBrokerOrderPlacementPause(input: {
     return { action: "still_paused", reason: marker.reason, autoOwned: true };
   }
 
-  if (policy.systemState !== "active") {
+  if (current.systemState !== "active") {
     // close_only / liquidating: leave owner intent alone; still skip runs via health gate.
     return { action: "none" };
   }
 
-  // Transient connectivity (dead keep-alive, one `fetch failed`) is not an
-  // order-path outage.  Skip this tick via isHealthy=false; only halt after a
-  // short consecutive streak so Autopilot survives a single socket blip.
-  if (health.category === "connectivity" && isTransientNetworkError(reason)) {
+  // The app was frozen, not the broker: skip this tick (isHealthy=false upstream) but leave the
+  // streak exactly where it was — neither evidence of a broker outage nor of broker recovery.
+  if (health.processStall) {
+    return { action: "none" };
+  }
+
+  // Transient connectivity (dead keep-alive, one `fetch failed`) or a probe that got no answer in
+  // time is not an order-path outage.  Skip this tick via isHealthy=false; only halt after a
+  // short consecutive streak so Autopilot survives a single blip.  The timeout flag is structural
+  // (set where the timeout is produced), deliberately NOT a widening of isTransientNetworkError.
+  if (health.category === "connectivity" && (health.probeTimedOut === true || isTransientNetworkError(reason))) {
     const streakKey = brokerConnectivityStreakKey(userId, accountScope);
     const prev = getInternalSetting<number>(streakKey);
     const next = (typeof prev === "number" && Number.isFinite(prev) ? prev : 0) + 1;
@@ -278,10 +416,10 @@ export async function applyBrokerOrderPlacementPause(input: {
     }
   }
 
-  // Flip active → halted.
-  const priorState = policy.systemState;
+  // Flip active → halted (systemState only — never the caller's snapshot).
+  const priorState = current.systemState;
+  setPolicy({ ...current, systemState: "halted" }, userId, connectedAccountId);
   policy.systemState = "halted";
-  setPolicy(policy, userId, connectedAccountId);
   const nextMarker: BrokerPlacementPauseMarker = {
     since: new Date().toISOString(),
     reason,
@@ -296,7 +434,8 @@ export async function applyBrokerOrderPlacementPause(input: {
       reason,
       category: health.category,
       from: priorState,
-      to: "halted"
+      to: "halted",
+      ...(health.probeTimedOut ? { probeTimedOut: true, streak: BROKER_CONNECTIVITY_HALT_STREAK } : {})
     },
     userId,
     connectedAccountId
@@ -312,9 +451,42 @@ export async function applyBrokerOrderPlacementPause(input: {
         note: "Will auto-resume when the broker order path recovers. You can also re-arm Start manually after fixing the connection."
       }
     },
-    { policy, userId, connectedAccountId }
+    { policy: current, userId, connectedAccountId }
   );
   return { action: "halted", reason };
+}
+
+/** Pause-marker scope for an account: the connected account id, else the legacy
+ *  "<accountNumber>:<broker or unknown>" scope strategy.ts uses when it has no account id. */
+export function brokerPauseAccountScope(connectedAccountId: string | undefined, accountNumber: string | undefined, broker?: string): string {
+  // Same template as strategy.ts (`${policy.accountNumber}:${broker ?? "unknown"}`), byte for byte.
+  return connectedAccountId ?? `${accountNumber}:${broker ?? "unknown"}`;
+}
+
+/**
+ * The OWNER just halted this account on purpose (Pause/Stop, or a boot interlock acting for the
+ * owner).  If a broker-health auto-pause marker is sitting on it, the halt is no longer ours — drop
+ * the marker so a later healthy probe can never "auto-resume" over the owner's decision.
+ * Returns true when a marker was removed (and audited).
+ */
+export function releaseBrokerPlacementPauseToOwner(input: {
+  userId: string;
+  connectedAccountId?: string;
+  accountNumber?: string;
+  source: string;
+}): boolean {
+  const scope = brokerPauseAccountScope(input.connectedAccountId, input.accountNumber);
+  const marker = getBrokerPlacementPauseMarker(input.userId, scope);
+  if (!marker) return false;
+  clearBrokerPlacementPauseMarker(input.userId, scope);
+  deleteInternalSetting(brokerConnectivityStreakKey(input.userId, scope));
+  audit(
+    "broker_placement_pause_owner_override",
+    { source: input.source, autoPauseReason: marker.reason, autoPausedSince: marker.since },
+    input.userId,
+    input.connectedAccountId
+  );
+  return true;
 }
 
 /**

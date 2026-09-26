@@ -139,7 +139,10 @@ export interface OpsPerformanceAccount {
   proposalFunnel: OpsProposalFunnel;
   equityCurve: OpsEquityCurvePoint[];
   /** Set instead of throwing when this one account's rollup failed — the rest of the snapshot
-   *  still returns (mirrors ops-snapshot's per-account try/catch). */
+   *  still returns (mirrors ops-snapshot's per-account try/catch). Note this is coarser than
+   *  `redTeamEfficacy`'s own isolation: a Red Team audit-read failure alone never sets this — it
+   *  falls back to an empty `redTeamEfficacy` while the rest of the account's fields (P&L, trade
+   *  stats, funnel, equity curve) still compute normally. See `safeRedTeamEfficacy`. */
   error?: string;
 }
 
@@ -153,6 +156,41 @@ function clampDays(raw: unknown): number {
   const n = Number(raw);
   if (!Number.isFinite(n)) return OPS_PERFORMANCE_DEFAULT_DAYS;
   return Math.min(OPS_PERFORMANCE_MAX_DAYS, Math.max(OPS_PERFORMANCE_MIN_DAYS, Math.floor(n)));
+}
+
+/** Static fallback for `getRedTeamEfficacy` failures — same shape it returns for a genuine
+ *  zero-veto account, so nothing downstream needs a new "unavailable" variant; `coverage` is the
+ *  only field that says so explicitly. */
+const RED_TEAM_EFFICACY_UNAVAILABLE: RedTeamEfficacy = {
+  totalVetoes: 0,
+  maturedVetoes: 0,
+  unresolvableVetoes: 0,
+  maturedCoveragePct: 0,
+  coverage: "unavailable (read failed)",
+  vetoValueAddRate: 0,
+  survivorRiskHitRate: 0,
+  avgReturnPct: 0,
+  byModel: [],
+  records: []
+};
+
+/** `getRedTeamEfficacy` -> `listAuditByKind` (`db-learning.ts`) does an unguarded
+ *  `JSON.parse(row.payload)` per `audit_events` row for this account/user. One malformed payload
+ *  row (partial write, historical bad row) throws there and would otherwise propagate out of
+ *  `buildOpsPerformanceSnapshot` uncaught, 500ing this whole diagnostic endpoint for every
+ *  account of every user — exactly the tool an operator reaches for during an incident. Wrap it
+ *  here (never inside a catch/fallback branch that could itself be reached by the same throw)
+ *  and fall back to a static empty shape, mirroring `ops-snapshot.ts`'s own defensive
+ *  `JSON.parse`-with-fallback pattern over the same `audit_events` table. */
+function safeRedTeamEfficacy(
+  userId: string,
+  options: { connectedAccountId?: string; auditLimit?: number }
+): RedTeamEfficacy {
+  try {
+    return getRedTeamEfficacy(userId, options);
+  } catch {
+    return RED_TEAM_EFFICACY_UNAVAILABLE;
+  }
 }
 
 /** Pure arithmetic over an already-computed `ClosedLot[]` (from `calculatePnl`) — never
@@ -360,7 +398,7 @@ export async function buildOpsPerformanceSnapshot(input: BuildOpsPerformanceInpu
           paperUnrealizedPnl: 0,
           tradeStats: { windowDays, tradeCount: 0, winRate: 0, expectancyUsd: 0 },
           thesisScorecard: [],
-          redTeamEfficacy: getRedTeamEfficacy(userId, { connectedAccountId: account.id, auditLimit: OPS_RED_TEAM_AUDIT_LIMIT }),
+          redTeamEfficacy: safeRedTeamEfficacy(userId, { connectedAccountId: account.id, auditLimit: OPS_RED_TEAM_AUDIT_LIMIT }),
           modelAttribution: [],
           proposalFunnel: { windowDays, counts: [], topBlockReasons: [], blockReasonRowsCapped: false, holdReasons: [], holdReasonRowsCapped: false },
           equityCurve: []
@@ -397,7 +435,7 @@ export async function buildOpsPerformanceSnapshot(input: BuildOpsPerformanceInpu
         const sourcePnl = source === "live" ? livePnl : paperPnl;
 
         const thesisScorecard = getThesisScorecard(accountNumber, source, {}, userId, prefetched, prefetchedPnl);
-        const redTeamEfficacy = getRedTeamEfficacy(userId, {
+        const redTeamEfficacy = safeRedTeamEfficacy(userId, {
           connectedAccountId: account.id,
           auditLimit: OPS_RED_TEAM_AUDIT_LIMIT
         });
@@ -433,7 +471,7 @@ export async function buildOpsPerformanceSnapshot(input: BuildOpsPerformanceInpu
           paperUnrealizedPnl: 0,
           tradeStats: { windowDays, tradeCount: 0, winRate: 0, expectancyUsd: 0 },
           thesisScorecard: [],
-          redTeamEfficacy: getRedTeamEfficacy(userId, { connectedAccountId: account.id, auditLimit: OPS_RED_TEAM_AUDIT_LIMIT }),
+          redTeamEfficacy: safeRedTeamEfficacy(userId, { connectedAccountId: account.id, auditLimit: OPS_RED_TEAM_AUDIT_LIMIT }),
           modelAttribution: [],
           proposalFunnel: { windowDays, counts: [], topBlockReasons: [], blockReasonRowsCapped: false, holdReasons: [], holdReasonRowsCapped: false },
           equityCurve: [],

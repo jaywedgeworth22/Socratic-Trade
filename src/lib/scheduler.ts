@@ -26,13 +26,16 @@ import { runAuditPruneIfDue } from "./audit-prune";
 import {
   applyBrokerOrderPlacementPause,
   checkBrokerHealth,
+  healthSignalsFromProbeFailure,
   persistBrokerHealthSkipRun,
+  releaseBrokerPlacementPauseToOwner,
   shouldPersistBrokerHealthSkip,
   type ApplyBrokerPauseResult
 } from "./broker-health";
 import { sendNotification } from "./notifications";
 import { expireStalePendingProposals } from "./proposal-revalidation";
-import { hasInFlightStrategyWork, markStaleRunningRuns } from "./db-execution";
+import { hasInFlightStrategyWork } from "./db-execution";
+import { sweepStaleRunsAndRetry } from "./strategy-run-retry";
 import { checkRegimeFlip } from "./regime-watch";
 import { getBrokerGateway } from "./broker";
 import { deriveExecutionState } from "./execution-mode";
@@ -518,9 +521,16 @@ const tickGuardHost = globalThis as unknown as {
  *  resume before those pages.  Override with SCHEDULER_TICK_WATCHDOG_MS. */
 export const DEFAULT_TICK_WATCHDOG_MS = 120_000;
 export const TICK_WATCHDOG_POLL_MS = 15_000;
-/** Serial per-account health probe ceiling.  Longer than SCHEDULER_BROKER_TIMEOUT_MS (15s)
- *  because checkBrokerHealth runs getAccounts+getPortfolio whose first+retry budget is 16+8s. */
+/** Serial per-account health probe ceiling.  Above the 16s+8s first+retry budget of the
+ *  getAccounts+getPortfolio reads checkBrokerHealth makes (the order-capability probe then reads
+ *  the 15s account cache).  Wrapped in withLaneDeadline so an expiry says whether it was the
+ *  broker or a pinned event loop. */
 export const SCHEDULER_HEALTH_PROBE_TIMEOUT_MS = 30_000;
+
+/** Ceiling for the awaited material-event drain.  DB-only work, not a broker read, so it keeps
+ *  the original 15s instead of following SCHEDULER_BROKER_TIMEOUT_MS up to 30s — an awaited lane
+ *  here delays every account's tick body. */
+export const MATERIAL_EVENT_DRAIN_TIMEOUT_MS = 15_000;
 
 export type SchedulerTickWatchdogResult = "idle" | "waiting" | "unwedged";
 
@@ -652,6 +662,23 @@ export async function reconcileAutonomyOnBoot(): Promise<void> {
           const labels = haltedByUser.get(userId) ?? [];
           labels.push(label);
           haltedByUser.set(userId, labels);
+        } else if (policy.systemState === "halted") {
+          // A broker-health AUTO-pause is "active, paused for the broker" — without this, the
+          // first healthy probe after boot would auto-resume it even though the owner opted out
+          // of resuming autonomy after a restart.  Hand the halt to the owner like any other
+          // active account at boot (board 687a5fb4).
+          const released = releaseBrokerPlacementPauseToOwner({
+            userId,
+            connectedAccountId: accountId,
+            accountNumber: policy.accountNumber,
+            source: "boot-autonomy-interlock"
+          });
+          if (released) {
+            const label = accountId ? (accounts.find((a) => a.id === accountId)?.label ?? accountId) : "(base account)";
+            const labels = haltedByUser.get(userId) ?? [];
+            labels.push(label);
+            haltedByUser.set(userId, labels);
+          }
         }
       } catch (err) {
         console.error(`[scheduler] boot autonomy reconcile failed for ${userId}/${accountId ?? "(base)"}:`, err);
@@ -764,9 +791,15 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
   // UPDATE has a `WHERE status = 'running'` guard, so even two concurrent sweeps won't double-count).
   try {
     await journalLane("stale-run-sweep", {}, () => {
-      const repaired = markStaleRunningRuns(Date.now());
+      // Restart-killed runs that provably placed nothing get ONE queued retry (board 687a5fb4);
+      // eligibility + idempotency live in strategy-run-retry.ts.
+      const { repaired, retry } = sweepStaleRunsAndRetry(Date.now());
       if (repaired > 0) console.log(`[scheduler] marked ${repaired} stale running run(s) as failed`);
-      return { status: repaired > 0 ? ("ok" as const) : ("skipped" as const), summary: `repaired=${repaired}` };
+      if (retry.enqueued > 0) console.log(`[scheduler] queued ${retry.enqueued} one-time retry(ies) for restart-killed run(s)`);
+      return {
+        status: repaired > 0 ? ("ok" as const) : ("skipped" as const),
+        summary: `repaired=${repaired} retried=${retry.enqueued} retrySkipped=${retry.skipped}`
+      };
     });
   } catch (err) {
     console.error("[scheduler] stale-run sweep error:", err);
@@ -833,7 +866,7 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
   try {
     await withDeadline(
       journalLane("material-event-drain", {}, () => drainMaterialEventQueue()),
-      SCHEDULER_BROKER_TIMEOUT_MS,
+      MATERIAL_EVENT_DRAIN_TIMEOUT_MS,
       "material-event-drain timeout"
     );
   } catch (err) {
@@ -1330,19 +1363,44 @@ async function tickInner(signal?: AbortSignal): Promise<void> {
         // Hard deadline: Alpaca REST has hung past 14s (inflight-deadline.ts); without this the
         // serial per-account await pins `__tickInFlight`, skips later interval ticks, and the
         // 90s lease expires (Firefighter SOCRATIC-TRADE-4, 2026-08-31).
+        //
+        // withLaneDeadline (not plain withDeadline, board 687a5fb4): the expiry carries how much of
+        // the window the event loop was pinned.  A stall-dominated expiry is the APP's fault —
+        // skip this tick's launch with that honest reason and never count it toward the
+        // auto-halt streak; any other expiry is a probe timeout, streak-eligible (3 in a row),
+        // never a first-strike halt.  Production 2026-09-22..24: 21 of 23 broker skips were this
+        // first-strike halt during RTH stalls, not an Alpaca outage.
         let healthSignals: Awaited<ReturnType<typeof checkBrokerHealth>>;
         try {
-          healthSignals = await withDeadline(
+          healthSignals = await withLaneDeadline(
             checkBrokerHealth(userId, account, brokerGateway),
             SCHEDULER_HEALTH_PROBE_TIMEOUT_MS,
-            "checkBrokerHealth timeout"
+            "checkBrokerHealth timeout",
+            "broker-health-probe",
+            { wraps: "call" }
           );
         } catch (err) {
-          healthSignals = {
-            isHealthy: false,
-            reason: `Broker health check timed out: ${safeErrorMessage(err)}`,
-            category: "connectivity"
-          };
+          healthSignals = healthSignalsFromProbeFailure(err);
+        }
+        if (healthSignals.processStall) {
+          // Visible in audit (per occurrence — each needs a >=75% stall of the probe window, so
+          // this is rare by construction) and in the broker-health-gate journal row below.
+          try {
+            audit(
+              "broker_health_probe_process_stalled",
+              {
+                reason: healthSignals.reason,
+                stalledMs: healthSignals.processStall.stalledMs,
+                elapsedMs: healthSignals.processStall.elapsedMs,
+                source: "scheduler-gate",
+                action: "skipped_strategy_launch_this_tick"
+              },
+              userId,
+              accountId
+            );
+          } catch (err) {
+            console.error("[scheduler] process-stall audit failed:", err);
+          }
         }
         const pauseResult = await applyBrokerOrderPlacementPause({
           userId,

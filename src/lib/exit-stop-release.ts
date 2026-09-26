@@ -406,7 +406,9 @@ export async function placeExitReleasingOwnStops<T>(input: ExitStopReleaseRun, p
     if (!row) continue;
     try {
       const order = (lastOrders ?? []).find((o) => o.id === result.stop.brokerOrderId);
-      const booked = settleReleasedProtectiveStop({ userId, accountNumber, executionMode: run.executionMode, row, exitSide, order: result.outcome === "filled" ? order : undefined });
+      const booked = await sqliteYieldRetry(() =>
+        settleReleasedProtectiveStop({ userId, accountNumber, executionMode: run.executionMode, row, exitSide, order: result.outcome === "filled" ? order : undefined })
+      );
       if (booked > 0) result.filledQuantity = booked;
     } catch (err) {
       audit("exit_stop_release_bookkeeping_error", { ...auditBase, brokerOrderId: result.stop.brokerOrderId, error: errMsg(err) }, userId, connectedAccountId);

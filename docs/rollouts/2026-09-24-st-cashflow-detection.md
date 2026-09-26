@@ -126,7 +126,8 @@ Exact files:
   pairing is day-consistent; local `portfolio_snapshots` were not used because they are taken
   at arbitrary run times and can sit on either side of a transfer.  If history is unavailable
   the recompute falls back to ledger-only and says so in `warnings`.
-- **One-run deferral, not suppression.**  A ≥ 20% run-over-run fall with no ledger flow is far
+- **One-run deferral, not suppression** (superseded 2026-09-25: now an owner preference, default
+  off — see § 7).  A ≥ 20% run-over-run fall with no ledger flow is far
   more often a cash-out than a loss between two consecutive runs, but it could be a crash.  The
   breach is still reported and audited; only an opted-in hard action waits one run, and a
   baseline is never deferred twice (a persistently unreadable ledger cannot defer forever).
@@ -203,3 +204,94 @@ halted) remains the owner's call on the console.
   deposits (IRA accounts overview doc).
 - Portfolio history supports `cashflow_types` (per-window cash-flow totals by activity type);
   not used here, but it is a candidate cross-check for the ledger in a follow-up.
+
+## 7. Review Round (2026-09-25)
+
+PR #3753 merged (2026-09-25 8:14 PM CT) before the independent review round finished, so these
+fixes land in follow-up PR #3795 from the re-created branch `claude/st-cashflow-detection`
+(carries `do-not-automerge`).  Every finding was checked against the code; all four were real.
+
+### Fixed
+
+1. **P1 — weekend / holiday flows in the daily-close replay** (`replayHighWaterMarkFromDailyHistory`).
+   The unexplained-drop check was skipped only when a flow landed on the same calendar day as a
+   close.  Alpaca dates CSW / CSD / ACATC on any day, but closes exist only for trading days:
+   Friday close $100, Saturday withdrawal -$50, Monday close $50 reported Monday as a 50%
+   unexplained drop, so the recompute returned 409 for a transfer the ledger fully explained.
+   The replay now accumulates `flowSincePrevClose` and skips the check when any flow landed since
+   the previous close.  The persisted HWM value was already right.
+2. **P2 — a deposit the ratchet already absorbed was added again.**  Deposits applied as
+   `prevHwm + D`, but `prevHwm` could already hold D: observations written before #3753 carry
+   empty applied ids (main's ledger read was failing), so the 2-day overlap re-read absorbed
+   deposits; and a failed ledger read keeps the observation but still ratchets the mark, so a
+   deposit landing during an outage was added again on recovery (E=1000 + 1000 deposit gave HWM
+   3000, a 33% phantom drawdown).  Start-of-day equity had the same double count.
+   - Observations store `hwm` (the mark at the observation) and `ledgerVersion`
+     (`HWM_LEDGER_VERSION = 2`).  Flows apply from `min(obs.hwm, prevHwm)`; a ratchet since the
+     observation is kept net of withdrawals only, `max(fromObservation, ratchetCarry)`.  With the
+     mark unchanged since the observation (the ordinary path) the result equals the old formula.
+   - The live loader treats an observation without the current `ledgerVersion` as a first
+     observation: seed applied ids, apply nothing.  The ops recompute stamps both fields.
+   - Start-of-day equity adds today's deposits only when the observation the flows are fresh
+     against was taken today (start-of-day was captured at or before it).  Otherwise deposits are
+     left out and withdrawals still subtracted — the reading that cannot manufacture a loss.
+3. **P2 — the one-run hold overrode an owner's opted-in hard action.**  `deferHardAction` now
+   requires the new owner preference `riskRules.drawdownUnexplainedDropGrace === true` (default
+   off; `PUT /api/policy` validates it as a boolean and exempts it from the numeric sweep).  By
+   default a configured `close_only` / `halt` applies on the run the breach happens.  The breach
+   reason still says the fall was unexplained and possibly a pending withdrawal, and the
+   pending-drop follow-up still re-bases the HWM when the withdrawal posts.
+4. **P2 — dashboard reader.**  `computeDashboardSnapshot` now reads through
+   `fetchAlpacaNonTradeActivities(...).activities`, like `risk-hwm.ts` and
+   `ops-account-activity.ts`, so a rejected `category` falls back to the documented type list
+   instead of collapsing to an empty ledger.
+
+### Declined
+
+None.
+
+### Decisions & trade-offs
+
+- **Positive-evidence deferral not built.**  The reviewer's first option (defer only on a pending
+  transfer row or the transfers API) was not taken: Alpaca's Trading API has no documented
+  pending-transfer signal we could verify from here, and a guessed one would be a new money-path
+  heuristic.  The preference keeps the mechanism available to the owner without changing the
+  default.
+- **Ambiguity resolves leniently.**  When a ratchet happened during a ledger outage, whether it
+  already holds a deposit is unknowable; the chosen reading never adds drawdown (it can under-count
+  a deposit that landed after a genuine new peak inside the outage window).
+- **Not addressed (pre-existing, documented):** a deposit whose ledger row posts a run AFTER the
+  balance moves (ledger lag with the observation already advanced) is still added on top of the
+  ratchet.  The withdrawal side of lag is handled by the pending-drop follow-up; a symmetric
+  "pending rise" is a candidate follow-up if lagging CSD rows are ever observed in prod.
+
+### Touched files
+
+- `src/lib/risk-breaker.ts`, `src/lib/risk-hwm.ts`, `src/lib/dashboard.ts`, `src/lib/strategy.ts`
+  (comment), `src/lib/types.ts`, `app/api/policy/route.ts`
+- `test/risk-breaker.test.ts`, `test/ops-hwm-recompute.test.ts`,
+  `test/drawdown-breaker-action-api.test.ts`, `test/alpaca-activity-ledger.test.ts`
+- `STATUS.md`, `docs/EFFORT-LOG.md`, this note
+
+### Verification
+
+Node 24 (`export PATH=/opt/homebrew/opt/node@24/bin:$PATH`).  Mac load is high from parallel
+lanes; the full suite + build run in the required `verify` CI check.
+
+- New tests first, before the fix: `npx vitest run test/risk-breaker.test.ts
+  test/alpaca-activity-ledger.test.ts test/ops-hwm-recompute.test.ts` — 8 failed / 53 passed.
+- After the fix: `npx vitest run test/risk-breaker.test.ts test/alpaca-activity-ledger.test.ts
+  test/ops-hwm-recompute.test.ts test/drawdown-breaker-action-api.test.ts
+  test/ops-account-activity.test.ts test/broker-cash-flows.test.ts test/guard-enablement.test.ts
+  test/strategy-moneypath-drawdown-flip.test.ts test/alpaca-account-insights.test.ts` — 9 files,
+  108 tests passed.
+- `npx tsc --noEmit` — clean.
+- `npm run lint` — 0 errors (grandfathered warnings only).
+
+### Next steps
+
+- Owner: decide whether to turn on `riskRules.drawdownUnexplainedDropGrace` for accounts that use
+  a hard `drawdownBreakerAction` (default off; no behavior change until then).
+- The post-deploy Roth diagnostic + recompute in § 5 are unchanged.  After this deploys, the first
+  live run per account re-seeds applied ids (no flows applied that run), then flows apply normally.
+

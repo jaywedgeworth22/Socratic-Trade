@@ -54,7 +54,7 @@ const buyProposal = (): any => ({
   entryMarketRegime: "t"
 });
 
-async function setupWithFallback(accountNumber: string) {
+async function setupWithFallback(accountNumber: string, redTeamFallbackModels: string[] = ["anthropic/claude-opus-4-8"]) {
   const { setPolicy, setStrategyPrompt } = await import("../src/lib/db");
   process.env.OPENROUTER_API_KEY = "test-key";
   process.env.OPENROUTER_API_URL = "https://openrouter.ai/v1/chat/completions";
@@ -63,7 +63,7 @@ async function setupWithFallback(accountNumber: string) {
     accountNumber,
     llmModel: "openai/gpt-4.1-mini",
     redTeamLlmModel: "mistralai/mistral-medium-3.5",
-    redTeamFallbackModels: ["anthropic/claude-opus-4-8"]
+    redTeamFallbackModels
   });
   setStrategyPrompt("BASE STRATEGY");
 }
@@ -97,8 +97,11 @@ describe("debateProposal — OpenRouter access-error (403) failover", () => {
     expect(calledModels.length).toBe(2);
     expect(calledModels[0]).toContain("mistral");
     expect(calledModels[1]).toContain("claude");
-    // The 403'd slug is now cooling down for future rotation picks (model-rotation.ts).
-    expect(isOpenRouterModelCoolingDown("mistralai/mistral-medium-3.5")).toBe(true);
+    // The 403'd slug is now cooling down for THIS user's future rotation picks (model-rotation.ts).
+    // A 403 is a fact about one key/region, so it is scoped to the user whose key saw it (review
+    // round 2026-09-25); another user's rotation is untouched.
+    expect(isOpenRouterModelCoolingDown("mistralai/mistral-medium-3.5", Date.now(), "local")).toBe(true);
+    expect(isOpenRouterModelCoolingDown("mistralai/mistral-medium-3.5", Date.now(), "someone-else")).toBe(false);
     // The reviewer that actually served the verdict is recorded, not the primary that 403'd.
     expect(result.model).toContain("claude");
   });
@@ -120,7 +123,7 @@ describe("debateProposal — OpenRouter access-error (403) failover", () => {
     expect(result.available).toBe(true);
     expect(calledModels.length).toBe(2);
     // Transient — must NOT be treated as a permanent access error and cooled.
-    expect(isOpenRouterModelCoolingDown("mistralai/mistral-medium-3.5")).toBe(false);
+    expect(isOpenRouterModelCoolingDown("mistralai/mistral-medium-3.5", Date.now(), "local")).toBe(false);
   });
 
   it("fails closed with a clear, actionable reason once every planned attempt 403s — and cools every attempted slug", async () => {
@@ -144,7 +147,108 @@ describe("debateProposal — OpenRouter access-error (403) failover", () => {
     // Clear, actionable message — not a bare "unavailable".
     expect(result.reason).toContain("doesn't have access to this model or region");
     expect(calledModels.length).toBe(2); // both the primary AND the configured fallback were tried
-    expect(isOpenRouterModelCoolingDown("mistralai/mistral-medium-3.5")).toBe(true);
-    expect(isOpenRouterModelCoolingDown("anthropic/claude-opus-4-8")).toBe(true);
+    // Review round 2026-09-25: the exhaustion message names EVERY reviewer model it tried, not just
+    // the last error, so an operator can see the failover actually ran.
+    expect(result.reason).toContain("Tried 2 reviewer models");
+    expect(result.reason).toMatch(/mistral-medium/);
+    expect(result.reason).toMatch(/claude-opus/);
+    expect(isOpenRouterModelCoolingDown("mistralai/mistral-medium-3.5", Date.now(), "local")).toBe(true);
+    expect(isOpenRouterModelCoolingDown("anthropic/claude-opus-4-8", Date.now(), "local")).toBe(true);
+  });
+
+  it("does NOT cool the slug on a moderation-flagged 403 (one prompt, not the model), but still fails over", async () => {
+    const { debateProposal } = await import("../src/lib/red-team");
+    const { isOpenRouterModelCoolingDown } = await import("../src/lib/model-rotation");
+    await setupWithFallback("RT_403_MODERATION");
+    const calledModels: string[] = [];
+    vi.stubGlobal("fetch", async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { model?: string };
+      calledModels.push(body.model ?? "");
+      if ((body.model ?? "").includes("claude")) return jsonResponse({ choices: [{ message: { content: APPROVE_VERDICT } }] }, 200);
+      return jsonResponse(
+        {
+          error: {
+            code: 403,
+            message: 'mistralai/mistral-medium-3.5 requires moderation on OpenRouter. Your input was flagged for "violence".',
+            metadata: { reasons: ["violence"], flagged_input: "...", provider_name: "Mistral", model_slug: "mistralai/mistral-medium-3.5" }
+          }
+        },
+        403
+      );
+    });
+
+    const result = await debateProposal(buyProposal(), undefined);
+
+    expect(result.available).toBe(true);
+    expect(calledModels.length).toBe(2);
+    expect(isOpenRouterModelCoolingDown("mistralai/mistral-medium-3.5", Date.now(), "local")).toBe(false);
+    expect(isOpenRouterModelCoolingDown("mistralai/mistral-medium-3.5")).toBe(false);
+  });
+});
+
+// Review round 2026-09-25 (P1): a fallback reviewer must never be the model that PROPOSED the
+// trade.  Red's implicit rotation chain used to put Green's own pick first; the strategy loop now
+// excludes it when planning, and debateProposal also refuses at call time so a Green FAILOVER onto
+// a model in Red's chain is covered too.  Before #3761 the review was simply unavailable (held for
+// human approval) in this situation; a self-review that auto-executes under Autopilot is worse.
+describe("debateProposal: a fallback reviewer never reviews its own proposal", () => {
+  it("skips a fallback that is the proposer and fails closed when nothing else remains", async () => {
+    const { debateProposal } = await import("../src/lib/red-team");
+    await setupWithFallback("RT_SELF_REVIEW_ONLY");
+    const calledModels: string[] = [];
+    vi.stubGlobal("fetch", async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { model?: string };
+      calledModels.push(body.model ?? "");
+      if ((body.model ?? "").includes("claude")) return jsonResponse({ choices: [{ message: { content: APPROVE_VERDICT } }] }, 200);
+      return jsonResponse({ error: { message: "Your OpenRouter key doesn't have access to this model or region." } }, 403);
+    });
+
+    const result = await debateProposal({ ...buyProposal(), proposedByModel: "anthropic/claude-opus-4-8" }, undefined);
+
+    expect(result.available).toBe(false);
+    // The proposer was never asked to review itself: only the primary reviewer was called.
+    expect(calledModels.length).toBe(1);
+    expect(calledModels[0]).toContain("mistral");
+    expect(result.reason).toContain("anthropic/claude-opus-4-8");
+    expect(result.reason).toContain("proposed this trade");
+  });
+
+  it("skips the proposer (matched by model line, any spelling) and serves from the next fallback", async () => {
+    const { debateProposal } = await import("../src/lib/red-team");
+    await setupWithFallback("RT_SELF_REVIEW_NEXT", ["gemini-flash-latest", "anthropic/claude-opus-4-8"]);
+    const calledModels: string[] = [];
+    vi.stubGlobal("fetch", async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { model?: string };
+      calledModels.push(body.model ?? "");
+      if ((body.model ?? "").includes("claude") || (body.model ?? "").includes("gemini")) {
+        return jsonResponse({ choices: [{ message: { content: APPROVE_VERDICT } }] }, 200);
+      }
+      return jsonResponse({ error: { message: "Upstream error." } }, 503);
+    });
+
+    // Green served the proposal via a namespaced spelling of the Gemini Flash line.
+    const result = await debateProposal({ ...buyProposal(), proposedByModel: "openrouter/google/gemini-flash-latest" }, undefined);
+
+    expect(result.available).toBe(true);
+    expect(calledModels.some((model) => model.includes("gemini"))).toBe(false);
+    expect(calledModels[calledModels.length - 1]).toContain("claude");
+    expect(result.model).toContain("claude");
+  });
+
+  it("leaves the owner-chosen PRIMARY reviewer alone even when it matches the proposer", async () => {
+    const { debateProposal } = await import("../src/lib/red-team");
+    await setupWithFallback("RT_SELF_REVIEW_PRIMARY");
+    const calledModels: string[] = [];
+    vi.stubGlobal("fetch", async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { model?: string };
+      calledModels.push(body.model ?? "");
+      return jsonResponse({ choices: [{ message: { content: APPROVE_VERDICT } }] }, 200);
+    });
+
+    const result = await debateProposal({ ...buyProposal(), proposedByModel: "mistralai/mistral-medium-3.5" }, undefined);
+
+    expect(result.available).toBe(true);
+    expect(calledModels.length).toBe(1);
+    expect(calledModels[0]).toContain("mistral");
   });
 });

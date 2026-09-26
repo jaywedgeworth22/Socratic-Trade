@@ -654,6 +654,202 @@ describe("implicitGreenRotationFallbacks", () => {
   });
 });
 
+// 2026-09-25 review round (follow-up to #3761, board 687a5fb4).  Reviewers found three gaps in
+// the rotation failover this lane added: (1) Red's implicit fallbacks were built from the FULL
+// pool, so Green's own pick (a preferred failover seat) could be Red's first fallback and the
+// proposer would review its own opening; Green's implicit chain could likewise contain Red's
+// model; (2) the 403 cooldown was one process-wide Map keyed by slug only, so one user's key
+// restriction (or a moderation-flagged prompt) cooled that model for every user; (3) the new
+// `redRotationPool` field had no coverage at all.
+describe("rotation review round: cross-seat exclusion, per-user 403 cooldown, redRotationPool", () => {
+  it("rotates the red seat alone and exposes redRotationPool (green seat untouched)", async () => {
+    noEnvKeys();
+    const userId = `rot-red-${randomUUID()}`;
+    const { upsertUserApiKey } = await import("../src/lib/db");
+    const { resolveModelRotationForRun, eligibleRotationPool, LLM_MODEL_ROTATION_SENTINEL } = await import("../src/lib/model-rotation");
+    upsertUserApiKey(userId, "openai", "sk-test", "test");
+    const { pool } = await eligibleRotationPool(userId);
+    expect(pool.length).toBeGreaterThanOrEqual(2);
+    // A fixed Green model that is NOT in this user's rotation pool (only an OpenAI key resolves, so
+    // no Claude model is eligible) leaves Red's pool untouched.
+    expect(pool).not.toContain("claude-haiku-latest");
+    const out = await resolveModelRotationForRun({
+      userId,
+      accountId: "acct-red",
+      runId: randomUUID(),
+      policy: { llmModel: "claude-haiku-latest", redTeamLlmModel: LLM_MODEL_ROTATION_SENTINEL },
+      random: mulberry32(7)
+    });
+    expect(out.redTeamLlmModel).toBeTruthy();
+    expect(out.redTeamLlmModel).not.toBe(LLM_MODEL_ROTATION_SENTINEL);
+    expect(pool).toContain(out.redTeamLlmModel!);
+    expect(out.llmModel).toBeUndefined();
+    expect(out.greenRotationPool).toBeUndefined();
+    expect(out.redRotationPool).toEqual(pool);
+  });
+
+  it("a red-only rotation never picks (or falls back to) the Green seat's fixed model", async () => {
+    noEnvKeys();
+    const userId = `rot-red-fixed-green-${randomUUID()}`;
+    const { upsertUserApiKey } = await import("../src/lib/db");
+    const { resolveModelRotationForRun, eligibleRotationPool, LLM_MODEL_ROTATION_SENTINEL } = await import("../src/lib/model-rotation");
+    upsertUserApiKey(userId, "openai", "sk-test", "test");
+    const { pool } = await eligibleRotationPool(userId);
+    expect(pool.length).toBeGreaterThanOrEqual(2);
+    const greenFixed = pool[0]!;
+    for (const seed of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+      const out = await resolveModelRotationForRun({
+        userId,
+        accountId: "acct-red-fixed",
+        runId: randomUUID(),
+        policy: { llmModel: greenFixed, redTeamLlmModel: LLM_MODEL_ROTATION_SENTINEL },
+        random: seed === 0 ? () => 0 : mulberry32(seed)
+      });
+      expect(out.redTeamLlmModel).not.toBe(greenFixed);
+      expect(out.redRotationPool).toEqual(pool.filter((model) => model !== greenFixed));
+    }
+  });
+
+  it("when both seats rotate, redRotationPool excludes Green's pick", async () => {
+    noEnvKeys();
+    const userId = `rot-both-pool-${randomUUID()}`;
+    const { upsertUserApiKey } = await import("../src/lib/db");
+    const { resolveModelRotationForRun, eligibleRotationPool, LLM_MODEL_ROTATION_SENTINEL } = await import("../src/lib/model-rotation");
+    upsertUserApiKey(userId, "openai", "sk-test", "test");
+    const { pool } = await eligibleRotationPool(userId);
+    const out = await resolveModelRotationForRun({
+      userId,
+      accountId: "acct-both-pool",
+      runId: randomUUID(),
+      policy: { llmModel: LLM_MODEL_ROTATION_SENTINEL, redTeamLlmModel: LLM_MODEL_ROTATION_SENTINEL },
+      random: () => 0
+    });
+    expect(out.greenRotationPool).toEqual(pool);
+    expect(out.redRotationPool).toEqual(pool.filter((model) => model !== out.llmModel));
+    expect(out.redRotationPool).not.toContain(out.llmModel);
+  });
+
+  it("planRotationImplicitFallbacks never offers Green's model to Red, nor Red's model to Green (reviewer P1 scenario)", async () => {
+    const { planRotationImplicitFallbacks, MODEL_ROTATION_POOL, clearOpenRouterModelCooldowns } = await import("../src/lib/model-rotation");
+    clearOpenRouterModelCooldowns();
+    const pool = [...MODEL_ROTATION_POOL];
+    expect(pool).toContain("gemini-flash-latest");
+    expect(pool).toContain("mistral-medium-latest");
+    // Exact reviewer scenario: Green picks gemini-flash-latest (the FIRST preferred failover
+    // seat) and Red picks something else.  Before the fix Red's first fallback was
+    // gemini-flash-latest, i.e. the proposer reviewing its own opening.
+    const planned = planRotationImplicitFallbacks({
+      userId: "local",
+      greenRotationPool: pool,
+      redRotationPool: pool, // even handed the FULL pool, the planner must exclude Green's model
+      greenPick: "gemini-flash-latest",
+      redPick: "claude-haiku-latest",
+      greenPrimary: "gemini-flash-latest",
+      redPrimary: "claude-haiku-latest"
+    });
+    expect(planned.red).not.toContain("gemini-flash-latest");
+    expect(planned.red).not.toContain("claude-haiku-latest");
+    expect(planned.red.length).toBe(2);
+    expect(planned.green).not.toContain("claude-haiku-latest");
+    expect(planned.green).not.toContain("gemini-flash-latest");
+    expect(planned.green.length).toBe(2);
+
+    // Reverse direction: Red picked a preferred Green failover seat, so Green must not fail over to it.
+    const reverse = planRotationImplicitFallbacks({
+      userId: "local",
+      greenRotationPool: pool,
+      redRotationPool: pool,
+      greenPick: "claude-haiku-latest",
+      redPick: "gemini-flash-latest",
+      greenPrimary: "claude-haiku-latest",
+      redPrimary: "gemini-flash-latest"
+    });
+    expect(reverse.green).not.toContain("gemini-flash-latest");
+    expect(reverse.red).not.toContain("claude-haiku-latest");
+
+    // A FIXED (non-rotating) seat's model is excluded too, compared by model line: a namespaced
+    // or wire spelling of the same model must not slip through.
+    const fixedGreen = planRotationImplicitFallbacks({
+      userId: "local",
+      redRotationPool: pool,
+      redPick: "claude-haiku-latest",
+      greenPrimary: "openrouter/google/gemini-flash-latest",
+      redPrimary: "claude-haiku-latest"
+    });
+    expect(fixedGreen.green).toEqual([]);
+    expect(fixedGreen.red).not.toContain("gemini-flash-latest");
+    expect(fixedGreen.red.length).toBe(2);
+
+    // Owner-configured fallbacks win unchanged: no implicit chain is planned for that seat.
+    const explicit = planRotationImplicitFallbacks({
+      userId: "local",
+      greenRotationPool: pool,
+      redRotationPool: pool,
+      greenPick: "gemini-flash-latest",
+      redPick: "claude-haiku-latest",
+      greenPrimary: "gemini-flash-latest",
+      redPrimary: "claude-haiku-latest",
+      explicitGreenFallbacks: ["gpt-5.6-sol"],
+      explicitRedFallbacks: ["mistral-small-latest"]
+    });
+    expect(explicit).toEqual({ green: [], red: [] });
+  });
+
+  it("scopes a 403 cooldown to the user whose key saw it; a 404 stays catalog-wide", async () => {
+    const {
+      clearOpenRouterModelCooldowns,
+      implicitGreenRotationFallbacks,
+      isOpenRouterModelCoolingDown,
+      recordOpenRouterModelNotFound,
+      applyRotationAvailabilityFailOpen
+    } = await import("../src/lib/model-rotation");
+    clearOpenRouterModelCooldowns();
+    try {
+      const regionBody = '{"error":{"message":"This model is not available in your region.","code":403}}';
+      expect(recordOpenRouterModelNotFound("mistralai/mistral-medium-3.5", { status: 403, userId: "user-a", detail: regionBody })).toBe(true);
+      expect(isOpenRouterModelCoolingDown("mistralai/mistral-medium-3.5", Date.now(), "user-a")).toBe(true);
+      // Another user, whose key may well have access, is untouched.
+      expect(isOpenRouterModelCoolingDown("mistralai/mistral-medium-3.5", Date.now(), "user-b")).toBe(false);
+      expect(isOpenRouterModelCoolingDown("mistralai/mistral-medium-3.5")).toBe(false);
+      expect(implicitGreenRotationFallbacks(["a", "mistralai/mistral-medium-3.5", "c"], "a", [], Date.now(), "user-b")).toEqual([
+        "mistralai/mistral-medium-3.5",
+        "c"
+      ]);
+      expect(implicitGreenRotationFallbacks(["a", "mistralai/mistral-medium-3.5", "c"], "a", [], Date.now(), "user-a")).toEqual(["c"]);
+      expect(applyRotationAvailabilityFailOpen(["mistralai/mistral-medium-3.5", "c"], Date.now(), "user-b")).toEqual(["mistralai/mistral-medium-3.5", "c"]);
+      expect(applyRotationAvailabilityFailOpen(["mistralai/mistral-medium-3.5", "c"], Date.now(), "user-a")).toEqual(["c"]);
+
+      // 404 = unknown slug for everyone: catalog-wide.
+      expect(recordOpenRouterModelNotFound("anthropic/claude-opus-4-8", { status: 404, userId: "user-a" })).toBe(true);
+      expect(isOpenRouterModelCoolingDown("anthropic/claude-opus-4-8", Date.now(), "user-b")).toBe(true);
+      expect(isOpenRouterModelCoolingDown("anthropic/claude-opus-4-8")).toBe(true);
+    } finally {
+      clearOpenRouterModelCooldowns();
+    }
+  });
+
+  it("never cools a model on a moderation-flagged 403 (a property of one prompt, not the model)", async () => {
+    const { clearOpenRouterModelCooldowns, isOpenRouterModelCoolingDown, recordOpenRouterModelNotFound } = await import(
+      "../src/lib/model-rotation"
+    );
+    clearOpenRouterModelCooldowns();
+    try {
+      const moderation = JSON.stringify({
+        error: {
+          code: 403,
+          message: 'openai/gpt-5.6-sol requires moderation on OpenRouter. Your input was flagged for "violence".',
+          metadata: { reasons: ["violence"], flagged_input: "...", provider_name: "OpenAI", model_slug: "openai/gpt-5.6-sol" }
+        }
+      });
+      expect(recordOpenRouterModelNotFound("openai/gpt-5.6-sol", { status: 403, userId: "user-a", detail: moderation })).toBe(false);
+      expect(isOpenRouterModelCoolingDown("openai/gpt-5.6-sol", Date.now(), "user-a")).toBe(false);
+      expect(isOpenRouterModelCoolingDown("openai/gpt-5.6-sol")).toBe(false);
+    } finally {
+      clearOpenRouterModelCooldowns();
+    }
+  });
+});
+
 describe("sentinel handling at the edges", () => {
   it("resolveOpenAiModel treats the sentinel as unset (safety net for non-run consumers)", async () => {
     vi.stubEnv("OPENAI_MODEL", "");

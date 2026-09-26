@@ -11,6 +11,8 @@ import type {
   Portfolio,
   ReviewedOrder,
   BrokerGateway,
+  BrokerExecution,
+  BrokerOrderLookup,
   EquityOrderInput,
   GetEquityOrdersOptions,
   OptionPosition
@@ -663,55 +665,33 @@ class TradierBrokerGateway implements BrokerGateway {
     // rows — often option/combo activity — and hid a later-page GTC equity protective stop.
     // liveExitOrderCoverage then saw no exit and the synthetic-stop monitor double-sold.
     // Continue on the RAW page (any class). Do not stop when the equity filter drops a page.
-    const maxPages = 50;
     return this.trackHealth(async () => {
       const all: Record<string, unknown>[] = [];
-      const seen = new Set<string>();
-      for (let page = 1; page <= maxPages; page++) {
-        const body = await this.request<{ orders?: { order?: unknown } | string }>("GET", `/accounts/${accountNumber}/orders`, {
-          query: { page, includeTags: "true" }
-        });
-        const ordersField = typeof body.orders === "object" && body.orders ? (body.orders as Record<string, unknown>).order : undefined;
-        const rows = arr<Record<string, unknown>>(ordersField);
-        if (rows.length === 0) break; // genuinely no more pages
-        // Pagination continuation is decided on the RAW page (ALL classes), NOT the
-        // post-equity-filter count. A mixed equity+options account can have a page holding
-        // only option/combo rows sitting BEFORE a later page that carries a resting
-        // protective EQUITY exit; breaking as soon as a page yields zero *equity* rows
-        // would stop before that exit, hiding it from liveExitOrderCoverage and letting
-        // the synthetic-stop monitor place a DUPLICATE.
-        let newThisPage = 0;
-        for (const o of rows) {
-          const id = String(o.id);
-          if (seen.has(id)) continue;
-          seen.add(id);
-          newThisPage += 1;
-          const oClass = String(o.class ?? "").toLowerCase();
-          if (oClass === "equity") {
-            all.push(o);
-          } else if (["oto", "otoco", "oco", "multileg", "combo"].includes(oClass)) {
-            // Keep the container for placement-reconciliation identity even when Tradier
-            // omits top-level `side`.  Legs below still omit `tag` so they cannot steal
-            // the entry's clientOrderId.
-            if (o.symbol && (o.side || o.tag)) all.push(o);
-            const legField = o.leg ?? o.legs;
-            if (legField) {
-              for (const leg of arr<Record<string, unknown>>(legField)) {
-                if (String(leg.class ?? "").toLowerCase() !== "equity") continue;
-                all.push({
-                  symbol: o.symbol,
-                  status: o.status,
-                  create_date: o.create_date,
-                  transaction_date: o.transaction_date,
-                  duration: o.duration,
-                  // Deliberately omitting `tag: o.tag` for exit legs so they don't usurp the entry leg's clientOrderId
-                  ...leg
-                });
-              }
+      for (const o of await this.fetchRawOrderRows(accountNumber)) {
+        const oClass = String(o.class ?? "").toLowerCase();
+        if (oClass === "equity") {
+          all.push(o);
+        } else if (["oto", "otoco", "oco", "multileg", "combo"].includes(oClass)) {
+          // Keep the container for placement-reconciliation identity even when Tradier
+          // omits top-level `side`.  Legs below still omit `tag` so they cannot steal
+          // the entry's clientOrderId.
+          if (o.symbol && (o.side || o.tag)) all.push(o);
+          const legField = o.leg ?? o.legs;
+          if (legField) {
+            for (const leg of arr<Record<string, unknown>>(legField)) {
+              if (String(leg.class ?? "").toLowerCase() !== "equity") continue;
+              all.push({
+                symbol: o.symbol,
+                status: o.status,
+                create_date: o.create_date,
+                transaction_date: o.transaction_date,
+                duration: o.duration,
+                // Deliberately omitting `tag: o.tag` for exit legs so they don't usurp the entry leg's clientOrderId
+                ...leg
+              });
             }
           }
         }
-        if (newThisPage === 0) break; // fully-duplicate page — done
       }
       const scoped = fullHistory
         ? all
@@ -725,6 +705,76 @@ class TradierBrokerGateway implements BrokerGateway {
             return Number.isFinite(sinceMs) && Number.isFinite(createdMs) && createdMs >= sinceMs;
           });
       return scoped.map((o) => mapTradierOrder(o));
+    }, { retryTransient: true });
+  }
+
+  // Walk the RAW order listing (every class), up to 50 pages, deduped by id.  Pagination continues
+  // on the raw page, never on a post-filter count: a page holding only option/combo rows can sit in
+  // front of a later page that carries a resting protective EQUITY exit (see getEquityOrders).
+  // NOTE: Tradier documents this listing as the CURRENT market session's orders (plus whatever is
+  // still working).  A filled or canceled order from an earlier session is not in it — use
+  // getEquityOrder for broker truth on a known id.
+  private async fetchRawOrderRows(accountNumber: string): Promise<Record<string, unknown>[]> {
+    const maxPages = 50;
+    const rows: Record<string, unknown>[] = [];
+    const seen = new Set<string>();
+    for (let page = 1; page <= maxPages; page++) {
+      const body = await this.request<{ orders?: { order?: unknown } | string }>("GET", `/accounts/${accountNumber}/orders`, {
+        query: { page, includeTags: "true" }
+      });
+      const ordersField = typeof body.orders === "object" && body.orders ? (body.orders as Record<string, unknown>).order : undefined;
+      const pageRows = arr<Record<string, unknown>>(ordersField);
+      if (pageRows.length === 0) break; // genuinely no more pages
+      let newThisPage = 0;
+      for (const o of pageRows) {
+        const id = String(o.id);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        newThisPage += 1;
+        rows.push(o);
+      }
+      if (newThisPage === 0) break; // fully-duplicate page — done
+    }
+    return rows;
+  }
+
+  /**
+   * Broker truth for ONE order id (`GET /accounts/{account}/orders/{id}`), independent of the
+   * current-session listing.  This is what lets a receipt placed on an earlier session, or a
+   * bracket CONTAINER id the flattened listing never matches, reconcile at all.  A bracket
+   * container comes back as its entry leg's execution under the container's id, plus its exit
+   * legs (see tradierOrderLookupFromRow).  `undefined` only on a definitive not-found; transport
+   * and server failures throw so the caller never mistakes an outage for absence.
+   */
+  async getEquityOrder(accountNumber: string, orderId: string): Promise<BrokerOrderLookup | undefined> {
+    const id = String(orderId ?? "").trim();
+    // Never interpolate an unusable id into the request path (Tradier ids are numeric).
+    if (!/^[A-Za-z0-9_-]+$/.test(id) || id === "undefined") return undefined;
+    let body: { order?: unknown };
+    try {
+      body = await this.trackHealth(
+        () => this.request<{ order?: unknown }>("GET", `/accounts/${accountNumber}/orders/${encodeURIComponent(id)}`, {
+          query: { includeTags: "true" }
+        }),
+        { retryTransient: true }
+      );
+    } catch (error) {
+      if (isTradierOrderNotFound(error)) return undefined;
+      throw error;
+    }
+    const row = body?.order;
+    if (!row || typeof row !== "object" || Array.isArray(row)) {
+      // A 200 without an order object is not proof the order does not exist — surface it.
+      throw new Error(`Tradier order lookup for ${id} returned no order object.`);
+    }
+    return tradierOrderLookupFromRow(row as Record<string, unknown>);
+  }
+
+  /** Executed-order view of the current listing with bracket roles intact (see BrokerExecution). */
+  async listRecentExecutions(accountNumber: string): Promise<BrokerExecution[]> {
+    return this.trackHealth(async () => {
+      const rows = await this.fetchRawOrderRows(accountNumber);
+      return rows.flatMap((row) => executionsFromTradierRow(row));
     }, { retryTransient: true });
   }
 
@@ -1221,6 +1271,142 @@ export function equityRowsFromTradierOrder(row: Record<string, unknown>): Record
     });
   }
   return out;
+}
+
+// A definitive "this order id does not exist" from Tradier: a real HTTP 404, or a 200 carrying its
+// own `{errors: {error: "... not found"}}` envelope that names the order.  Anything else (network,
+// rate limit, 5xx, an unrelated validation error) is NOT absence and must propagate.
+function isTradierOrderNotFound(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Tradier HTTP 404\b/.test(message) || /order[^.]{0,40}not found/i.test(message);
+}
+
+// The raw Tradier side word, only when it is one Tradier actually uses.  mapTradierSideRead maps an
+// unknown or missing side to "buy", which is fine for display but would fabricate a BUY if a
+// broker-originated fill were booked from it.
+function recognizedTradierSide(raw: unknown): OrderSide | undefined {
+  const word = String(raw ?? "").trim().toLowerCase();
+  return word === "buy" || word === "sell" || word === "sell_short" || word === "buy_to_cover" ? mapTradierSideRead(word) : undefined;
+}
+
+function isOpeningSide(side: OrderSide | undefined): boolean {
+  return side === "buy" || side === "short";
+}
+
+function isClosingSide(side: OrderSide | undefined): boolean {
+  return side === "sell" || side === "cover";
+}
+
+function equityLegsWithContainerFallback(row: Record<string, unknown>): Record<string, unknown>[] {
+  const legField = row.leg ?? row.legs;
+  if (legField === undefined || legField === null) return [];
+  return arr<Record<string, unknown>>(legField)
+    .filter((leg) => String(leg.class ?? "").toLowerCase() === "equity")
+    .map((leg) => ({
+      // Container-level fallbacks first, overlaid by the leg's own fields (leg wins).  Execution
+      // fields (exec_quantity / avg_fill_price) are never inherited — a leg only carries its own.
+      symbol: row.symbol,
+      status: row.status,
+      create_date: row.create_date,
+      transaction_date: row.transaction_date,
+      duration: row.duration,
+      ...leg
+    }));
+}
+
+/**
+ * Split a Tradier OTO/OTOCO container into its entry and its exit legs.  Two response shapes are in
+ * circulation and neither is verified against a live multi-leg account, so both are handled:
+ *  - LEG-ENTRY shape: the `leg` array carries every leg the order was placed with (Tradier's
+ *    indexed `symbol[0..n]` form), leg 0 is the opening entry and the rest close it.  Recognized
+ *    only when the leg count matches the class (otoco = 3, oto = 2), leg 0 is an opening side, and
+ *    every other leg is a closing side.
+ *  - CONTAINER-ENTRY shape (the one getEquityOrders / cancelBracketSiblingLegs assume): the
+ *    container's own top-level fields are the entry and `leg` holds only the exits.
+ * Returns undefined for anything that is not an OTO/OTOCO container.
+ */
+export function tradierBracketParts(row: Record<string, unknown>):
+  | { entry: Record<string, unknown>; entryIsLeg: boolean; exits: Record<string, unknown>[] }
+  | undefined {
+  const cls = String(row.class ?? "").toLowerCase();
+  if (cls !== "oto" && cls !== "otoco") return undefined;
+  const legs = equityLegsWithContainerFallback(row);
+  const fullLegCount = cls === "otoco" ? 3 : 2;
+  const first = legs[0];
+  const legEntry =
+    legs.length === fullLegCount &&
+    first !== undefined &&
+    isOpeningSide(recognizedTradierSide(first.side)) &&
+    legs.slice(1).every((leg) => isClosingSide(recognizedTradierSide(leg.side)));
+  if (legEntry) return { entry: first, entryIsLeg: true, exits: legs.slice(1) };
+  return { entry: row, entryIsLeg: false, exits: legs };
+}
+
+/**
+ * The reconciliation view of one Tradier order row.  A plain order maps as-is.  A bracket container
+ * maps to its ENTRY's state and execution under the CONTAINER's id and tag (the id the app stored at
+ * placement), with its exit legs alongside so their executions can be booked too.
+ */
+export function tradierOrderLookupFromRow(row: Record<string, unknown>): BrokerOrderLookup {
+  const parts = tradierBracketParts(row);
+  if (!parts) return { order: mapTradierOrder(row) };
+  const exitLegs = parts.exits.map((leg) => mapTradierOrder({ ...leg, tag: undefined }));
+  if (!parts.entryIsLeg) return { order: mapTradierOrder(row), exitLegs };
+  const entry = parts.entry;
+  const view: Record<string, unknown> = {
+    ...entry,
+    id: row.id,
+    tag: row.tag,
+    symbol: entry.symbol ?? row.symbol,
+    create_date: row.create_date ?? entry.create_date
+  };
+  return {
+    order: mapTradierOrder(view),
+    ...(entry.id !== undefined && entry.id !== null ? { entryLegId: String(entry.id) } : {}),
+    exitLegs
+  };
+}
+
+/**
+ * Every EQUITY execution a raw listing row contributes, with its bracket role.  Rows whose side is
+ * not a recognized Tradier side word are dropped (never booked as a default "buy").
+ *  - class equity: one `single`.
+ *  - OTO/OTOCO: the entry (the leg, or the container itself in the container-entry shape) as
+ *    `entry`, each exit leg as `exit`, all carrying the container id and tag.
+ *  - OCO: every equity leg is an `exit` (an OCO only ever closes).
+ *  - multileg/combo: each equity leg as a `single` under its container.
+ */
+export function executionsFromTradierRow(row: Record<string, unknown>): BrokerExecution[] {
+  const cls = String(row.class ?? "").toLowerCase();
+  if (cls === "equity") {
+    return recognizedTradierSide(row.side) ? [{ order: mapTradierOrder(row), role: "single" }] : [];
+  }
+  const parentOrderId = row.id !== undefined && row.id !== null ? String(row.id) : undefined;
+  const parentClientOrderId = optionalString(row.tag);
+  const withParent = (order: EquityOrder, role: BrokerExecution["role"]): BrokerExecution => ({
+    order,
+    role,
+    ...(parentOrderId ? { parentOrderId } : {}),
+    ...(parentClientOrderId ? { parentClientOrderId } : {})
+  });
+  const parts = tradierBracketParts(row);
+  if (parts) {
+    const out: BrokerExecution[] = [];
+    if (recognizedTradierSide(parts.entry.side)) {
+      out.push(withParent(mapTradierOrder(parts.entryIsLeg ? { ...parts.entry, tag: undefined } : row), "entry"));
+    }
+    for (const exit of parts.exits) {
+      if (recognizedTradierSide(exit.side)) out.push(withParent(mapTradierOrder({ ...exit, tag: undefined }), "exit"));
+    }
+    return out;
+  }
+  if (cls === "oco" || cls === "multileg" || cls === "combo") {
+    const role: BrokerExecution["role"] = cls === "oco" ? "exit" : "single";
+    return equityLegsWithContainerFallback(row)
+      .filter((leg) => recognizedTradierSide(leg.side))
+      .map((leg) => withParent(mapTradierOrder({ ...leg, tag: undefined }), role));
+  }
+  return [];
 }
 
 // Map a raw Tradier order object to our EquityOrder. State is stored RAW (broker-side.ts normalizes).

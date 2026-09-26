@@ -1,5 +1,33 @@
 # Current Status
 
+## 2026-09-25 CLAUDE — Cash-flow HWM review round (follow-up to merged PR #3753, board 687a5fb4, lane F2)
+
+**What.**  Four independent-review findings on the merged cash-flow HWM work, all verified and
+fixed test-first.  (1) P1: the ops recompute's daily-close replay flagged a withdrawal dated on a
+weekend or holiday as an "unexplained" drop (false 409); flows since the previous close now count.
+(2) P2: a deposit the HWM ratchet already absorbed (pre-#3753 observations with no applied ids,
+or a ledger outage then recovery) was added a second time, and start-of-day equity double counted
+it too; observations now store `hwm` + `ledgerVersion`, pre-marker observations re-seed instead of
+re-applying, and flows apply from the mark at the observation.  (3) P2: the one-run hold on an
+unexplained 20% fall is now the owner preference `riskRules.drawdownUnexplainedDropGrace`, default
+off, so an opted-in `close_only` / `halt` applies by default.  (4) P2: the dashboard day-P&L hint
+uses the fallback-aware ledger reader.  **Next:** owner decides whether to turn the grace on; the
+post-deploy Roth diagnostic + recompute commands in the rollout are unchanged.  Follow-up PR
+#3795, branch `claude/st-cashflow-detection` (re-created for the follow-up PR).
+Rollout: `docs/rollouts/2026-09-24-st-cashflow-detection.md` § 7.
+
+## 2026-09-24 CLAUDE — Detect IRA withdrawals and deposits so drawdown math is not fooled (board 687a5fb4, lane F2)
+
+**What.**  The Roth IRA HWM recompute found zero transfers after ~$96 was withdrawn: the ledger
+read sent an `activity_types` filter containing `DIVTX` (not an Alpaca type) and swallowed any
+non-2xx as `[]`, and the recompute then silently reset the HWM to equity.  Ledger reads now use
+`category=non_trade_activity` with client-side classification (IRA contributions, distributions,
+`WH` withholding, `ACATC`, journals); failures are explicit (`flowsUnavailable`), unknown types
+are audited, the recompute replays Alpaca daily closes and returns 409 instead of guessing, and
+the breaker holds an opted-in hard action one run on an unexplained ≥ 20% fall.  New read-only
+`GET /api/ops/account-activity`.  **Next:** after deploy, run the diagnostic then the recompute
+for the Roth account (exact commands in the rollout).  Branch `claude/st-cashflow-detection`.
+Rollout: `docs/rollouts/2026-09-24-st-cashflow-detection.md`.
 ## 2026-09-25 CLAUDE — Ops account control review round (board 687a5fb4, lane F1, PR #3754)
 
 Five reviewer findings on #3754, all verified real, all fixed test-first on the same branch.  The

@@ -24,6 +24,7 @@ import {
 } from "./broker-cash-flows";
 import { withDeadline } from "./inflight-deadline";
 import {
+  HWM_LEDGER_VERSION,
   impliedDrawdownPct,
   persistDrawdownHighWaterMark,
   readDrawdownHwmObservation,
@@ -53,6 +54,8 @@ export interface DrawdownCashFlowLoad {
   flowsError?: string;
   /** Non-trade activity types in the fetched window that we do not recognize (surfaced, not applied). */
   unclassifiedActivityTypes?: string[];
+  /** Set on a successful ledger read; the recorder stamps it on the observation it writes. */
+  ledgerVersion?: number;
 }
 
 function fillSourceForAccountEnvironment(environment: "paper" | "live" | string | undefined): FillSource {
@@ -103,6 +106,9 @@ function auditUnclassifiedOncePerDay(args: {
 /**
  * Incremental flows for the live recorder. First observation after deploy marks current
  * ledger ids as applied without adjusting HWM (ops recompute heals a stuck historical mark).
+ * An observation without the current `ledgerVersion` counts as a first observation too: it was
+ * written while the old typed-filter read was failing, so its applied-id list is empty and the
+ * overlap window would otherwise re-apply rows the HWM ratchet already absorbed.
  * A broker fetch failure returns advanceObservation: false + flowsUnavailable so the cursor can
  * retry and the breaker can say the ledger was unreadable instead of assuming "no transfers".
  */
@@ -153,11 +159,12 @@ export async function loadCashFlowsForDrawdownBreaker(args: {
     });
     const unclassifiedActivityTypes = summary.unclassified.map((entry) => entry.activityType);
     const listed = listAlpacaTransferFlows(ledger.activities);
-    if (!prevObs) {
+    if (!prevObs || prevObs.ledgerVersion !== HWM_LEDGER_VERSION) {
       return {
         externalFlows: [],
         appliedActivityIds: listed.map((flow) => flow.id).filter(Boolean).slice(-500),
         advanceObservation: true,
+        ledgerVersion: HWM_LEDGER_VERSION,
         ...(unclassifiedActivityTypes.length > 0 ? { unclassifiedActivityTypes } : {})
       };
     }
@@ -168,6 +175,7 @@ export async function loadCashFlowsForDrawdownBreaker(args: {
       externalFlows: fresh.map((flow) => ({ amount: flow.amount, day: flow.day })),
       appliedActivityIds,
       advanceObservation: true,
+      ledgerVersion: HWM_LEDGER_VERSION,
       ...(unclassifiedActivityTypes.length > 0 ? { unclassifiedActivityTypes } : {})
     };
   } catch (error) {
@@ -379,7 +387,9 @@ export async function recomputeConnectedAccountHighWaterMark(
     observation: {
       equity: snapshot.equity,
       at: now.toISOString(),
-      appliedActivityIds: flows.map((flow) => flow.id).filter(Boolean).slice(-500)
+      appliedActivityIds: flows.map((flow) => flow.id).filter(Boolean).slice(-500),
+      hwm: highWaterMark,
+      ledgerVersion: HWM_LEDGER_VERSION
     }
   });
   audit(

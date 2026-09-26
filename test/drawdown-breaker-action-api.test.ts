@@ -65,6 +65,22 @@ describe("/api/policy — riskRules.drawdownBreakerAction validation", () => {
     expect(policy.riskRules.drawdownBreakerAction).toBe("close_only"); // preserved through the merge
   });
 
+  // Review round 2026-09-25: the one-run unexplained-drop grace is an explicit owner preference.
+  it("accepts riskRules.drawdownUnexplainedDropGrace as a boolean and rejects anything else", async () => {
+    const { PUT } = await import("../app/api/policy/route");
+    const on = await PUT(putRiskRules({ drawdownUnexplainedDropGrace: true }));
+    expect(on.status).toBe(200);
+    expect((await on.json()).riskRules.drawdownUnexplainedDropGrace).toBe(true);
+    for (const bad of ["yes", 1, 0]) {
+      const response = await PUT(putRiskRules({ drawdownUnexplainedDropGrace: bad }));
+      expect(response.status).toBe(400);
+      expect(await response.text()).toContain("riskRules.drawdownUnexplainedDropGrace must be true or false.");
+    }
+    const off = await PUT(putRiskRules({ drawdownUnexplainedDropGrace: false, maxDrawdownPct: 20 }));
+    expect(off.status).toBe(200);
+    expect((await off.json()).riskRules.drawdownUnexplainedDropGrace).toBe(false);
+  });
+
   it("still rejects a genuinely negative numeric risk rule", async () => {
     const { PUT } = await import("../app/api/policy/route");
     const response = await PUT(putRiskRules({ maxDailyLossNotional: -50 }));

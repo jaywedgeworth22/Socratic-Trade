@@ -157,6 +157,18 @@ describe("fetchAlpacaNonTradeActivities", () => {
   });
 });
 
+// Review round 2026-09-25: every ledger reader (HWM recorder, ops recompute, ops activity route,
+// dashboard day-P&L hint) must go through the fallback-aware helper, so a rejected `category`
+// parameter degrades to the documented type list instead of an empty "no transfers" read.
+describe("ledger callers use the fallback-aware reader", () => {
+  it("the dashboard day-P&L hint reads via fetchAlpacaNonTradeActivities, not a bare category call", async () => {
+    const { readFileSync } = await import("node:fs");
+    const source = readFileSync(join(process.cwd(), "src/lib/dashboard.ts"), "utf8");
+    expect(source).toContain("fetchAlpacaNonTradeActivities(");
+    expect(source).not.toMatch(/fetchAlpacaAccountActivities\(/);
+  });
+});
+
 describe("fetchAlpacaDailyEquityHistory", () => {
   it("maps Alpaca's left-labeled daily windows to New York calendar days and skips null closes", async () => {
     const accountId = await seedLiveIra("u-history");

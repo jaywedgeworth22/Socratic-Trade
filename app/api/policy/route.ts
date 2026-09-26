@@ -378,10 +378,12 @@ async function validatePolicy(
   if (Object.values(policy.sectorCaps).some((value) => !Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > 100)) return "sector caps must be between 0 and 100.";
   if (policy.riskRules.drawdownBreakerAction !== undefined && !["advisory", "close_only", "halt"].includes(policy.riskRules.drawdownBreakerAction)) return "riskRules.drawdownBreakerAction must be advisory, close_only, or halt.";
   if (policy.riskRules.accuracyBreakerAction !== undefined && !["advisory", "close_only"].includes(policy.riskRules.accuracyBreakerAction)) return "riskRules.accuracyBreakerAction must be advisory or close_only.";
-  // drawdownBreakerAction/accuracyBreakerAction are string enums (validated above), so exclude them from the numeric sweep — an
-  // enum value like "close_only" is NaN under Number(...) and would otherwise reject the whole save (and
-  // then every subsequent save, since it is merged from `...current.riskRules`).
-  if (Object.entries(policy.riskRules).some(([key, value]) => key !== "drawdownBreakerAction" && key !== "accuracyBreakerAction" && value !== undefined && (!Number.isFinite(Number(value)) || Number(value) < 0))) return "risk rules must be non-negative numbers.";
+  if (policy.riskRules.drawdownUnexplainedDropGrace !== undefined && typeof policy.riskRules.drawdownUnexplainedDropGrace !== "boolean") return "riskRules.drawdownUnexplainedDropGrace must be true or false.";
+  // drawdownBreakerAction/accuracyBreakerAction are string enums and drawdownUnexplainedDropGrace is a boolean (validated above),
+  // so exclude them from the numeric sweep — an enum value like "close_only" is NaN under Number(...) and would otherwise reject
+  // the whole save (and then every subsequent save, since it is merged from `...current.riskRules`).
+  const nonNumericRiskRuleKeys = new Set(["drawdownBreakerAction", "accuracyBreakerAction", "drawdownUnexplainedDropGrace"]);
+  if (Object.entries(policy.riskRules).some(([key, value]) => !nonNumericRiskRuleKeys.has(key) && value !== undefined && (!Number.isFinite(Number(value)) || Number(value) < 0))) return "risk rules must be non-negative numbers.";
   if (policy.taxSettings) {
     const { shortTermRatePct, longTermRatePct, washSaleMinLossUsd, washSaleHandling, iraWashSaleHandling } = policy.taxSettings;
     if (!Number.isFinite(shortTermRatePct) || shortTermRatePct < 0 || shortTermRatePct > 100) return "shortTermRatePct must be between 0 and 100.";

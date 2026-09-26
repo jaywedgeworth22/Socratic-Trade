@@ -768,6 +768,16 @@ export interface RiskRules {
    */
   drawdownBreakerAction?: "advisory" | "close_only" | "halt";
   /**
+   * Owner preference, default OFF.  When on, a drawdown / daily-loss breach that coincides with a
+   * run-over-run equity fall of 20% or more with NO deposit or withdrawal on the broker ledger
+   * (possibly a withdrawal whose ledger row has not posted yet) holds an opted-in
+   * `drawdownBreakerAction` (close_only / halt) as advisory for ONE run.  A real loss is enforced on
+   * the next run.  Off: the configured action applies on the run the breach happens.  Either way
+   * the breach reason and receipt say the fall was unexplained, and the HWM is re-based on the
+   * follow-up run if the withdrawal posts.
+   */
+  drawdownUnexplainedDropGrace?: boolean;
+  /**
    * Accuracy breaker (nofx-style consecutive-miss safety mode, docs/oss-lessons.md §8): fires after
    * this many CONSECUTIVE matured losses on real (placed/filled) decisions. The drawdown breaker
    * bounds the account's bleed; this one notices the account being WRONG — a thesis regime can

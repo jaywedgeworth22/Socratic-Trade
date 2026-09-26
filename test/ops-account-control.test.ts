@@ -33,8 +33,12 @@ const broker = vi.hoisted(() => ({
   reads: [] as Array<{ accountNumber: string; method: string }>,
   cancelCalls: [] as Array<{ accountNumber: string; orderId: string }>,
   placeCalls: 0,
+  /** method -> milliseconds that broker READ takes to answer (a slow broker, e.g. Tradier paging). */
+  delayMs: new Map<string, number>(),
   /** Runs inside getAccounts, i.e. while the ops route is awaiting the broker. */
-  onGetAccounts: undefined as undefined | (() => void)
+  onGetAccounts: undefined as undefined | (() => void),
+  /** Runs inside cancelEquityOrder, after the cancel is recorded. */
+  onCancel: undefined as undefined | (() => void)
 }));
 
 vi.mock("../src/lib/broker", async (importOriginal) => {
@@ -43,26 +47,28 @@ vi.mock("../src/lib/broker", async (importOriginal) => {
     ...actual,
     getBrokerGateway: (policy: TradingPolicy) => {
       const accountNumber = policy.accountNumber ?? "";
-      const read = (method: string) => {
+      const read = async (method: string) => {
         broker.reads.push({ accountNumber, method });
+        const delay = broker.delayMs.get(method);
+        if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
         if (broker.readThrows.has(accountNumber)) throw new Error(`broker unreachable for ${accountNumber}`);
       };
       return {
         getAccounts: async () => {
-          read("getAccounts");
+          await read("getAccounts");
           broker.onGetAccounts?.();
           return broker.accounts.get(accountNumber) ?? [{ accountNumber, label: "acct", agenticAllowed: true }];
         },
         getPortfolio: async () => {
-          read("getPortfolio");
+          await read("getPortfolio");
           return { accountNumber, totalMarketValue: 1000, buyingPower: 1000, equityMarketValue: 0, optionMarketValue: 0, cash: 1000 };
         },
         getEquityOrders: async () => {
-          read("getEquityOrders");
+          await read("getEquityOrders");
           return broker.books.get(accountNumber) ?? [];
         },
         getEquityPositions: async () => {
-          read("getEquityPositions");
+          await read("getEquityPositions");
           return [];
         },
         getEquityQuotes: async () => ({}),
@@ -75,6 +81,7 @@ vi.mock("../src/lib/broker", async (importOriginal) => {
         },
         cancelEquityOrder: async (acct: string, orderId: string): Promise<ExecutedOrder> => {
           broker.cancelCalls.push({ accountNumber: acct, orderId });
+          broker.onCancel?.();
           return { orderId, refId: randomUUID(), state: "canceled", raw: { account: acct, secret: "raw-broker-body" } };
         }
       };
@@ -176,7 +183,9 @@ beforeEach(() => {
   broker.readThrows.clear();
   broker.accounts.clear();
   broker.placeCalls = 0;
+  broker.delayMs.clear();
   broker.onGetAccounts = undefined;
+  broker.onCancel = undefined;
 });
 
 describe("POST /api/ops/account-control — auth and validation", () => {
@@ -354,6 +363,45 @@ describe("cancel_working_orders", () => {
     // The broker's error text carried the full account number; the response must not.
     expect(JSON.stringify(res.body)).not.toContain(seeded.namedAccountNumber);
   });
+  it("gives a slow broker the ops read budget for the pre-cancel check instead of refusing at 2.5s", async () => {
+    // Tradier walks its order pages one after another and Robinhood reads go through MCP, so the
+    // pre-cancel orders+positions read routinely takes longer than the console's 2.5s advisory
+    // budget.  The ops path fails closed on an unverified read, so that budget would refuse every
+    // cancel on a slow broker even though the route's own order-book read allowed 15s.
+    const seeded = await seed({ namedOrders: [order("n-1", "AAPL")] });
+    broker.delayMs.set("getEquityPositions", 3_000);
+    const res = await call({ action: "cancel_working_orders", connectedAccountId: seeded.namedId });
+    expect(res.status).toBe(200);
+    expect(res.body.summary).toMatchObject({ requested: 1, cancelled: 1, failed: 0 });
+    expect(broker.cancelCalls).toEqual([{ accountNumber: seeded.namedAccountNumber, orderId: "n-1" }]);
+  }, 60_000);
+
+  it("stops starting new cancels once the call's time budget is spent and reports the rest as not attempted", async () => {
+    const seeded = await seed({ namedOrders: [order("n-1", "AAPL"), order("n-2", "MSFT"), order("n-3", "TSLA")] });
+    const startedAt = Date.now();
+    let clock: ReturnType<typeof vi.spyOn> | undefined;
+    // The first cancel "takes" ten minutes of wall clock: every later order is past the budget.
+    broker.onCancel = () => {
+      broker.onCancel = undefined;
+      clock = vi.spyOn(Date, "now").mockReturnValue(startedAt + 10 * 60_000);
+    };
+    let res: Awaited<ReturnType<typeof call>>;
+    try {
+      res = await call({ action: "cancel_working_orders", connectedAccountId: seeded.namedId });
+    } finally {
+      clock?.mockRestore();
+    }
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(false);
+    expect(broker.cancelCalls).toEqual([{ accountNumber: seeded.namedAccountNumber, orderId: "n-1" }]);
+    expect(res.body.summary).toMatchObject({ requested: 3, cancelled: 1, failed: 0, notAttempted: 2 });
+    const byId = Object.fromEntries(res.body.results.map((r: { orderId: string }) => [r.orderId, r]));
+    expect(byId["n-1"].ok).toBe(true);
+    for (const id of ["n-2", "n-3"]) {
+      expect(byId[id]).toMatchObject({ ok: false, notAttempted: true, symbol: expect.any(String) });
+      expect(byId[id].error).toMatch(/time budget/);
+    }
+  });
 });
 
 describe("set_system_state", () => {
@@ -468,6 +516,48 @@ describe("set_system_state", () => {
     expect(after?.value).toBe(before?.value);
   });
 
+  it("does not arm when the universe is emptied while the broker check was in flight", async () => {
+    const seeded = await seed();
+    const { getPolicy, setPolicy } = await import("../src/lib/db");
+    broker.onGetAccounts = () => {
+      broker.onGetAccounts = undefined;
+      setPolicy(
+        { ...getPolicy(seeded.userId, seeded.namedId), includedIndices: [], additionalSymbols: [] },
+        seeded.userId,
+        seeded.namedId
+      );
+    };
+    const res = await call({ action: "set_system_state", connectedAccountId: seeded.namedId, systemState: "active" });
+    expect(res.status).toBe(409);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.error).toMatch(/Select at least one base index or additional watchlist symbol before enabling autonomy\./);
+    const after = getPolicy(seeded.userId, seeded.namedId);
+    expect(after.systemState).toBe("halted");
+    expect(after.includedIndices).toEqual([]);
+  });
+
+  it("does not arm when the account's broker account number changes while the broker check was in flight", async () => {
+    const seeded = await seed();
+    const { getPolicy, upsertConnectedAccount } = await import("../src/lib/db");
+    broker.onGetAccounts = () => {
+      broker.onGetAccounts = undefined;
+      upsertConnectedAccount({
+        id: seeded.namedId,
+        userId: seeded.userId,
+        broker: "tradier",
+        environment: "paper",
+        accountNumber: "VAREPLACED1",
+        label: "Tradier Sandbox",
+        apiKey: "named-api-key-value",
+        isActive: false
+      });
+    };
+    const res = await call({ action: "set_system_state", connectedAccountId: seeded.namedId, systemState: "active" });
+    expect(res.status).toBe(409);
+    expect(res.body.ok).toBe(false);
+    expect(getPolicy(seeded.userId, seeded.namedId).systemState).toBe("halted");
+  });
+
   it("dryRun runs the checks but changes nothing", async () => {
     const seeded = await seed();
     const res = await call({ action: "set_system_state", connectedAccountId: seeded.namedId, systemState: "active", dryRun: true });
@@ -502,6 +592,37 @@ describe("set_system_state", () => {
     expect(getBrokerPlacementPauseMarker(seeded.userId, seeded.namedId)).toBeUndefined();
     expect(getPolicy(seeded.userId, seeded.selectedId).systemState).toBe("active");
     expect(res.body.nextEligibleRun.willRun).toBe(false);
+  });
+
+  it("close_only clears a broker auto-pause marker so a healthy scheduler tick cannot resume the account to active", async () => {
+    const seeded = await seed();
+    const { getPolicy, setInternalSetting } = await import("../src/lib/db");
+    const { applyBrokerOrderPlacementPause, getBrokerPlacementPauseMarker } = await import("../src/lib/broker-health");
+    // The scheduler auto-halted this account (marker present) and has already read its snapshot.
+    setInternalSetting(`broker:placement-paused:${seeded.userId}:${seeded.namedId}`, {
+      since: new Date().toISOString(),
+      reason: "Tradier order capability probe failed",
+      autoResume: true,
+      priorState: "active"
+    });
+    const schedulerSnapshot = getPolicy(seeded.userId, seeded.namedId);
+    expect(schedulerSnapshot.systemState).toBe("halted");
+
+    const res = await call({ action: "set_system_state", connectedAccountId: seeded.namedId, systemState: "close_only" });
+    expect(res.status).toBe(200);
+    expect(res.body.clearedBrokerAutoPause).toBe(true);
+    expect(getBrokerPlacementPauseMarker(seeded.userId, seeded.namedId)).toBeUndefined();
+
+    // The in-flight tick's health probe comes back healthy with its stale "halted" snapshot.
+    const result = await applyBrokerOrderPlacementPause({
+      userId: seeded.userId,
+      connectedAccountId: seeded.namedId,
+      accountScope: seeded.namedId,
+      health: { isHealthy: true },
+      policy: schedulerSnapshot
+    });
+    expect(result.action).toBe("none");
+    expect(getPolicy(seeded.userId, seeded.namedId).systemState).toBe("close_only");
   });
 
   it("close_only needs no broker read and only changes the named account", async () => {
@@ -646,6 +767,18 @@ describe("describeNextEligibleRun", () => {
     const eventRun = describeNextEligibleRun({ userId: eventOnly.account.userId, account: eventOnly.account, policy: eventOnly.policy, now: OPEN });
     expect(eventRun.willRun).toBe(false);
     expect(eventRun.reason).toMatch(/event-only/);
+  });
+
+  it("reports a missing account number before draining, as the scheduler evaluates them", async () => {
+    // scheduler.ts tickInner: test broker, then `!policy.accountNumber -> continue`, and only then
+    // the isDraining wind-down.  A draining account with no account number is never wound down.
+    const { describeNextEligibleRun } = await import("../src/lib/ops-account-control");
+    const { account, policy } = await fixture({ accountNumber: undefined }, { isDraining: true, accountNumber: undefined });
+    const run = describeNextEligibleRun({ userId: account.userId, account, policy, now: OPEN });
+    expect(run.willRun).toBe(false);
+    expect(run.blockers[0]).toMatch(/no broker account number/);
+    expect(run.blockers[1]).toMatch(/draining/);
+    expect(run.reason).toMatch(/no broker account number/);
   });
 
   it("warns that a deploy reverts an armed account when autoResumeOnBoot is off", async () => {

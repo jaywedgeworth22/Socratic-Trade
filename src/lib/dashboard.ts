@@ -49,7 +49,7 @@ import {
   type PrefetchedPnl
 } from "./performance";
 import { computeSpyBenchmarkDetailed, type SpyBenchmarkResult } from "./benchmark";
-import { BROKER_TRANSFER_ACTIVITY_TYPE_LIST, brokerFlowOnDay } from "./broker-cash-flows";
+import { brokerFlowOnDay, isBrokerTransferActivity } from "./broker-cash-flows";
 import { fetchAlpacaAccountActivities } from "./alpaca-account-insights";
 import { centralTradingDayKey } from "./trading-day";
 import { getTaxSummary, overlayAccountTaxationType } from "./tax";
@@ -818,8 +818,11 @@ async function computeDashboardSnapshot(userId: string = "local", currentUser?: 
     const brokerActivities =
       activeAccount?.broker === "alpaca"
         ? await withDeadline(
+            // category=non_trade_activity, classified client-side in broker-cash-flows: a server-side
+            // activity_types filter once carried a non-Alpaca code ("DIVTX") and could not name every
+            // IRA cash type (2026-09-24).
             fetchAlpacaAccountActivities(userId, {
-              activityTypes: [...BROKER_TRANSFER_ACTIVITY_TYPE_LIST],
+              category: "non_trade_activity",
               connectedAccountId: activeAccount?.id
             }),
             4000,
@@ -829,7 +832,9 @@ async function computeDashboardSnapshot(userId: string = "local", currentUser?: 
           )
         : [];
     const todayKey = centralTradingDayKey(new Date());
-    if (brokerActivities.length > 0) {
+    // Only transfer-class rows make the broker ledger authoritative for today's flow (a category
+    // read also returns splits / option events, which must not suppress the inference fallback).
+    if (brokerActivities.some(isBrokerTransferActivity)) {
       performance.dayPnlHints = {
         todayBrokerFlow: brokerFlowOnDay(brokerActivities, todayKey),
         cashFlowSource: "broker"

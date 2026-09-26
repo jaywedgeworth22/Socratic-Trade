@@ -59,7 +59,7 @@ export const LIVE_MATCH_RECHECK_AGE_MS = 5 * 60_000;
 const RECHECK_AFTER_FOUND_MS = 10 * 60_000;
 const RECHECK_AFTER_NOT_FOUND_MS = 30 * 60_000;
 const RECHECK_AFTER_ERROR_MS = 5 * 60_000;
-const BRACKET_RECHECK_MS = 15 * 60_000;
+const BRACKET_RECHECK_MS = 30 * 60_000;
 const LISTING_INGEST_INTERVAL_MS = 5 * 60_000;
 /** An execution this fresh is left for the next pass: every app lane books its own order
  *  synchronously right after the broker responds, so waiting out this window guarantees the lane's

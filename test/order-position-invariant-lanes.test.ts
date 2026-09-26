@@ -29,8 +29,13 @@ vi.mock("../src/lib/vector-db", () => ({
   findRelevantExperiences: async () => [],
   upsertExperiences: async () => {},
   retrieveContext: async () => [],
+  retrieveContextDetailed: async () => [],
+  defaultMinScore: () => 0.3,
+  defaultRelevanceFloor: () => 0.3,
+  defaultDedupeSimilarity: () => 0.6,
+  formatChunkWithProvenance: (chunk: { text: string }) => chunk.text,
   storeContext: async () => {},
-  storeContexts: async () => {}
+  storeContexts: async () => ({ attempted: 0, indexed: 0 })
 }));
 
 // Keep the approval lane off live Nasdaq/Yahoo (same stub as test/broker-minimum-bump-execute.test.ts).

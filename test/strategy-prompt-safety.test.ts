@@ -210,7 +210,8 @@ describe("prompt-safety fencing + receipts (advisory only)", () => {
     // 2.16.0: Green analog job line for packed closestHistoricalAnalogs / COUNTEREXAMPLE
     // 2.17.0: Red Job 1 also fact-checks reviewerFilingsPack
     // 2.19.0: a held short (side 'short') is closed with cover, never sell / bracketed buy
-    expect(STRATEGY_PROMPT_VERSION).toBe("agentic-strategy@2.19.0");
+    // 2.19.1: long-only schema offers side 'cover' while a short is held (and the prompt says so)
+    expect(STRATEGY_PROMPT_VERSION).toBe("agentic-strategy@2.19.1");
   });
 
   it("(a) buildBullSystem/buildRedTeamReviewSystem carry the data-not-command clause; reflection only by reference", async () => {

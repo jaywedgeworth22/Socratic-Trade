@@ -1,5 +1,22 @@
 # Current Status
 
+## 2026-09-25 CLAUDE — C review fixes (follow-up to #3761)
+
+**What.**  Review round on merged PR #3761 (rotation access-error failover), board `687a5fb4`.
+Red's implicit rotation fallback chain no longer contains Green's model (and vice versa):
+`planRotationImplicitFallbacks` plans both chains together, `redRotationPool` is the
+Green-excluded pool (also for a Red-only rotation with a fixed Green model), and
+`debateProposal` skips any fallback reviewer whose model line matches the proposer.  The
+OpenRouter 403 cooldown is now per user (404 stays catalog-wide) and never fires on a
+moderation-flagged 403.  The Red exhaustion reason names every reviewer model it tried.
+
+**Why.**  Before this, one Red failure could make the proposing model review its own opening,
+which auto-executes under Autopilot; and one user's key restriction or one flagged prompt cooled
+a model for every user for 6h.
+
+**PR.**  `claude/st-rotation-warnings-review-fixes` ("[CLAUDE] C review fixes (follow-up to
+#3761)"), held with `do-not-automerge`.  Rollout: `docs/rollouts/2026-09-24-st-rotation-warnings.md`
+§7 Review Round.
 ## 2026-09-25 CLAUDE — Ops performance endpoint: review round 2 (follow-up to merged PR #3751, board 687a5fb4)
 
 Five independent-reviewer findings against the Round-1 fix (`#3751`, already merged to `main`).

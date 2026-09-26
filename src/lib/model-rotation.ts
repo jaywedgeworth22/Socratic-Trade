@@ -44,6 +44,7 @@ import { audit, getDb, resolveLlmCredential } from "./db";
 import { CATALOG_ROTATION_POOL } from "./llm-model-catalog";
 import { modelCredentialService, normalizeOpenRouterModelId, stripOpenRouterTilde } from "./llm-provider";
 import { isModelRotationSentinel, LLM_MODEL_ROTATION_SENTINEL } from "./llm-request";
+import { isSameModelLine } from "./model-identity";
 import { recommendedReasoningEffortForModel } from "./model-reasoning-recommendations";
 import { getOpenRouterUserModelAvailability, isOpenRouterModelAvailable } from "./openrouter-model-availability";
 import type { LlmReasoningEffort } from "./types";
@@ -112,27 +113,59 @@ function openRouterModelCooldownKey(model: string): string {
   return stripOpenRouterTilde(normalizeOpenRouterModelId(model));
 }
 
+/** Per-USER cooldown key for a 403.  Same `user <userId>` scoping idea as `laneKey` in
+ *  llm-provider-cooldown.ts: a 403 is a fact about ONE OpenRouter key (its model restrictions or
+ *  guardrails) or one request, never about the model for everyone — user A's restricted key must
+ *  not narrow user B's rotation pool or fallback chain (the account boundary).  The key cannot
+ *  collide with a bare wire slug: slugs never contain a space. */
+function openRouterUserModelCooldownKey(model: string, userId: string): string {
+  return `user ${userId} ${openRouterModelCooldownKey(model)}`;
+}
+
+/** OpenRouter answers 403 when "your chosen model requires moderation and your input was
+ *  flagged" (the body carries `flagged_input` / `reasons` metadata and moderation wording).  That
+ *  is a property of ONE prompt, not of the model or the key — it must never cool the slug. */
+export function isOpenRouterModerationRefusal(detail: string | undefined | null): boolean {
+  if (!detail) return false;
+  return /flagged_input|\bflagged\b|\bmoderation\b/i.test(detail);
+}
+
 /**
  * Record an observed OpenRouter 404 (unknown slug) OR 403 (key/region lacks access to a slug
  * that otherwise exists) for `model`'s wire slug, starting (or extending) its cooldown.  Called
  * from the two places these are actually observed, immediately after each chain's
  * `recordLlmProviderFailure({...})` block and gated on `attempt.provider === "openrouter" &&
  * (response.status === 404 || response.status === 403)`: the Bull attempt loop in
- * src/lib/strategy.ts and the Red attempt loop in src/lib/red-team.ts.  Both are PERMANENT for
- * this key/region right now — a 403 "doesn't have access to this model or region" will not
- * resolve itself on an immediate retry the way a 429 rate limit does, so it is cooled exactly
- * like a 404.  NEVER call this for a 429 — that is transient and must not cool the slug.  A real
- * observed 404/403 is the only thing that may put a slug in this map — never a static list.
+ * src/lib/strategy.ts and the Red attempt loop in src/lib/red-team.ts.  Both are PERMANENT right
+ * now — a 403 "doesn't have access to this model or region" will not resolve itself on an
+ * immediate retry the way a 429 rate limit does.  NEVER call this for a 429 — that is transient and
+ * must not cool the slug.  A real observed 404/403 is the only thing that may put a slug in this
+ * map — never a static list.
+ *
+ * Scope (review round 2026-09-25, follow-up to #3761):
+ * - 404 (or no status — the historical call shape) = the wire slug is unknown to OpenRouter's
+ *   catalog, which is true for every key: cooled catalog-wide.
+ * - 403 = true for ONE key or ONE request: cooled only for `scope.userId`, and never at all when
+ *   the body is a moderation refusal (`isOpenRouterModerationRefusal`) or no user is given.
+ *
+ * Returns whether a cooldown was recorded.
  */
-export function recordOpenRouterModelNotFound(model: string): void {
-  const key = openRouterModelCooldownKey(model);
-  openRouterModelNotFoundCooldowns.set(key, { until: Date.now() + OPENROUTER_MODEL_NOT_FOUND_COOLDOWN_MS });
+export function recordOpenRouterModelNotFound(
+  model: string,
+  scope: { status?: number; userId?: string; detail?: string } = {}
+): boolean {
+  const until = Date.now() + OPENROUTER_MODEL_NOT_FOUND_COOLDOWN_MS;
+  if (scope.status === 403) {
+    if (isOpenRouterModerationRefusal(scope.detail)) return false;
+    if (!scope.userId) return false;
+    openRouterModelNotFoundCooldowns.set(openRouterUserModelCooldownKey(model, scope.userId), { until });
+    return true;
+  }
+  openRouterModelNotFoundCooldowns.set(openRouterModelCooldownKey(model), { until });
+  return true;
 }
 
-/** True while `model`'s wire slug is inside an active 404 cooldown.  `now` is injectable for
- *  deterministic tests; an expired entry is pruned lazily on read. */
-export function isOpenRouterModelCoolingDown(model: string, now: number = Date.now()): boolean {
-  const key = openRouterModelCooldownKey(model);
+function isCooldownKeyActive(key: string, now: number): boolean {
   const record = openRouterModelNotFoundCooldowns.get(key);
   if (!record) return false;
   if (now >= record.until) {
@@ -140,6 +173,14 @@ export function isOpenRouterModelCoolingDown(model: string, now: number = Date.n
     return false;
   }
   return true;
+}
+
+/** True while `model`'s wire slug is inside an active cooldown: a catalog-wide 404 cooldown, or —
+ *  when `userId` is given — a 403 cooldown recorded for THAT user.  `now` is injectable for
+ *  deterministic tests; an expired entry is pruned lazily on read. */
+export function isOpenRouterModelCoolingDown(model: string, now: number = Date.now(), userId?: string): boolean {
+  if (isCooldownKeyActive(openRouterModelCooldownKey(model), now)) return true;
+  return userId ? isCooldownKeyActive(openRouterUserModelCooldownKey(model, userId), now) : false;
 }
 
 /** Test-only: clear all per-slug OpenRouter 404 cooldown state. */
@@ -176,13 +217,17 @@ export function greenFirstPickPool(pool: readonly string[]): string[] {
   return preferred.length > 0 ? preferred : [...pool];
 }
 
-/** Credential pool after dropping slugs currently inside an OpenRouter 404 cooldown (see
- *  `recordOpenRouterModelNotFound` above).  Used ONLY in fail-open paths — `/models/user`
- *  unreachable/timed out, or a live allowlist that matched nothing — never while the live
- *  catalog is reachable and actually lists the model.  `now` is injectable for deterministic
- *  tests. */
-export function applyRotationAvailabilityFailOpen(credentialPool: readonly string[], now: number = Date.now()): string[] {
-  return credentialPool.filter((model) => !isOpenRouterModelCoolingDown(model, now));
+/** Credential pool after dropping slugs currently inside an OpenRouter 404 cooldown, or a 403
+ *  cooldown recorded for THIS user (see `recordOpenRouterModelNotFound` above).  Used ONLY in
+ *  fail-open paths — `/models/user` unreachable/timed out, or a live allowlist that matched
+ *  nothing — never while the live catalog is reachable and actually lists the model.  `now` is
+ *  injectable for deterministic tests. */
+export function applyRotationAvailabilityFailOpen(
+  credentialPool: readonly string[],
+  now: number = Date.now(),
+  userId?: string
+): string[] {
+  return credentialPool.filter((model) => !isOpenRouterModelCoolingDown(model, now, userId));
 }
 
 /**
@@ -196,7 +241,8 @@ export function applyRotationAvailabilityFailOpen(credentialPool: readonly strin
  */
 export function applyRotationUserModelAllowlist(
   credentialPool: readonly string[],
-  modelIds: ReadonlySet<string>
+  modelIds: ReadonlySet<string>,
+  userId?: string
 ): { pool: string[]; skipped: string[]; emptiedByAllowlist: boolean } {
   const matched: string[] = [];
   const skipped: string[] = [];
@@ -204,9 +250,13 @@ export function applyRotationUserModelAllowlist(
     if (isOpenRouterModelAvailable(model, modelIds)) matched.push(model);
     else skipped.push(model);
   }
-  const usable = applyRotationAvailabilityFailOpen(credentialPool);
+  const usable = applyRotationAvailabilityFailOpen(credentialPool, Date.now(), userId);
   if (matched.length === 0 && usable.length > 0) {
-    return { pool: usable, skipped: credentialPool.filter((model) => isOpenRouterModelCoolingDown(model)), emptiedByAllowlist: true };
+    return {
+      pool: usable,
+      skipped: credentialPool.filter((model) => isOpenRouterModelCoolingDown(model, Date.now(), userId)),
+      emptiedByAllowlist: true
+    };
   }
   return { pool: matched, skipped, emptiedByAllowlist: false };
 }
@@ -229,26 +279,92 @@ export const ROTATION_IMPLICIT_GREEN_FAILOVERS = 2;
 
 /** Other rotation-pool models to try after a rotating primary (Green proposer OR Red reviewer —
  *  the name predates the Red reuse below but the logic is seat-agnostic), excluding the pick,
- *  any owner-configured fallbacks, AND any slug currently inside an OpenRouter 404/403 cooldown
- *  (`recordOpenRouterModelNotFound`) — a model that just told us it 403'd ("doesn't have access
- *  to this model or region") or 404'd must never be one of the "alternate" picks offered as the
- *  safety net for that exact failure class.  Prefer Gemini Flash / Mistral Medium class seats;
- *  demote slugs OpenRouter cannot serve as a first pick to the tail.  `now` is injectable for
- *  deterministic tests. */
+ *  any owner-configured fallbacks, AND any slug currently inside an OpenRouter 404 cooldown or a
+ *  403 cooldown recorded for `userId` (`recordOpenRouterModelNotFound`) — a model that just told
+ *  us it 403'd ("doesn't have access to this model or region") or 404'd must never be one of the
+ *  "alternate" picks offered as the safety net for that exact failure class.  Prefer Gemini Flash
+ *  / Mistral Medium class seats; demote slugs OpenRouter cannot serve as a first pick to the tail.
+ *  `now` is injectable for deterministic tests.  The strategy loop calls this through
+ *  `planRotationImplicitFallbacks`, which also keeps the OTHER seat's model out of the chain. */
 export function implicitGreenRotationFallbacks(
   pool: readonly string[],
   primary: string,
   explicit: readonly string[] = [],
-  now: number = Date.now()
+  now: number = Date.now(),
+  userId?: string
 ): string[] {
   const taken = new Set([primary, ...explicit].map((m) => m.trim()).filter(Boolean));
-  const remaining = pool.filter((model) => !taken.has(model) && !isOpenRouterModelCoolingDown(model, now));
+  const remaining = pool.filter((model) => !taken.has(model) && !isOpenRouterModelCoolingDown(model, now, userId));
   const preferred = PREFERRED_GREEN_FAILOVER_SEATS.filter((model) => remaining.includes(model));
   const otherReady = remaining.filter(
     (model) => !PREFERRED_GREEN_FAILOVER_SEATS.includes(model) && !isUnservableOpenRouterFirstPick(model)
   );
   const demoted = remaining.filter((model) => isUnservableOpenRouterFirstPick(model));
   return [...preferred, ...otherReady, ...demoted].slice(0, ROTATION_IMPLICIT_GREEN_FAILOVERS);
+}
+
+/**
+ * Plan this run's implicit rotation failover chains for BOTH seats (issue #2577 for Green, the
+ * 2026-09-24 access-error fix for Red), keeping each seat's chain free of the OTHER seat's model.
+ *
+ * Review round 2026-09-25 (P1, follow-up to #3761): Red's chain used to be built from the FULL
+ * pool with only Red's own pick excluded.  Green's pick is often a preferred failover seat
+ * (`PREFERRED_GREEN_FAILOVER_SEATS`, e.g. gemini-flash-latest), so it became Red's FIRST fallback:
+ * one 403/5xx/empty body on Red's pick and the proposer reviewed its own opening — which under
+ * Autopilot auto-executes, where before #3761 the unavailable review held it for approval.  The
+ * mirror case existed since #2577: Green's chain could hold Red's model, so a Green failover
+ * produced a proposal from the very model that then reviewed it.
+ *
+ * - Green's chain excludes Red's run model (`redPrimary`, the model Red actually starts with after
+ *   any usage-budget downgrade) and Red's rotation pick.
+ * - Red's chain excludes Green's run model (`greenPrimary`) and Green's rotation pick.
+ *   debateProposal additionally refuses any fallback reviewer that turns out to be the model that
+ *   actually proposed (a Green FAILOVER onto a model in Red's chain) — see red-team.ts.
+ * - Comparison is by model line (`isSameModelLine`), so a namespaced or wire spelling of a fixed
+ *   seat's model cannot slip through.
+ * - Owner-configured fallbacks win unchanged: a seat with explicit fallbacks gets no implicit
+ *   chain, exactly as before.
+ */
+export function planRotationImplicitFallbacks(input: {
+  userId?: string;
+  /** Eligible pools from `resolveModelRotationForRun` — present only for a rotating seat. */
+  greenRotationPool?: readonly string[];
+  redRotationPool?: readonly string[];
+  /** This run's rotation picks (undefined for a seat that is not rotating). */
+  greenPick?: string;
+  redPick?: string;
+  /** The model each seat will actually START with this run (after overrides); for a fixed seat
+   *  that is the owner's chosen model. */
+  greenPrimary?: string | null;
+  redPrimary?: string | null;
+  explicitGreenFallbacks?: readonly string[];
+  explicitRedFallbacks?: readonly string[];
+  now?: number;
+}): { green: string[]; red: string[] } {
+  const now = input.now ?? Date.now();
+  const without = (pool: readonly string[], others: Array<string | null | undefined>): string[] =>
+    pool.filter((model) => !others.some((other) => isSameModelLine(model, other)));
+  const green =
+    input.greenRotationPool && input.greenPick && (input.explicitGreenFallbacks ?? []).length === 0
+      ? implicitGreenRotationFallbacks(
+          without(input.greenRotationPool, [input.redPrimary, input.redPick]),
+          input.greenPick,
+          [],
+          now,
+          input.userId
+        )
+      : [];
+  const red =
+    input.redRotationPool && input.redPick && (input.explicitRedFallbacks ?? []).length === 0
+      ? implicitGreenRotationFallbacks(
+          without(input.redRotationPool, [input.greenPrimary, input.greenPick]),
+          input.redPick,
+          [],
+          now,
+          input.userId
+        )
+      : [];
+  return { green, red };
 }
 /** Trailing window for representation counts — safely inside the 90-day audit_events retention
  *  (`model_rotation_pick` is not an observability-pruned kind; src/lib/audit-prune.ts). */
@@ -353,8 +469,8 @@ export async function eligibleRotationPool(userId: string): Promise<EligibleRota
     // 2026-08-13/14.  Unlike the old hardcoded list, a slug only lands here after an
     // OBSERVED recent 404, and it clears itself once the cooldown TTL elapses — it can never
     // exclude a working model forever the way the old static list did (review finding llm-10).
-    const safe = applyRotationAvailabilityFailOpen(credentialPool);
-    const cooling = credentialPool.filter((model) => isOpenRouterModelCoolingDown(model));
+    const safe = applyRotationAvailabilityFailOpen(credentialPool, Date.now(), userId);
+    const cooling = credentialPool.filter((model) => isOpenRouterModelCoolingDown(model, Date.now(), userId));
     return {
       pool: safe,
       skipped: [...skipped, ...cooling],
@@ -363,7 +479,7 @@ export async function eligibleRotationPool(userId: string): Promise<EligibleRota
     };
   }
   if (availability.status === "available") {
-    const allowlist = applyRotationUserModelAllowlist(credentialPool, availability.modelIds);
+    const allowlist = applyRotationUserModelAllowlist(credentialPool, availability.modelIds, userId);
     return {
       pool: allowlist.pool,
       skipped: [...skipped, ...allowlist.skipped],
@@ -453,10 +569,12 @@ export async function resolveModelRotationForRun(input: {
    *  Green seat is rotating and the pool is non-empty — used to append implicit failover
    *  models when `llmFallbackModels` is unset (issue #2577). */
   greenRotationPool?: string[];
-  /** Same eligible pool, present only when the RED seat is rotating and the pool is non-empty —
-   *  used the same way to append implicit failover models to `redTeamFallbackModels` when unset,
-   *  so a Red reviewer's permanent access error (403/404) does not hold every opening for human
-   *  approval under Autopilot (2026-09-24 fix). */
+  /** Red's eligible pool — the pool MINUS the Green seat's model (its rotation pick, or its fixed
+   *  model), exactly the set Red's pick was sampled from — present only when the RED seat is
+   *  rotating and that pool is non-empty.  Used the same way to append implicit failover models to
+   *  `redTeamFallbackModels` when unset, so a Red reviewer's permanent access error (403/404) does
+   *  not hold every opening for human approval under Autopilot (2026-09-24 fix), and never offers
+   *  Green's own model as Red's fallback (review round 2026-09-25). */
   redRotationPool?: string[];
   commit: () => void;
 }> {
@@ -505,7 +623,13 @@ export async function resolveModelRotationForRun(input: {
     // red samples from the pool MINUS green's model (possible only with >= 2 models; a 1-model
     // pool degenerates to same-model by necessity). Red's weights are computed over ITS candidate
     // set (the reduced pool) from RED-seat history only.
-    const redPool = greenPick && pool.length >= 2 ? pool.filter((model) => model !== greenPick.model) : pool;
+    // Review round 2026-09-25 (follow-up to #3761): the same guarantee now also covers a RED-ONLY
+    // rotation — Red never samples the Green seat's FIXED model either (compared by model line so
+    // any spelling of it matches) — and this reduced pool is what `redRotationPool` exposes, so
+    // Red's implicit failover chain is built from it too.
+    const greenSeatModel = greenPick?.model ?? (rotateGreen ? undefined : input.policy.llmModel?.trim() || undefined);
+    const poolWithoutGreen = greenSeatModel ? pool.filter((model) => !isSameModelLine(model, greenSeatModel)) : pool;
+    const redPool = poolWithoutGreen.length > 0 ? poolWithoutGreen : pool;
     const redPick = rotateRed
       ? weightedRotationPick({
           pool: redPool,
@@ -565,7 +689,7 @@ export async function resolveModelRotationForRun(input: {
     return {
       ...out,
       ...(rotateGreen && pool.length > 0 ? { greenRotationPool: pool } : {}),
-      ...(rotateRed && pool.length > 0 ? { redRotationPool: pool } : {}),
+      ...(rotateRed && redPool.length > 0 ? { redRotationPool: redPool } : {}),
       commit: () => {
         for (const runCommit of commits) runCommit();
       }

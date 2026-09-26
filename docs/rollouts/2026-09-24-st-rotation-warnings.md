@@ -186,3 +186,69 @@ regression on `origin/main`.
 ## 6. Zero-Code Findings
 
 None beyond what's captured in §3/§5 above — this was entirely a code-and-test lane.
+
+## 7. Review Round (2026-09-25, Follow-Up PR To #3761)
+
+**Context.**  PR #3761 merged to `main` before its independent adversarial review finished.  The
+reviewers raised six findings against what is now on `main`.  Each was re-verified against the
+code before acting.  Follow-up branch: `claude/st-rotation-warnings-review-fixes`.
+
+### Fixed
+
+- **P1 — Red's implicit fallback could make Green's own model review its opening.**  Verified:
+  `resolveModelRotationForRun` returned `redRotationPool: pool` (the FULL pool) and strategy.ts fed
+  it to `implicitGreenRotationFallbacks(pool, redPick)`, which only excluded Red's own pick and
+  puts `PREFERRED_GREEN_FAILOVER_SEATS` first.  With Green on `gemini-flash-latest`, that model was
+  Red's first fallback, so one 403/5xx/empty body on Red's pick meant the proposer reviewed its own
+  opening — auto-executed under Autopilot, where before #3761 the review was unavailable and the
+  opening was held.  The mirror case (Green's chain holding Red's model) predates #3761 (#2577).
+  Fix, three layers: (a) new `planRotationImplicitFallbacks` in `model-rotation.ts` plans both
+  chains together; Green's chain excludes Red's run model and pick, Red's chain excludes Green's
+  run model and pick, compared by model line (`isSameModelLine`, new in `model-identity.ts`), and
+  owner-configured fallbacks still win unchanged; (b) `redRotationPool` is now the Green-excluded
+  pool Red was actually sampled from, and a RED-ONLY rotation no longer samples the Green seat's
+  fixed model either; (c) `debateProposal` skips any FALLBACK reviewer whose model line matches
+  `proposal.proposedByModel` (covers a Green failover onto a model in Red's chain, and an explicit
+  chain that names the proposer).  The owner-chosen PRIMARY reviewer is deliberately left alone —
+  one model for both seats is an owner choice (and a one-model pool degenerates to it by design).
+- **P2 (two findings, same defect) — 403 cooldown was process-wide per slug.**  Verified: one
+  module-level Map keyed only by wire slug, 6h TTL, now also written on 403.  Per OpenRouter a 403
+  is per key (model restrictions / guardrails) or per request (moderation-flagged input), and
+  `resolveLlmCredential` resolves a distinct OpenRouter key per user.  Fix: a 403 cools only under a
+  `user <userId> <slug>` key (the same account-boundary scoping as `laneKey` in
+  `llm-provider-cooldown.ts`), never on a moderation refusal (`isOpenRouterModerationRefusal`), and
+  not at all without a user; a 404 stays catalog-wide.  `isOpenRouterModelCoolingDown`,
+  `applyRotationAvailabilityFailOpen`, `applyRotationUserModelAllowlist` and
+  `implicitGreenRotationFallbacks` take the user; `eligibleRotationPool` and the planner pass it.
+- **P2 — `redRotationPool` had zero coverage.**  Verified by grep.  Added red-only, red-only with a
+  fixed in-pool Green model, and both-seats tests in `test/model-rotation.test.ts`, plus planner
+  tests for the exact reviewer scenario, the reverse direction, a fixed seat spelled differently,
+  and owner-configured fallbacks.
+- **P2 — Red exhaustion message did not list tried models.**  Verified: the fail-closed reason
+  carried only the last attempt's humanized error.  `debateProposal` now appends
+  `Tried N reviewer models: a, b.` when more than one was called, and names any fallback skipped
+  because it proposed the trade.  The existing reason prefix is unchanged.
+- **P2 — EFFORT-LOG still showed lane C as IN PR after #3761 merged.**  Verified.  Row flipped to
+  Completed (merged 2026-09-25, `df9044f0`) and a review-fixes row added.
+
+### Declined
+
+None.  All six findings were real (the two cooldown findings describe one defect).
+
+### Files touched (review round)
+
+- `src/lib/model-identity.ts` — `isSameModelLine`.
+- `src/lib/model-rotation.ts` — per-user 403 cooldown, moderation carve-out,
+  `planRotationImplicitFallbacks`, Green-excluded `redRotationPool`, user-aware fail-open helpers.
+- `src/lib/strategy.ts` — plans both implicit chains via the planner; scoped 403 recording.
+- `src/lib/red-team.ts` — proposer-fallback skip, scoped 403 recording, tried-models receipt.
+- `test/model-rotation.test.ts`, `test/red-team-openrouter-access-error-failover.test.ts`.
+- `docs/EFFORT-LOG.md`, `STATUS.md`, this note.
+
+### Environment note
+
+While this round ran, every linked git worktree of this repo under `~/apps` (and the session
+scratchpad) was being deleted within minutes by an unidentified external process under a load
+average above 240; `~/.claude-disk-janitor/janitor.log` has no entry for it.  The round was
+finished from a standalone `git clone --shared` at `~/apps/claude-st-rotfix/repo` instead of the
+requested `~/apps/trading-claude-st-rotation-warnings-review-fixes` worktree, with frequent pushes.

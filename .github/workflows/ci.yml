@@ -308,6 +308,13 @@ jobs:
           bash scripts/verify-deploy-sha.selftest.sh
           bash scripts/alert-deploy-freshness.selftest.sh
           bash scripts/isolate-shared-box-batch.selftest.sh
+      # Every StallProfiler vitest test drives a FakeSession/FakeBridge by design (that module
+      # must never touch a real V8 profiler under vitest), so createInspectorBindings() -- the
+      # real node:inspector wiring -- was never exercised by the suite (review round, board
+      # 687a5fb4, 2026-09-25). This calls the real function so a broken binding fails CI instead
+      # of only failing silently in production.
+      - name: Stall profiler real node:inspector bindings (integration check)
+        run: npx tsx scripts/ops/verify-stall-profiler-bindings.ts
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm test

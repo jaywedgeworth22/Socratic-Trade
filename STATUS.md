@@ -1,5 +1,28 @@
 # Current Status
 
+## 2026-09-25 CLAUDE — Stall profiler: review-round fix (follow-up to merged PR #3756, board 687a5fb4)
+
+Independent review of PR #3756 raised three findings against code already merged to `main`
+(commit `16698bef0` — the PR merged and its branch was deleted before this review reached it, so
+this lands as a NEW PR off fresh `origin/main`, branch `claude/st-stall-profiler-review`).  All
+three verified real.  Two are docs-factuality fixes: the rollout note wrongly claimed "nothing in
+this repo" restarts a V8 CPU profiler on an interval besides this module, and that Sentry's own
+profiler is "eager and long-lived" — reading the installed `@sentry/profiling-node` 10.75.0 source
+shows the opposite: with `profileSessionSampleRate` + `profileLifecycle: "trace"` (this app's
+actual `sentry.server.config.ts`), Sentry's own continuous profiler restarts its chunk on a fixed
+60s timer for as long as a span stays active, through its own native addon — a genuinely different
+code path than the `node:inspector` restart this lane bridges, so the doc's coexistence and
+overhead claims are corrected in place, and whether that restart pays a comparable heap-walk cost
+is left as an explicit next step (production access this session does not have).  The third is a
+real test-coverage gap: `createInspectorBindings` (the real `node:inspector` wiring) was never
+exercised by any vitest test (they all drive a fake session by design), so a regression in the
+real `Session.post()` callback wrapping would have passed the whole suite and only failed silently
+in production — confirmed by reproducing exactly that regression locally.  Fixed by exporting
+`createInspectorBindings` and adding `scripts/ops/verify-stall-profiler-bindings.ts`, a `tsx`-run
+integration check (not vitest, so the "never start a real profiler under vitest" design holds)
+wired into `.github/workflows/ci.yml`'s required `verify` job.  Rollout:
+`docs/rollouts/2026-09-24-st-stall-profiler.md` ("Review Round" section 7).  Hold label
+`do-not-automerge` kept; auto-merge not armed.
 ## 2026-09-25 CLAUDE — Ops account control review round (board 687a5fb4, lane F1, PR #3754)
 
 Five reviewer findings on #3754, all verified real, all fixed test-first on the same branch.  The

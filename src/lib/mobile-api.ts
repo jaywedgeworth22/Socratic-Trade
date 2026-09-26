@@ -370,6 +370,7 @@ const POLICY_PATCH_BOOLEAN_FIELDS = [
   "allowExtendedHoursSyntheticStops",
   "shortSellingEnabled",
   "brokerStopsForShorts",
+  "exitsReleaseAppStops",
   "optionsTradingEnabled",
   "eventContractsEnabled",
   "kalshiMacroEnabled",

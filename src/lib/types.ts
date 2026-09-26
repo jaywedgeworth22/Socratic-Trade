@@ -1262,6 +1262,14 @@ export interface TradingPolicy {
    */
   brokerStopsForShorts?: boolean;
   /**
+   * "Exits release the app's own stop" (src/lib/exit-stop-release.ts). Default ON (`false` opts
+   * out). When an approved exit (autopilot or human-approved sell/cover) needs shares that only the
+   * app's OWN resting protective stop is holding at the broker, cancel that stop, place the exit,
+   * then re-place a stop for any remaining shares. Owner and external orders are never touched.
+   * Off keeps the old behavior: the exit is blocked and the position can only leave via its stop.
+   */
+  exitsReleaseAppStops?: boolean;
+  /**
    * Options place/cancel. Default ON.
    */
   optionsTradingEnabled?: boolean;

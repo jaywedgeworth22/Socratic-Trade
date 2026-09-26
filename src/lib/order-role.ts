@@ -78,13 +78,19 @@ export interface OrderRoleContext {
   appPlaced: boolean;
   /**
    * Count of OTHER working orders in the same classification batch that share this order's
-   * symbol AND a bracket-family `orderClass` (bracket/oco/oto) — the side-agnostic signal that
-   * disambiguates a bracket ENTRY leg from its two EXIT legs (see `classifyOrderRole`'s bracket
-   * branch for why `order.side` alone can't: `toBrokerSide` maps a SHORT entry to a raw "sell"
-   * and a COVER exit to a raw "buy", exactly inverted from a LONG bracket's buy-to-open /
-   * sell-to-close). `undefined` when the caller didn't supply batch context (e.g. a unit test
-   * calling `classifyOrderRole` directly) — `isOpeningSide` is the fallback, which is only
-   * guaranteed correct for LONG brackets.
+   * symbol, a bracket-family `orderClass` (bracket/oco/oto), AND were created within a few
+   * seconds of it (order-provenance.ts's `CONTINGENT_SIBLING_WINDOW_MS` — "legs of one
+   * bracket/OTO/OCO are created together") — the side-agnostic signal that disambiguates a
+   * bracket ENTRY leg from its two EXIT legs (see `classifyOrderRole`'s bracket branch for why
+   * `order.side` alone can't: `toBrokerSide` maps a SHORT entry to a raw "sell" and a COVER exit
+   * to a raw "buy", exactly inverted from a LONG bracket's buy-to-open / sell-to-close). The
+   * creation-time window matters because a symbol can legitimately carry TWO independent,
+   * simultaneously-resting bracket-family order groups (e.g. an existing position's resting exit
+   * pair plus a brand-new scale-in entry's own bracket) — counting every same-symbol bracket
+   * order as a sibling regardless of when it was created would misread the fresh entry as an
+   * exit leg of the unrelated older group. `undefined` when the caller didn't supply batch
+   * context (e.g. a unit test calling `classifyOrderRole` directly) — `isOpeningSide` is the
+   * fallback, which is only guaranteed correct for LONG brackets.
    */
   bracketSiblingWorkingCount?: number;
 }

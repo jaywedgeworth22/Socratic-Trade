@@ -186,3 +186,82 @@ Commands run from `~/apps/trading-claude-st-order-roles` with
   token) npm ci` repaired it; this is worth flagging to peers reusing an existing worktree per
   the COMMON-BRIEF's "skip `npm ci` if `node_modules/better-sqlite3` exists" shortcut — that
   check alone doesn't guarantee the rest of the install is intact.
+
+## 7. Review Round (2026-09-25, independent review of PR #3755)
+
+Undocumented context first: the immediately preceding commit (`a466c2ec4`, "split order-role.ts
+into a pure module + server-only order-role-context.ts") had already fixed the client-bundle
+build break by the time this review round started, but its own commit message promised a
+"review-round section to follow in a subsequent commit" that never landed until now.  Recorded
+here for the paper trail: `app/console/orders/page.tsx` ("use client") now imports only
+`ORDER_ROLE_LABELS`/`OrderRole` from the pure `src/lib/order-role.ts`; the DB-backed
+`loadOrderRoleContexts`/`attachOrderRoles`/`buildOpsWorkingOrderDetails` moved to a new
+`src/lib/order-role-context.ts` guarded by `import "server-only"`; `dashboard.ts` and
+`ops-snapshot.ts` were repointed at the new file.
+
+Seven independent-review findings were checked against the actual code on this branch (not
+assumed correct); two were already fixed by `a466c2ec4` above, two were real and fixed here
+test-first, one was a duplicate of the same real bug, one was a documentation-only fix, and one
+was declined.
+
+- **Client bundle importing server-only DB code (P1) — ALREADY FIXED, not reproducible at the
+  branch's actual HEAD.**  The finding was accurate against the commit it pinned (`29a8c6df`,
+  one commit behind HEAD at review time), but `a466c2ec4` (committed before this review round
+  started) had already applied exactly the fix it recommended — verified directly: `page.tsx`
+  line 13 imports only `{ ORDER_ROLE_LABELS, type OrderRole }` from `order-role.ts`, which has
+  zero `db`/`order-provenance` imports; `order-role-context.ts` carries `import "server-only"`
+  on its own first line.  No code change needed this round.
+- **Unbatched per-order `isAppPlacedBrokerOrder` calls contradicting the "3 queries total" doc
+  comment (P1) — CONFIRMED, fixed test-first.**  Verified directly: `loadOrderRoleContexts`
+  called the up-to-5-query `isAppPlacedBrokerOrder` for every order unconditionally, including
+  ones a `protectiveStop`/`syntheticStop`/`replacement` row (or a bracket-family `orderClass`)
+  had already fully classified — and `classifyOrderRole` never reads `ctx.appPlaced` once one of
+  those roles matches, so the result was discarded.  Added two failing tests first
+  (`test/order-role.test.ts`, "loadOrderRoleContexts — appPlaced query batching"), spying on the
+  raw better-sqlite3 connection's own `prepare` to assert query COUNT rather than timing (this
+  Mac's own documented heavy fleet-wide load rules out a wall-clock assertion) — they failed
+  against the pre-fix code (37 queries for 12 orders needing the fallback vs. 7 for 2, i.e.
+  scaling with N) before the fix and pass after it (identical query count regardless of N).
+  Fixed by skipping the check entirely for orders a cheaper match already resolved, and batching
+  the remaining orders' `trade_proposals`/`broker_stop_placement_intents`/`order_replacements`
+  (all statuses, matching `isAppPlacedBrokerOrder`'s own original semantics exactly — not just
+  the submitted/confirmed subset already fetched for the `replacement` ROLE) lookups into 3
+  queries total for the whole account, not 3 per order.
+- **Bracket sibling count scoped by symbol instead of by order group (P2 and its P1 duplicate) —
+  CONFIRMED, fixed test-first.**  Verified directly: `bracketWorkingCountBySymbol` counted every
+  bracket-family working order sharing a symbol across the WHOLE batch, with no grouping by
+  which bracket group an order actually belongs to.  Since this app supports scale-in adds to an
+  open position (`src/lib/strategy.ts`'s scale-in comments; `strategy-prompts.ts` requires a
+  bracket on every opening proposal including scale-ins), a symbol can legitimately carry two
+  independent, simultaneously-resting bracket-family order groups — an existing position's
+  resting exit pair, plus a brand-new scale-in entry's own bracket.  Added a failing end-to-end
+  test first (`attachOrderRoles`, "a fresh scale-in bracket entry on a symbol with an unrelated,
+  older resting bracket exit pair") that reproduced the bug exactly as described (a fresh, unfilled
+  entry order came back `bracket_stop_loss` instead of `entry`) before the fix.  Fixed by grouping
+  bracket siblings by symbol AND creation-time proximity — reusing `order-provenance.ts`'s own
+  `CONTINGENT_SIBLING_WINDOW_MS` ("legs of one bracket/OTO/OCO are created together"), now
+  exported from that file instead of duplicated — so an unrelated older or newer bracket group on
+  the same symbol is no longer counted as a sibling.  Both `test/order-role.test.ts` findings (the
+  P2 and its P1 duplicate) point at the same bug and are resolved by this one fix.
+- **Missing render test for the console Orders role badge (P2) — DECLINED.**  Verified the claim
+  (no test in this PR renders `OpenOrderTr`/`OpenOrderCard`/`OrderRoleBadge` from
+  `app/console/orders/page.tsx`) is accurate, and the repo does have precedent for this
+  (`test/console-brokers-account-visibility.test.tsx`, `test/console-decisions-index.test.tsx`).
+  Declined for THIS round: `page.tsx`'s only role-specific logic is `ORDER_ROLE_LABELS[role]`
+  (already asserted exhaustively against every `OrderRole` in `test/order-role.test.ts`) plus a
+  static `ROLE_TONE` lookup table with no branching to regress — the actual classification logic
+  it renders is the part with real test coverage. Adding a `.tsx` render-test harness is a
+  legitimate follow-up, but is new test infrastructure for this file rather than a fix for a
+  reachable bug, and risked adding scope under this round's time budget rather than a quick,
+  contained fix. Flagged as a follow-up rather than silently dropped.
+- **`docs/EFFORT-LOG.md` carrying two near-duplicate rows for lane E1 (P2) — CONFIRMED, fixed.**
+  Verified directly in the checked-out file (not just a diff): one row titled "IN PR 2026-09-24"
+  with no PR number and a second "IN PR #3755 2026-09-24" with it filled in, both otherwise
+  identical.  Removed the stale no-PR-number row, kept the one with the PR number, per this
+  repo's binding effort-log protocol (update a row in place, never append a near-duplicate).
+
+Verification for this round: see the commands and results in Section 4 below (re-run after
+these fixes) — `npx tsc --noEmit` clean, `npm run lint` 0 errors, and the full
+`test/order-role.test.ts` + `test/dashboard-order-role-api.test.ts` + `test/ops-snapshot.test.ts`
+suite (55 tests, including the 2 new query-batching tests and the 1 new scale-in bracket test)
+green.

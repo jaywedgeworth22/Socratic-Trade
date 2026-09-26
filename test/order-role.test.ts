@@ -12,7 +12,7 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EquityOrder } from "../src/lib/types";
 
 // order-role-context.ts pulls in ./db (~5k lines) + order-provenance.ts + broker-held-orders.ts +
@@ -375,6 +375,85 @@ describe("loadOrderRoleContexts — DB-backed", () => {
   });
 });
 
+// Review round, PR #3755: loadOrderRoleContexts's own doc comment claims classifying N working
+// orders costs "3 queries total rather than N", but it unconditionally called the up-to-5-query
+// isAppPlacedBrokerOrder for EVERY order, including ones a protective/synthetic/replacement row
+// already fully classified (whose appPlaced result classifyOrderRole then never even reads) --
+// and never batched the remaining trade_proposals / broker_stop_placement_intents lookups either.
+// These tests spy on the raw better-sqlite3 connection's own `prepare` to prove query COUNT, not
+// just behavior -- a wall-clock timing assertion would be flaky under this Mac's own documented
+// heavy fleet-wide load.
+describe("loadOrderRoleContexts — appPlaced query batching", () => {
+  function spyOnPrepare() {
+    const rawDb = db.getDb();
+    return vi.spyOn(rawDb, "prepare");
+  }
+
+  it("issues zero appPlaced-table queries when every order is already classified by a protective/synthetic/replacement/bracket row", () => {
+    const accountNumber = freshAccountNumber();
+    db.upsertBrokerProtectiveStop({
+      id: randomUUID(),
+      userId: "local",
+      accountNumber,
+      symbol: "BAC",
+      brokerOrderId: "prot-1",
+      quantity: 24,
+      stopPrice: 38.5,
+      status: "resting",
+      kind: "fixed"
+    });
+    const orders = [
+      order({ id: "prot-1", symbol: "BAC", clientOrderId: "some-uuid-1", state: "new" }),
+      order({ id: "brk-1", symbol: "T", orderClass: "bracket", side: "buy", type: "market", state: "new" })
+    ];
+    const spy = spyOnPrepare();
+    try {
+      orderRoleContext.loadOrderRoleContexts(orders, { userId: "local", accountNumber });
+      const sqlTexts = spy.mock.calls.map((call) => String(call[0]));
+      expect(sqlTexts.some((sql) => sql.includes("trade_proposals"))).toBe(false);
+      expect(sqlTexts.some((sql) => sql.includes("broker_stop_placement_intents"))).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("batches the appPlaced fallback lookup into one query per table regardless of how many orders need it", () => {
+    const accountNumber = freshAccountNumber();
+    const manyOrders = Array.from({ length: 12 }, (_, i) =>
+      order({ id: `plain-${i}`, symbol: `SYM${i}`, clientOrderId: `${randomUUID()}`, side: "buy", type: "limit", state: "new" })
+    );
+
+    const fewSpy = spyOnPrepare();
+    let fewAppPlacedQueryCount = 0;
+    try {
+      orderRoleContext.loadOrderRoleContexts(manyOrders.slice(0, 2), { userId: "local", accountNumber });
+      fewAppPlacedQueryCount = fewSpy.mock.calls.filter((call) => {
+        const sql = String(call[0]);
+        return sql.includes("trade_proposals") || sql.includes("broker_stop_placement_intents") || sql.includes("order_replacements");
+      }).length;
+    } finally {
+      fewSpy.mockRestore();
+    }
+
+    const manySpy = spyOnPrepare();
+    let manyAppPlacedQueryCount = 0;
+    try {
+      orderRoleContext.loadOrderRoleContexts(manyOrders, { userId: "local", accountNumber });
+      manyAppPlacedQueryCount = manySpy.mock.calls.filter((call) => {
+        const sql = String(call[0]);
+        return sql.includes("trade_proposals") || sql.includes("broker_stop_placement_intents") || sql.includes("order_replacements");
+      }).length;
+    } finally {
+      manySpy.mockRestore();
+    }
+
+    expect(fewAppPlacedQueryCount).toBeGreaterThan(0);
+    // Same query count for 2 orders needing the fallback as for 12 -- proves the lookup is batched
+    // per account, not repeated per order (would otherwise scale with order count).
+    expect(manyAppPlacedQueryCount).toBe(fewAppPlacedQueryCount);
+  });
+});
+
 describe("attachOrderRoles", () => {
   it("attaches role/whyResting only to working orders, leaving terminal orders untouched", () => {
     const accountNumber = freshAccountNumber();
@@ -474,6 +553,50 @@ describe("attachOrderRoles", () => {
     });
     const result = orderRoleContext.attachOrderRoles([shortEntry], "local", accountNumber);
     expect(result.find((o) => o.id === "short-entry-1")?.role).toBe("entry");
+  });
+
+  // Review round, PR #3755: bracketWorkingCountBySymbol was keyed by bare symbol across the WHOLE
+  // batch, so two INDEPENDENT bracket-family order groups resting on the same symbol at once (an
+  // existing position's resting exit pair, plus a brand-new scale-in entry's own bracket --
+  // src/lib/strategy.ts scale-in comments; strategy-prompts.ts requires a bracket on every opening
+  // proposal including scale-ins) made the fresh, unfilled scale-in entry count the OLDER group's
+  // exit legs as its own siblings and get misread as an exit leg itself. Fix: siblings are counted
+  // only within CONTINGENT_SIBLING_WINDOW_MS of each order's own createdAt (the same "legs of one
+  // bracket are created together" signal order-provenance.ts's isContingentOrderLeg already uses),
+  // not bare symbol membership.
+  it("a fresh scale-in bracket entry on a symbol with an unrelated, older resting bracket exit pair is NOT misread as an exit leg", () => {
+    const accountNumber = freshAccountNumber();
+    const oldTakeProfit = order({
+      id: "old-tp-1",
+      symbol: "AAPL",
+      side: "sell",
+      type: "limit",
+      orderClass: "bracket",
+      state: "new",
+      createdAt: "2026-09-20T10:00:00.000Z"
+    });
+    const oldStopLoss = order({
+      id: "old-sl-1",
+      symbol: "AAPL",
+      side: "sell",
+      type: "stop_market",
+      orderClass: "bracket",
+      state: "new",
+      createdAt: "2026-09-20T10:00:00.100Z"
+    });
+    const scaleInEntry = order({
+      id: "scale-in-entry-1",
+      symbol: "AAPL",
+      side: "buy",
+      type: "market",
+      orderClass: "bracket",
+      state: "new",
+      createdAt: "2026-09-24T14:00:00.000Z"
+    });
+    const result = orderRoleContext.attachOrderRoles([oldTakeProfit, oldStopLoss, scaleInEntry], "local", accountNumber);
+    expect(result.find((o) => o.id === "scale-in-entry-1")?.role).toBe("entry");
+    expect(result.find((o) => o.id === "old-tp-1")?.role).toBe("bracket_take_profit");
+    expect(result.find((o) => o.id === "old-sl-1")?.role).toBe("bracket_stop_loss");
   });
 
   it("returns the orders unchanged when accountNumber is empty", () => {

@@ -1,5 +1,31 @@
 # Current Status
 
+## 2026-09-25 CLAUDE — Order role classification: review-round fixes (PR #3755, board 687a5fb4)
+
+Independent review of PR #3755 raised 7 findings; verified each against the actual branch HEAD
+rather than trusting them.  Two (client bundle importing server-only DB code) were already fixed
+by the branch's own prior commit `a466c2ec4` (the `order-role.ts` / `order-role-context.ts`
+pure/server split) — no code change needed, just documenting it since that commit's own message
+had promised a review-round writeup that never landed.  Two real bugs fixed test-first: (1)
+`loadOrderRoleContexts` was calling the up-to-5-query `isAppPlacedBrokerOrder` for every order
+even when a cheaper protective/synthetic/replacement/bracket match had already resolved the role
+(whose result is then never read) — now skipped for those orders and batched into 3 queries
+total for the remaining ones, not 3 per order; (2) the bracket entry-vs-exit sibling count was
+scoped by bare symbol across the whole batch, so a scale-in bracket entry on a symbol that
+already had an unrelated, older resting bracket exit pair was misread as an exit leg — now scoped
+by symbol AND creation-time proximity (`order-provenance.ts`'s `CONTINGENT_SIBLING_WINDOW_MS`,
+now exported for reuse).  One finding was a duplicate of the same sibling-count bug.  One
+(`docs/EFFORT-LOG.md` carrying two near-duplicate rows for this lane) was confirmed and fixed —
+stale no-PR-number row removed.  One (missing render test for the console Orders badge) was
+declined — the badge's only logic is an already-exhaustively-tested label lookup; flagged as a
+follow-up rather than added under this round's scope.
+
+Verified: `npx tsc --noEmit` clean, targeted `eslint` on every touched file 0 errors, and
+`test/order-role.test.ts` + `test/dashboard-order-role-api.test.ts` + `test/ops-snapshot.test.ts`
+(55 tests, including the 2 new query-batching tests and the 1 new scale-in bracket regression)
+all green.  Hold label kept; auto-merge not armed (review stage did not ask for it).  Detail:
+`docs/rollouts/2026-09-24-st-order-roles.md` ("Review Round" section).
+
 ## 2026-09-25 CLAUDE — PR #3756 re-synced with main
 
 Merged `origin/main` into `claude/st-stall-profiler` to pick up #3761, #3774, #3778 (no file

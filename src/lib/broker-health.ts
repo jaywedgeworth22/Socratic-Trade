@@ -327,6 +327,12 @@ export async function applyBrokerOrderPlacementPause(input: {
   const marker = getBrokerPlacementPauseMarker(userId, accountScope);
   // Durable state, read synchronously right before any write (no await between read and write).
   const current = getPolicy(userId, connectedAccountId);
+  if (connectedAccountId && current.connectedAccountId !== connectedAccountId) {
+    // The account was removed during the probe, so getPolicy fell back to the user-level policy.
+    // Writing would flip THAT policy (setPolicy stores an unresolvable id at user level), so do
+    // nothing: there is no longer an account to pause or resume.
+    return { action: "none" };
+  }
 
   if (health.isHealthy) {
     deleteInternalSetting(brokerConnectivityStreakKey(userId, accountScope));

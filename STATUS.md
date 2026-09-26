@@ -14,6 +14,31 @@ own just-read position as the caller-verified hint.  Declined: the "oversized se
 long to short" finding (Alpaca, Tradier, and Robinhood never flip in one order).  Board
 `687a5fb4`, branch `claude/st-order-correctness`.  Rollout:
 `docs/rollouts/2026-09-24-st-order-correctness.md` section 7.
+## 2026-09-25 CLAUDE — Ops account control review round (board 687a5fb4, lane F1, PR #3754)
+
+Five reviewer findings on #3754, all verified real, all fixed test-first on the same branch.  The
+ops cancel's fail-closed pre-cancel check now gets the 15s broker-read budget instead of the
+console's 2.5s (slow Tradier/Robinhood reads no longer refuse every cancel); the broker-health
+auto-pause decides on the durable policy, so an operator halt or close_only made while a scheduler
+tick is mid health probe is not converted or resumed (and `set_system_state` clears the auto-pause
+marker for any operator state); `nextEligibleRun` lists the account-number gate before draining,
+as the scheduler does; `active` re-checks the universe and account number inside its write
+transaction; bulk cancel stops starting new cancels after 45s and reports the rest as
+`notAttempted`.  Rollout: `docs/rollouts/2026-09-24-st-ops-account-control.md` section 7.
+
+## 2026-09-24 CLAUDE — Ops-token account control (board 687a5fb4, lane F1, PR #3754)
+
+New `POST /api/ops/account-control` (ops-token gated) acts on an explicit `connectedAccountId`,
+never the console's selected account: `list_working_orders`, `cancel_working_orders` (optional
+`orderIds`, `dryRun`) through the console's own `cancelWorkingOrder`, and `set_system_state`
+(`active | close_only | halted`, `dryRun`) with the console Start checks (now shared in
+`src/lib/autonomy-arming.ts`) and a `nextEligibleRun` statement of what the scheduler will do.
+Why: the owner asked an agent to cancel the Tradier Sandbox's four open orders and restart its
+automation, and every mutating route was session-gated to the selected account.  Security
+trade-off: the diagnostic token can now cancel orders and change trading state (audited as
+`ops_account_control`).  Wrapper `scripts/ops/account-control.sh`; runbook
+`docs/runbooks/ops-account-control.md`.  Branch `claude/st-ops-account-control`, PR #3754 (auto-merge not armed; review stage arms it).
+Rollout: `docs/rollouts/2026-09-24-st-ops-account-control.md`.
 ## 2026-09-25 CLAUDE — C review fixes (follow-up to #3761)
 
 **What.**  Review round on merged PR #3761 (rotation access-error failover), board `687a5fb4`.

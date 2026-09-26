@@ -1,5 +1,23 @@
 # Current Status
 
+## 2026-09-25 CLAUDE — Trading performance report docs: review-round fix-up (follow-up to merged PR #3786, board 687a5fb4)
+
+Independent review of merged PR #3786 raised one finding (P2): the report published dollar-level
+realized P&L and balance/drawdown history for the owner's real live accounts (Roth IRA, Agentic,
+Sandbox/Tradier) into `docs/reviews/2026-09-25-trading-performance-report.md`, and this repo
+(`jaywedgeworth22/Socratic-Trade`) is public.  Verified real: `gh repo view` confirms
+`isPrivate: false`, and every dollar figure the finding cited is present verbatim in the merged
+doc.  Declined as a code/content defect — this exact unchanged copy was the lane's own explicit
+instruction, it matches existing published precedent (Roth IRA dollar caps already public in
+merged docs), `AGENTS.md` explicitly warns against re-imposing paternalism the owner has not
+asked for, and the finding's own suggested resolution says "No code/merge blocker."  No
+redaction made; flagged as a standing-policy question for the owner to decide, not something this
+lane should decide unilaterally.  Lands as a NEW PR off fresh `origin/main`
+(`claude/st-perf-report-review-round`) since #3786's branch was deleted on merge.  Gate: `npx tsc
+--noEmit` clean, `npm run lint` 0 errors (docs-only, no tests applicable).  Rollout:
+`docs/rollouts/2026-09-25-st-perf-report-docs.md` ("Review round 1" section).  Auto-merge NOT
+armed; `do-not-automerge` label carried.
+
 ## 2026-09-25 CLAUDE — Add 2026-09-25 trading performance report to docs
 
 **What/why.**  Docs-only.  Added the owner-facing performance analysis (produced by CLAUDE's

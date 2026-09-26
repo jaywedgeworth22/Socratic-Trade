@@ -10,7 +10,7 @@ import {
   type RedTeamEfficacy
 } from "./performance";
 import { yieldEventLoop } from "./slow-sync-guard";
-import type { FillSource } from "./types";
+import type { FillSource, HoldReasonCode } from "./types";
 
 /**
  * Token-gated, read-only realized-performance rollup for remote diagnostics
@@ -63,6 +63,9 @@ export const OPS_PERFORMANCE_MAX_DAYS = 3650;
 
 /** Bound on blocked-proposal rows scanned for the top-block-reasons rollup, per account. */
 const MAX_BLOCK_REASON_ROWS = 1000;
+/** Bound on held ("proposed" / Awaiting approval) proposal rows scanned for the holdReasons
+ *  rollup, per account — same rationale as MAX_BLOCK_REASON_ROWS. */
+const MAX_HOLD_REASON_ROWS = 1000;
 /** Bound on Red Team veto audit rows scanned per account — the app's own default (5000) is sized
  *  for a single-account request; this endpoint can iterate every account for every user. */
 const OPS_RED_TEAM_AUDIT_LIMIT = 500;
@@ -101,6 +104,13 @@ export interface OpsProposalFunnel {
   /** True when `topBlockReasons` was truncated by MAX_BLOCK_REASON_ROWS (more blocked proposals
    *  exist in the window than were scanned for reasons — counts.blocked is still exact). */
   blockReasonRowsCapped: boolean;
+  /** Coarse cause bucket per held ("proposed" / Awaiting approval) proposal — see `HoldReasonCode`
+   *  in types.ts. A held proposal persisted before this field existed carries no `holdReason` and
+   *  is simply not counted here (counts.proposed is still exact). */
+  holdReasons: Array<{ reason: HoldReasonCode; count: number }>;
+  /** True when `holdReasons` was truncated by MAX_HOLD_REASON_ROWS (more held proposals exist in
+   *  the window than were scanned — counts for the "proposed" status is still exact). */
+  holdReasonRowsCapped: boolean;
 }
 
 export interface OpsEquityCurvePoint {
@@ -288,11 +298,49 @@ function queryProposalFunnel(userId: string, accountNumber: string, sinceIso: st
     .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason))
     .slice(0, 10);
 
+  // holdReasons: same shape of query as the block-reasons rollup above, but over "proposed"
+  // (Awaiting approval) rows' `proposal.holdReason` (see hold-reason.ts) instead of `decision`.
+  const proposedCount = countRows.find((row) => row.status === "proposed")?.n ?? 0;
+  const heldRows =
+    proposedCount > 0
+      ? (getDb()
+          .prepare(
+            `SELECT proposal FROM trade_proposals
+             WHERE user_id = ? AND account_number = ? AND status = 'proposed' AND created_at >= ?
+             ORDER BY created_at DESC LIMIT ?`
+          )
+          .all(userId, accountNumber, sinceIso, MAX_HOLD_REASON_ROWS) as Array<{ proposal: string }>)
+      : [];
+  const holdReasonCounts = new Map<HoldReasonCode, number>();
+  for (const row of heldRows) {
+    let holdReason: HoldReasonCode | undefined;
+    try {
+      const parsed = JSON.parse(row.proposal) as { holdReason?: unknown };
+      if (
+        parsed.holdReason === "red_team_unavailable" ||
+        parsed.holdReason === "funding_sell" ||
+        parsed.holdReason === "policy_revert" ||
+        parsed.holdReason === "other"
+      ) {
+        holdReason = parsed.holdReason;
+      }
+    } catch {
+      // malformed proposal JSON — skip this row, counts.proposed above is still exact
+    }
+    if (!holdReason) continue;
+    holdReasonCounts.set(holdReason, (holdReasonCounts.get(holdReason) ?? 0) + 1);
+  }
+  const holdReasons = Array.from(holdReasonCounts.entries())
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
+
   return {
     windowDays,
     counts,
     topBlockReasons,
-    blockReasonRowsCapped: blockedRows.length >= MAX_BLOCK_REASON_ROWS && blockedCount > MAX_BLOCK_REASON_ROWS
+    blockReasonRowsCapped: blockedRows.length >= MAX_BLOCK_REASON_ROWS && blockedCount > MAX_BLOCK_REASON_ROWS,
+    holdReasons,
+    holdReasonRowsCapped: heldRows.length >= MAX_HOLD_REASON_ROWS && proposedCount > MAX_HOLD_REASON_ROWS
   };
 }
 
@@ -352,7 +400,7 @@ export async function buildOpsPerformanceSnapshot(input: BuildOpsPerformanceInpu
           thesisScorecard: [],
           redTeamEfficacy: safeRedTeamEfficacy(userId, { connectedAccountId: account.id, auditLimit: OPS_RED_TEAM_AUDIT_LIMIT }),
           modelAttribution: [],
-          proposalFunnel: { windowDays, counts: [], topBlockReasons: [], blockReasonRowsCapped: false },
+          proposalFunnel: { windowDays, counts: [], topBlockReasons: [], blockReasonRowsCapped: false, holdReasons: [], holdReasonRowsCapped: false },
           equityCurve: []
         });
         // Give the process a scheduling point between accounts even on this cheap branch, so an
@@ -425,7 +473,7 @@ export async function buildOpsPerformanceSnapshot(input: BuildOpsPerformanceInpu
           thesisScorecard: [],
           redTeamEfficacy: safeRedTeamEfficacy(userId, { connectedAccountId: account.id, auditLimit: OPS_RED_TEAM_AUDIT_LIMIT }),
           modelAttribution: [],
-          proposalFunnel: { windowDays, counts: [], topBlockReasons: [], blockReasonRowsCapped: false },
+          proposalFunnel: { windowDays, counts: [], topBlockReasons: [], blockReasonRowsCapped: false, holdReasons: [], holdReasonRowsCapped: false },
           equityCurve: [],
           error: message
         });

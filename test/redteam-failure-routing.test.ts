@@ -262,6 +262,10 @@ describe("Red Team unavailable — opening routing + audit parity (decide author
     expect(initialRedTeamReason?.summary).not.toMatch(/\.\./);
     expect(initialRedTeamReason?.summary).toContain("No model critiqued this opening");
 
+    // lane G3: an initial_red_team hold (decide authority's fail-closed requiresHumanReview
+    // branch) classifies as the "red_team_unavailable" holdReason bucket (hold-reason.ts).
+    expect(aaplProposal?.proposal.holdReason).toBe("red_team_unavailable");
+
     // Deliverable B: audit parity with strategy_bear_review_unavailable.
     const unavailableAudits = listAudit(500).filter((e) => e.kind === "strategy_red_team_unavailable");
     expect(unavailableAudits.length).toBeGreaterThanOrEqual(1);
@@ -359,5 +363,9 @@ describe("Red Team unavailable — propose authority surfaces the flag on the pe
     expect(aaplProposal).toBeDefined();
     expect(aaplProposal?.status).toBe("proposed");
     expect(aaplProposal?.proposal.rationale).toContain("RED TEAM FAILED");
+    // lane G3: the "propose" authority branch classifies holdReason from whatever
+    // HumanReviewReasonCode(s) it carries — an opening's Red-Team-unavailable hold still fires
+    // here (routeOnAdversaryUnavailable holds every OPENING regardless of authority).
+    expect(aaplProposal?.proposal.holdReason).toBe("red_team_unavailable");
   }, 30_000);
 });

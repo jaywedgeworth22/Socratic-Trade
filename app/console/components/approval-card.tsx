@@ -40,6 +40,7 @@ import { feedStatusLabel, plainLabel, thesisTagLabel } from "../lib/labels";
 import { modelDisplayName } from "../lib/models";
 import { redTeamCardState, redTeamFailureMeta, redTeamFailureModel, redTeamVerdictLabel } from "../lib/red-team";
 import { EXIT_ONLY_OWNER_APPROVE_NOTE } from "@/lib/proposal-actions";
+import { HOLD_REASON_LABELS } from "@/lib/hold-reason";
 import { ProposalScorecardBlock } from "./proposal-scorecard";
 import { proposalGreenRationale, proposalHumanReviewReasons } from "../lib/thesis";
 import { useConsoleData } from "../lib/useConsoleData";
@@ -514,6 +515,14 @@ export const ApprovalCard = memo(function ApprovalCard({
         {isExit(p.side) && (
           <Chip tone="warn" title="Risk-reducing exits are never trapped by caps or universe rules.">
             <ShieldCheck size={11} /> risk-reducing
+          </Chip>
+        )}
+        {p.holdReason && (
+          <Chip
+            tone="warn"
+            title="Coarse cause bucket for why this landed Awaiting approval — see the full explanation below."
+          >
+            <CircleAlert size={11} /> {HOLD_REASON_LABELS[p.holdReason]}
           </Chip>
         )}
         <div className="flex-1" />

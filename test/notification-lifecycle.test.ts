@@ -476,6 +476,28 @@ describe("broker-verification alert resolution + reconcile-marker sweepability",
     expect(listNotificationEvents(userId).find((n) => n.id === uncertain.id)?.acknowledgedAt).toBeUndefined();
   });
 
+  // Lane G3 (2026-09-25): the Robinhood account-questionnaire hold is a STANDING account-level
+  // gate (broker-account-questionnaire.ts) — a later run completing successfully (e.g. a sell)
+  // does not prove entries are unblocked, so this must stay perpetual like "uncertain"/"declined".
+  it("an account-questionnaire hold alert stays perpetual — the sweep never clears it even after a later completed run", async () => {
+    const { insertNotificationEvent, insertStrategyRun, finishStrategyRun, sweepAutoAcknowledgeNotifications, listNotificationEvents } = await import("../src/lib/db");
+    const userId = `account-action-required-${randomUUID()}`;
+    const acct = randomUUID();
+
+    const held = insertNotificationEvent({
+      userId, connectedAccountId: acct, type: "run_failed", status: "sent",
+      title: "RH-ACCOUNT needs your action on Robinhood",
+      payload: { proposalId: randomUUID(), refId: randomUUID(), reconcile: "account_action_required" }
+    });
+    const runId = randomUUID();
+    insertStrategyRun(runId, userId, acct);
+    finishStrategyRun(runId, "completed", "ok", userId);
+
+    const acked = sweepAutoAcknowledgeNotifications(userId);
+    expect(acked).toBe(0);
+    expect(listNotificationEvents(userId).find((n) => n.id === held.id)?.acknowledgedAt).toBeUndefined();
+  });
+
   it("a not_placed alert IS sweepable — self-clears once the account's latest completed run post-dates it", async () => {
     const { insertNotificationEvent, insertStrategyRun, finishStrategyRun, sweepAutoAcknowledgeNotifications, listNotificationEvents } = await import("../src/lib/db");
     const userId = `notplaced-${randomUUID()}`;

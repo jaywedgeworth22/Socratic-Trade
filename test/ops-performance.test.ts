@@ -163,6 +163,44 @@ describe("ops performance snapshot — shape and math", () => {
     insertProposal("blocked", { approved: false, reasons: ["Daily notional cap exceeded."] });
     insertProposal("rejected_by_broker", { approved: true, reasons: [] });
 
+    // Held ("proposed" / Awaiting approval) proposals with a structured holdReason (lane G3).
+    db.insertProposal({
+      id: randomUUID(),
+      userId,
+      runId: randomUUID(),
+      accountNumber,
+      proposal: {
+        symbol: "AAPL",
+        side: "buy",
+        type: "market",
+        dollarAmount: 100,
+        timeInForce: "gfd",
+        marketHours: "regular_hours",
+        rationale: "test",
+        holdReason: "red_team_unavailable"
+      },
+      decision: { approved: false, reasons: ["Red Team review unavailable"] },
+      status: "proposed"
+    });
+    db.insertProposal({
+      id: randomUUID(),
+      userId,
+      runId: randomUUID(),
+      accountNumber,
+      proposal: {
+        symbol: "MSFT",
+        side: "sell",
+        type: "market",
+        quantity: 1,
+        timeInForce: "gfd",
+        marketHours: "regular_hours",
+        rationale: "test",
+        holdReason: "funding_sell"
+      },
+      decision: { approved: false, reasons: ["Sell-to-fund-buy: queued for approval."] },
+      status: "proposed"
+    });
+
     // Portfolio snapshots -> equity curve.
     db.insertPortfolioSnapshot({
       accountNumber,
@@ -228,6 +266,15 @@ describe("ops performance snapshot — shape and math", () => {
     const blockedCount = account.proposalFunnel.counts.find((c) => c.status === "blocked")?.count;
     expect(blockedCount).toBe(1);
     expect(account.proposalFunnel.topBlockReasons[0]).toEqual({ reason: "Daily notional cap exceeded.", count: 1 });
+
+    // Held ("proposed") proposals' structured holdReason rolls up too, sorted by count then name.
+    const proposedCount = account.proposalFunnel.counts.find((c) => c.status === "proposed")?.count;
+    expect(proposedCount).toBe(2);
+    expect(account.proposalFunnel.holdReasons).toEqual([
+      { reason: "funding_sell", count: 1 },
+      { reason: "red_team_unavailable", count: 1 }
+    ]);
+    expect(account.proposalFunnel.holdReasonRowsCapped).toBe(false);
 
     // Equity curve: both snapshots are inside the 30-day window, downsampled to one point/day.
     expect(account.equityCurve.length).toBe(2);

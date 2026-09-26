@@ -151,6 +151,31 @@ describe("planBrokerMinimumBump", () => {
     expect(plan).toBeUndefined();
   });
 
+  // CORRECTED 2026-09-25 (board 687a5fb4, lane G3): describeBrokerMinimumOrderBlock no longer
+  // exempts a full-position exit from the broker's floor (see broker-minimum-guard.test.ts) —
+  // Robinhood rejects these unconditionally. A SELL/COVER already sized to the ENTIRE held
+  // position has nowhere left to bump TO, so the planner must decline immediately rather than
+  // hand back a same-size "bump" that would just re-review and get blocked one round trip later.
+  it("declines a SELL that is already the full held position (nothing left to bump to)", async () => {
+    const { planBrokerMinimumBump } = await import("../src/lib/broker-minimum-guard");
+    const plan = planBrokerMinimumBump(baseReview({ estimatedNotional: 0.22 }), "robinhood", {
+      quantity: 0.002,
+      side: "sell",
+      positionQuantity: 0.002
+    });
+    expect(plan).toBeUndefined();
+  });
+
+  it("declines a COVER that is already the full held short position (magnitude comparison)", async () => {
+    const { planBrokerMinimumBump } = await import("../src/lib/broker-minimum-guard");
+    const plan = planBrokerMinimumBump(baseReview({ estimatedNotional: 0.22 }), "robinhood", {
+      quantity: 0.002,
+      side: "cover",
+      positionQuantity: -0.002
+    });
+    expect(plan).toBeUndefined();
+  });
+
   it("declines a whole-share order (the dollar floor doesn't apply)", async () => {
     const { planBrokerMinimumBump } = await import("../src/lib/broker-minimum-guard");
     const plan = planBrokerMinimumBump(baseReview({ estimatedNotional: 0.5 }), "robinhood", { quantity: 1, side: "buy" });

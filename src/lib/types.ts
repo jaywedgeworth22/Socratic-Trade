@@ -1459,6 +1459,23 @@ export interface HumanReviewReasonReceipt {
   summary: string;
 }
 
+/**
+ * Coarse, aggregable classification of why an "Awaiting approval" (status "proposed") proposal is
+ * held instead of executed or blocked outright — set at every insertion site in strategy.ts's run
+ * loop that lands a proposal in that status. Deliberately much coarser than
+ * `HumanReviewReasonCode` (a specific per-gate receipt with its own title/summary): `holdReason`
+ * exists so the run summary, the console approval card, and GET /api/ops/performance's funnel can
+ * COUNT holds by cause without parsing free text (see `classifyHoldReasonFromCodes`,
+ * hold-reason.ts). "red_team_unavailable" covers both Red-Team-related `HumanReviewReasonCode`s
+ * ("initial_red_team", "final_size_red_team" — Red could not run OR its own verdict needs a
+ * decision); "policy_revert" covers an app policy/preference gate that reverted an otherwise
+ * auto-actionable decision to a human call (an escalatable soft-block, an override request);
+ * "funding_sell" is the sell-to-fund-buy "propose" mode queuing a funding sell for approval;
+ * "other" is every remaining cause (e.g. a standalone rationale-diversity hold) and the safe
+ * default when nothing more specific matched.
+ */
+export type HoldReasonCode = "red_team_unavailable" | "funding_sell" | "policy_revert" | "other";
+
 /** Lifecycle vocabulary for `ProposalScorecard.decisionChain`. Steps are APPENDED at the exact
  * points the pipeline already records the corresponding state (stampRedTeamResult's reject paths,
  * `redTeamVerdict.overridden`, `PolicyDecision.socraticOverride.applied`,
@@ -1746,6 +1763,9 @@ export interface TradeProposal {
   };
   /** Every independent hold that must be resolved before placement, in strategy evaluation order. */
   humanReviewReasons?: HumanReviewReasonReceipt[];
+  /** Coarse cause bucket for a status="proposed" (Awaiting approval) proposal — see
+   *  `HoldReasonCode`'s doc comment. Absent on any proposal that isn't held awaiting approval. */
+  holdReason?: HoldReasonCode;
   /**
    * Advisory PRE-POLICY veto reasons (deterministic-bear filter, approval-time Red Team) attached to a
    * TAGGED-not-dropped candidate. They are folded into the single sized PolicyDecision as OVERRIDABLE

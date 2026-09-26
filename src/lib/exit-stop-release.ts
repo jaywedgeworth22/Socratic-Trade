@@ -328,8 +328,11 @@ export async function placeExitReleasingOwnStops<T>(run: ExitStopReleaseRun, pla
     try {
       run.assertOwned?.();
     } catch (fenceError) {
-      // Lost the lease before touching protection: nothing was cancelled for this stop.
-      await rollBack(run, symbol, "lease_lost_before_cancel");
+      // Lost the lease before touching this stop.  Nothing is cancelled yet on the first stop, so
+      // there is nothing to restore; otherwise the next lease holder's reconcile owes the restore
+      // (the intent says so) — never place protection from outside the lease.
+      if (results.length === 0) deleteExitStopReleaseIntent(userId, accountNumber, symbol);
+      else markRestoreOwed(run, symbol, "lease_lost_mid_release");
       throw fenceError;
     }
     let cancelError: string | undefined;
@@ -467,6 +470,22 @@ async function rollBack(run: ExitStopReleaseRun, symbol: string, reason: string)
   await restoreProtectionAfterRelease(run, symbol, "restore_pending");
 }
 
+/** Leave the restore to the next protective-stop pass (which runs under the account lease). */
+function markRestoreOwed(run: ExitStopReleaseRun, symbol: string, reason: string): void {
+  const connectedAccountId = run.connectedAccountId ?? run.policy.connectedAccountId;
+  try {
+    updateExitStopReleasePhase(run.userId, run.accountNumber, symbol, "restore_pending");
+  } catch (err) {
+    audit("exit_stop_release_bookkeeping_error", { symbol, error: errMsg(err), context: "mark_restore_owed" }, run.userId, connectedAccountId);
+  }
+  audit(
+    "exit_stop_release_restore_deferred",
+    { symbol, side: run.plan.side, lane: run.lane, proposalId: run.proposalId, reason, note: "the next protective-stop pass re-places the released stop" },
+    run.userId,
+    connectedAccountId
+  );
+}
+
 /**
  * Put protection back after a release: mark the intent as owing a restore, then run the normal
  * protective-stop reconcile with a fresh position + order read (the same inputs the stop-monitor
@@ -481,6 +500,14 @@ async function restoreProtectionAfterRelease(run: ExitStopReleaseRun, symbol: st
     updateExitStopReleasePhase(userId, accountNumber, symbol, phase);
   } catch (err) {
     audit("exit_stop_release_bookkeeping_error", { symbol, error: errMsg(err), context: "mark_restore" }, userId, connectedAccountId);
+  }
+  // Re-placing protection is a broker mutation: only while this sequence still owns the account
+  // lease.  A lost lease hands the restore to the next lease holder's protective-stop pass.
+  try {
+    run.assertOwned?.();
+  } catch {
+    markRestoreOwed(run, symbol, "lease_lost_before_restore");
+    return;
   }
   try {
     const positions = await gateway.getEquityPositions(accountNumber);

@@ -18,7 +18,9 @@ const dbMocks = vi.hoisted(() => ({
   lastTickHardError: null as Error | null,
   haltSetPolicyCalls: 0,
   bootAuditBusyThrows: 0,
-  bootAuditCalls: 0
+  bootAuditCalls: 0,
+  markerDeleteBusyThrows: 0,
+  ownerOverrideAuditBusyThrows: 0
 }));
 
 const leaseMocks = vi.hoisted(() => ({
@@ -59,7 +61,18 @@ vi.mock("../src/lib/db", async (importOriginal) => {
       if (policy.systemState === "halted") dbMocks.haltSetPolicyCalls += 1;
       return actual.setPolicy(policy as never, userId, accountId);
     },
+    deleteInternalSetting: (key: string) => {
+      if (key.startsWith("broker:placement-paused:") && dbMocks.markerDeleteBusyThrows > 0) {
+        dbMocks.markerDeleteBusyThrows -= 1;
+        throw Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" });
+      }
+      return actual.deleteInternalSetting(key);
+    },
     audit: (kind: string, payload: unknown, userId?: string, accountId?: string) => {
+      if (kind === "broker_placement_pause_owner_override" && dbMocks.ownerOverrideAuditBusyThrows > 0) {
+        dbMocks.ownerOverrideAuditBusyThrows -= 1;
+        throw Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" });
+      }
       if (kind === "autonomy_halted_on_boot") {
         dbMocks.bootAuditCalls += 1;
         if (dbMocks.bootAuditBusyThrows > 0) {
@@ -85,6 +98,8 @@ beforeEach(() => {
   dbMocks.haltSetPolicyCalls = 0;
   dbMocks.bootAuditBusyThrows = 0;
   dbMocks.bootAuditCalls = 0;
+  dbMocks.markerDeleteBusyThrows = 0;
+  dbMocks.ownerOverrideAuditBusyThrows = 0;
   const host = globalThis as {
     __schedulerHealthFailures?: number;
     __tickInFlight?: boolean;
@@ -152,5 +167,64 @@ describe("reconcileAutonomyOnBoot setPolicy/audit split (#3385)", () => {
       .prepare("SELECT COUNT(*) as c FROM audit_events WHERE kind = ? AND user_id = ?")
       .get("autonomy_halted_on_boot", userId) as { c: number };
     expect(rows.c).toBe(1);
+  });
+});
+
+// Review round (board 687a5fb4, 2026-09-25, follow-up to PR #3752): the halted-branch release of a
+// broker-health auto-resume marker at boot ran as plain synchronous writes.  A SQLITE_BUSY there was
+// swallowed by the per-account catch and the stale marker survived, so the next healthy probe
+// auto-resumed an account whose owner had opted out of resuming after a restart.
+describe("reconcileAutonomyOnBoot releases a broker auto-pause marker under SQLITE_BUSY", () => {
+  async function autoPausedAccount() {
+    const userId = `boot-marker-busy-${randomUUID()}`;
+    const db = await import("../src/lib/db");
+    const broker = await import("../src/lib/broker-health");
+    db.setPolicy({ ...DEFAULT_POLICY, accountNumber: "ACC-MARKER", systemState: "active" }, userId);
+    const accountScope = broker.brokerPauseAccountScope(undefined, "ACC-MARKER");
+    const halted = await broker.applyBrokerOrderPlacementPause({
+      userId,
+      accountScope,
+      health: { isHealthy: false, reason: "Broker reports orders cannot be placed", category: "order_capability" },
+      policy: db.getPolicy(userId)
+    });
+    expect(halted.action).toBe("halted");
+    db.setInternalSetting(broker.brokerConnectivityStreakKey(userId, accountScope), 2);
+    expect(broker.getBrokerPlacementPauseMarker(userId, accountScope)).toBeDefined();
+    return { userId, accountScope, db, broker };
+  }
+
+  function ownerOverrideAudits(db: typeof import("../src/lib/db"), userId: string): number {
+    return (
+      db.getDb()
+        .prepare("SELECT COUNT(*) as c FROM audit_events WHERE kind = 'broker_placement_pause_owner_override' AND user_id = ?")
+        .get(userId) as { c: number }
+    ).c;
+  }
+
+  it("retries a busy marker delete instead of leaving the stale auto-resume marker behind", async () => {
+    const { userId, accountScope, db, broker } = await autoPausedAccount();
+    dbMocks.markerDeleteBusyThrows = 1;
+
+    const { reconcileAutonomyOnBoot } = await import("../src/lib/scheduler");
+    await reconcileAutonomyOnBoot();
+
+    expect(dbMocks.markerDeleteBusyThrows).toBe(0);
+    expect(broker.getBrokerPlacementPauseMarker(userId, accountScope)).toBeUndefined();
+    expect(db.getInternalSetting(broker.brokerConnectivityStreakKey(userId, accountScope))).toBeUndefined();
+    expect(ownerOverrideAudits(db, userId)).toBe(1);
+    expect(db.getPolicy(userId).systemState).toBe("halted");
+  });
+
+  it("rolls the release back as one unit on a busy audit, then redoes it exactly once", async () => {
+    const { userId, accountScope, db, broker } = await autoPausedAccount();
+    dbMocks.ownerOverrideAuditBusyThrows = 1;
+
+    const { reconcileAutonomyOnBoot } = await import("../src/lib/scheduler");
+    await reconcileAutonomyOnBoot();
+
+    expect(dbMocks.ownerOverrideAuditBusyThrows).toBe(0);
+    expect(broker.getBrokerPlacementPauseMarker(userId, accountScope)).toBeUndefined();
+    expect(db.getInternalSetting(broker.brokerConnectivityStreakKey(userId, accountScope))).toBeUndefined();
+    expect(ownerOverrideAudits(db, userId)).toBe(1);
   });
 });

@@ -195,6 +195,42 @@ describe("broker-health probe timeouts and process stalls", () => {
     expect(getPolicy(userId).systemState).toBe("active");
   });
 
+  // Review round (2026-09-25): the streak survived the halt it caused.  An owner (console Start,
+  // mobile, or the ops-token set_system_state in PR #3754) re-arming while the broker was still
+  // flaky was re-halted by the very next single timeout — a first-strike halt again.
+  it("a re-arm after a streak halt needs a fresh streak before the next connectivity halt", async () => {
+    const { applyBrokerOrderPlacementPause, brokerConnectivityStreakKey, healthSignalsFromProbeFailure } = await import(
+      "../src/lib/broker-health"
+    );
+    const { getInternalSetting, getPolicy, setPolicy } = await import("../src/lib/db");
+    const { withDeadline } = await import("../src/lib/inflight-deadline");
+    const userId = "local";
+    const accountScope = `acct-rearm-${randomUUID()}`;
+    const policy = await freshActivePolicy(userId);
+    const expired = await withDeadline(new Promise<never>(() => undefined), 5, "checkBrokerHealth timeout").catch((e: unknown) => e);
+    const timeout = healthSignalsFromProbeFailure(expired);
+    for (let i = 0; i < 3; i++) await applyBrokerOrderPlacementPause({ userId, accountScope, health: timeout, policy });
+    expect(getPolicy(userId).systemState).toBe("halted");
+    expect(getInternalSetting(brokerConnectivityStreakKey(userId, accountScope))).toBeUndefined();
+
+    // Owner re-arms while the broker is still flaky.
+    setPolicy({ ...getPolicy(userId), systemState: "active" }, userId);
+    const first = await applyBrokerOrderPlacementPause({ userId, accountScope, health: timeout, policy: getPolicy(userId) });
+    expect(first.action).toBe("none");
+    expect(getPolicy(userId).systemState).toBe("active");
+    expect(getInternalSetting(brokerConnectivityStreakKey(userId, accountScope))).toBe(1);
+  });
+
+  it("clearing an auto-pause marker directly (the ops-token halt path) also resets the connectivity streak", async () => {
+    const { brokerConnectivityStreakKey, clearBrokerPlacementPauseMarker } = await import("../src/lib/broker-health");
+    const { getInternalSetting, setInternalSetting } = await import("../src/lib/db");
+    const userId = "local";
+    const accountScope = `acct-ops-clear-${randomUUID()}`;
+    setInternalSetting(brokerConnectivityStreakKey(userId, accountScope), 2);
+    clearBrokerPlacementPauseMarker(userId, accountScope);
+    expect(getInternalSetting(brokerConnectivityStreakKey(userId, accountScope))).toBeUndefined();
+  });
+
   it("attributes a stall-dominated scheduler probe expiry to the process with an honest reason", async () => {
     const { healthSignalsFromProbeFailure } = await import("../src/lib/broker-health");
     const expiry = Object.assign(new Error("checkBrokerHealth timeout — event-loop stall 27000ms of 30000ms (90%) dominated the window"), {
@@ -447,8 +483,17 @@ describe("broker-health probe timeouts and process stalls", () => {
     expect(getBrokerPlacementPauseMarker(userId, accountScope)).toBeDefined();
 
     await reconcileAutonomyOnBoot();
+    await new Promise((resolve) => setTimeout(resolve, 0)); // fire-and-forget boot notification
 
     expect(getBrokerPlacementPauseMarker(userId, accountScope)).toBeUndefined();
+    // Review round (2026-09-25): the owner is told the truth — the account was ALREADY halted by
+    // a broker auto-pause before the restart; the restart did not revert it from active.
+    const { listNotificationEvents } = await import("../src/lib/db");
+    const bootEvents = listNotificationEvents(userId, 50).filter((e) => e.type === "autonomy_halted_on_boot");
+    expect(bootEvents).toHaveLength(1);
+    expect(bootEvents[0].title).toMatch(/broker auto-pause/i);
+    expect(bootEvents[0].title).not.toMatch(/autonomy halted on boot/i);
+    expect(bootEvents[0].payload).toMatchObject({ revertedAccountLabels: [], autoPauseReleasedAccountLabels: [expect.any(String)] });
     const healthy = await applyBrokerOrderPlacementPause({
       userId,
       connectedAccountId: policy.connectedAccountId,

@@ -119,7 +119,6 @@ re-walk the heap (measured 3.4-56 s on a 575-631 MB heap), so each rotation is b
 keepalive `console.profile()` (~5 ms); a missing keepalive or a slow start self-disables.
 **Next:** after deploy, on the next stall read the newest `.top.json` (command in the rollout).
 Rollout: `docs/rollouts/2026-09-24-st-stall-profiler.md`.
-## 2026-09-24 CLAUDE — Ops-token account control (board 687a5fb4, lane F1)
 ## 2026-09-24 CLAUDE — Ops-token account control (board 687a5fb4, lane F1, PR #3754)
 
 New `POST /api/ops/account-control` (ops-token gated) acts on an explicit `connectedAccountId`,

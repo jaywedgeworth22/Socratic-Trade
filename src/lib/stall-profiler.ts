@@ -705,7 +705,17 @@ type ProfilerHost = {
 
 const profilerHost = globalThis as unknown as ProfilerHost;
 
-async function createInspectorBindings(): Promise<{ session: InspectorSessionLike; bridge: ConsoleBridgeLike }> {
+/**
+ * Wraps the real `node:inspector` Session + V8 console into the shapes `StallProfiler` drives.
+ * Exported (only) so `scripts/ops/verify-stall-profiler-bindings.ts` can exercise the REAL
+ * wiring end-to-end -- every vitest test in test/stall-profiler.test.ts drives `StallProfiler`
+ * with a FakeSession/FakeBridge by design (this module must never touch a real V8 profiler under
+ * vitest), so this function itself was otherwise never called by anything the test suite runs.
+ */
+export async function createInspectorBindings(): Promise<{
+  session: InspectorSessionLike;
+  bridge: ConsoleBridgeLike;
+}> {
   // webpackIgnore: resolved by Node at runtime, never bundled (same pattern as node:dns in
   // instrumentation.ts).  Throws ERR_INSPECTOR_NOT_AVAILABLE on a Node built without inspector.
   const inspector = (await import(/* webpackIgnore: true */ "node:inspector")) as unknown as InspectorModuleLike;

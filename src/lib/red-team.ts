@@ -16,15 +16,19 @@
 //   that still can't answer declares itself unavailable UNLESS an explicit chain exists — either
 //   the owner's own `redTeamFallbackModels`, or (2026-09-24 fix) a small implicit alternate-pick
 //   chain the strategy loop appends when the Red seat itself is rotating (mirrors the Green
-//   proposer's issue #2577 fix; see `implicitGreenRotationFallbacks` call for `redRotationPool`
-//   in strategy.ts). Both chains are the reviewer's OWN resolved choice, never a silent
-//   substitution of an unrelated model for an unconfigured seat — R11's actual concern.
+//   proposer's issue #2577 fix; see `planRotationImplicitFallbacks` in model-rotation.ts, called
+//   from strategy.ts). Both chains are the reviewer's OWN resolved choice, never a silent
+//   substitution of an unrelated model for an unconfigured seat — R11's actual concern. A
+//   fallback reviewer is never the model that proposed the trade (review round 2026-09-25): the
+//   implicit chain excludes Green's model, and the attempt loop below skips any fallback that
+//   matches `proposal.proposedByModel`.
 
 import { getPolicy } from "./db";
 import { deriveExecutionState, llmExecutionMode, llmModeClarification } from "./execution-mode";
 import { resolveRunAccountScope } from "./run-account-scope";
 import { recordLlmUsage, extractLlmUsage, providerRequestIdFromPayload, remapOpenRouterTelemetry } from "./llm-usage";
 import { recordLlmCallOutcome } from "./llm-late-usage";
+import { isSameModelLine } from "./model-identity";
 import { recordOpenRouterModelNotFound } from "./model-rotation";
 import {
   interactiveStrategyReasoningEffort,
@@ -377,8 +381,22 @@ export async function debateProposal(
   const redAttempts = [
     { url, provider, model, transport, key: llmKey, keySource, keyRef, body }
   ];
+  // A FALLBACK reviewer must never be the model that proposed this trade (review round
+  // 2026-09-25, P1 follow-up to #3761).  The strategy loop already keeps Green's model out of
+  // Red's implicit rotation chain (planRotationImplicitFallbacks); this call-time check also covers
+  // a Green FAILOVER that landed on a model in Red's chain, and an explicit chain that happens to
+  // name the proposer.  Compared by model line, so any spelling matches.  The owner-chosen PRIMARY
+  // reviewer is left alone: picking one model for both seats is the owner's call (and a one-model
+  // rotation pool degenerates to it by design) — only a silent failover onto the proposer is refused.
+  const proposerModel = typeof proposal.proposedByModel === "string" ? proposal.proposedByModel.trim() : "";
+  const skippedSelfReviewers: string[] = [];
   const fallbackModelList = Array.isArray(policy.redTeamFallbackModels) ? policy.redTeamFallbackModels : [];
   for (const fallbackModel of fallbackModelList.filter((m): m is string => typeof m === "string").map((m) => m.trim()).filter(Boolean)) {
+    if (proposerModel && isSameModelLine(fallbackModel, proposerModel)) {
+      skippedSelfReviewers.push(fallbackModel);
+      console.warn(`[RedTeam] skipping fallback reviewer ${fallbackModel}: it proposed this trade (${proposerModel}).`);
+      continue;
+    }
     const ep = resolveLlmEndpoint({ ...policy, redTeamLlmModel: fallbackModel }, userId, "https://api.openai.com/v1/chat/completions", "red");
     if (!ep.key) continue; // No credential for this provider's model — skip it rather than fail.
     redAttempts.push({
@@ -420,6 +438,22 @@ export async function debateProposal(
 
   const { model: canonicalModel } = remapOpenRouterTelemetry(provider, model);
   let finalModel = canonicalModel;
+  // Every reviewer model this review actually called, in order — named in the fail-closed reason
+  // when more than one was tried (and any fallback skipped as the proposer), so an operator can see
+  // the failover ran instead of reading only the last error (review round 2026-09-25).
+  const triedModels: string[] = [];
+  const withAttemptReceipt = (debate: RedTeamDebateResult): RedTeamDebateResult => {
+    if (debate.available) return debate;
+    const notes: string[] = [];
+    if (triedModels.length > 1) notes.push(`Tried ${triedModels.length} reviewer models: ${triedModels.join(", ")}.`);
+    if (skippedSelfReviewers.length > 0) {
+      notes.push(`Skipped fallback reviewer ${skippedSelfReviewers.join(", ")} because it proposed this trade.`);
+    }
+    if (notes.length === 0) return debate;
+    const base = debate.reason.trimEnd();
+    const separator = /[.!?]$/.test(base) ? "  " : ".  ";
+    return { ...debate, reason: `${base}${separator}${notes.join("  ")}` };
+  };
 
   try {
     const traced = await withLlmGeneration(
@@ -453,6 +487,7 @@ export async function debateProposal(
           const next = plannedRedAttempts[i + 1];
           const { model: attemptCanonicalModel } = remapOpenRouterTelemetry(attempt.provider, attempt.model);
           finalModel = attemptCanonicalModel;
+          triedModels.push(attempt.model);
 
           try {
             // Fast fallback to secondary models (§4.3): 1 attempt total per provider model, fresh
@@ -505,8 +540,10 @@ export async function debateProposal(
               // ("doesn't have access to this model or region") is just as permanent for this
               // key/region as a 404, so it cools the slug the same way (2026-09-24 fix); a 429
               // rate limit is NOT included here — that is transient and must not cool the slug.
+              // Scope (review round 2026-09-25): a 404 cools catalog-wide; a 403 cools for THIS
+              // user only and never on a moderation refusal (one flagged prompt, not the model).
               if (attempt.provider === "openrouter" && (response.status === 404 || response.status === 403)) {
-                recordOpenRouterModelNotFound(attempt.model);
+                recordOpenRouterModelNotFound(attempt.model, { status: response.status, userId, detail: rawDetail });
               }
               const why = humanizeLlmError(rawDetail, { provider: attempt.provider, status: response.status });
               if (!isLast && isFailoverLlmStatus(response.status)) {
@@ -684,13 +721,15 @@ export async function debateProposal(
         throw lastError;
       }
     );
-    return traced.debate;
+    return withAttemptReceipt(traced.debate);
   } catch (error) {
     console.error("Failed to run Red Team review:", error);
-    return unavailable(
-      "Red Team review errored out.",
-      isAbortTimeoutError(error) ? "timeout" : "provider_error",
-      finalModel
+    return withAttemptReceipt(
+      unavailable(
+        "Red Team review errored out.",
+        isAbortTimeoutError(error) ? "timeout" : "provider_error",
+        finalModel
+      )
     );
   }
 }

@@ -235,4 +235,10 @@ npx tsc --noEmit
 npm run lint
 ```
 
-Full `npm test` + `npm run build` are the required `verify` CI check.
+Results: `tsc` exit 0; `lint` 0 errors (836 existing warnings, none in the touched files); the six
+targeted vitest files (the five above plus `test/run-strategy-offline.test.ts`) passed 75/75.
+Test-first check: the new unit tests run against the #3759 module gave 10 failed and 29 passed
+(the one new case passing there, "oversized or sub-share dollar buy stays unchanged", is behavior
+the old code already had).  Full `npm test` + `npm run build` are the required `verify` CI
+check.  Follow-up PR: #3792 (hold label `do-not-automerge`; the repo's auto-merge workflow
+armed it at creation and it was disabled again).

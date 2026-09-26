@@ -5,6 +5,7 @@
 // App A PULL App B's daily EOD bars over HTTP (cache-aside), served in the exact PriceSeries /
 // { closes } envelopes the shared CongressTradeClient parses
 // (@jaywedgeworth22/congress-trading-shared: /api/market/prices/{ticker}, /api/market/spx).
+// Company profiles for App A enrichment: /api/market/profile/{symbol} → { ref } / 404 { ref: null }.
 //
 // Auth lives in the route handlers (verifySecuritiesImportToken — the same APP_B_INGEST_TOKEN bearer
 // secret as the import receiver); middleware only passes bearer requests through.
@@ -20,7 +21,14 @@
 import type { OHLCBar } from "./indicators";
 import { fetchDailyOHLC } from "./history";
 import { normalizeSymbol } from "./money";
-import { ohlcBarsToCloses, type CongressClose, type CongressPrice } from "./congress-share";
+import { fetchNasdaqScreenerResponse } from "./nasdaq-screener-fetch";
+import {
+  marketQuoteToRef,
+  ohlcBarsToCloses,
+  type CongressClose,
+  type CongressPrice,
+  type CongressRef
+} from "./congress-share";
 
 /** Injectable daily-OHLC fetcher; the routes use the app's canonical cascade, tests inject canned bars. */
 export type DailyOHLCFetcher = (symbol: string) => Promise<OHLCBar[] | null>;
@@ -100,4 +108,111 @@ export async function fetchSpxCloses(
 ): Promise<CongressClose[]> {
   const ascending = ohlcBarsToCloses(await fetcher("SPY"));
   return closesInRange(ascending, range.from, range.to).reverse();
+}
+
+// ── Company profile (peer enrichment for Congress.Trade) ─────────────────────
+//
+// Contract expected by CT `enrichment/socratic.ts`:
+//   GET /api/market/profile/{symbol}
+//   200 { ref: ProfileRef }
+//   404 { ref: null }   — symbol unknown (envelope so CT keeps asking others)
+// Auth + rate-limit live in the route handler (same bearer as prices/quotes).
+
+
+/** Peer profile shape — a subset of SecurityRef / CongressRef. */
+export type ProfileRef = CongressRef;
+
+export type ProfileLookup = (symbol: string) => Promise<ProfileRef | null>;
+
+/** In-process screener map (ticker → ref), TTL-aligned with other peer caches. */
+let screenerProfileCache: { expiresAt: number; byTicker: Map<string, ProfileRef> } | null = null;
+const SCREENER_PROFILE_TTL_MS = 5 * 60_000;
+
+function parseScreenerMarketCap(raw: unknown): number | undefined {
+  const marketCapStr = String(raw ?? "").replace(/[$,%\s,]/g, "");
+  const marketCap = Number(marketCapStr);
+  return Number.isFinite(marketCap) && marketCap > 0 ? marketCap : undefined;
+}
+
+async function loadScreenerProfileMap(now = Date.now()): Promise<Map<string, ProfileRef>> {
+  if (screenerProfileCache && screenerProfileCache.expiresAt > now) {
+    return screenerProfileCache.byTicker;
+  }
+  try {
+    const response = await fetchNasdaqScreenerResponse("congress-nasdaq-screener");
+    // Only cache successful HTTP responses. Transient failures / non-OK must not
+    // poison the 5m TTL with an empty map (valid symbols would 404 until expiry).
+    if (!response.ok) {
+      return new Map();
+    }
+    const payload = (await response.json()) as {
+      data?: { table?: { rows?: Array<Record<string, unknown>> } };
+    };
+    const rows = Array.isArray(payload?.data?.table?.rows) ? payload.data.table.rows : [];
+    const byTicker = new Map<string, ProfileRef>();
+    for (const row of rows) {
+      const ref = marketQuoteToRef({
+        symbol: String(row.symbol ?? ""),
+        companyName: typeof row.name === "string" ? row.name : undefined,
+        sector: typeof row.sector === "string" ? row.sector : undefined,
+        industry: typeof row.industry === "string" ? row.industry : undefined,
+        marketCap: parseScreenerMarketCap(row.marketCap)
+      });
+      if (ref) byTicker.set(ref.ticker, ref);
+    }
+    // Successful empty screener (legitimately zero rows) is still cacheable.
+    screenerProfileCache = { expiresAt: now + SCREENER_PROFILE_TTL_MS, byTicker };
+    return byTicker;
+  } catch (err) {
+    console.warn("[market-read] screener profile map failed:", err);
+    // Leave any prior (expired) cache alone; return empty without writing TTL
+    // so the next call retries immediately.
+    return new Map();
+  }
+}
+
+/** Test seam: drop the screener profile cache. */
+export function clearScreenerProfileCacheForTests(): void {
+  screenerProfileCache = null;
+}
+
+/**
+ * Resolve a company profile for peer enrichment. Prefers the local imported
+ * securities_ref cache (no network), then the keyless Nasdaq delayed screener.
+ * Returns null when the symbol is unknown — the route turns that into 404 `{ ref: null }`.
+ */
+export async function fetchCompanyProfile(
+  rawSymbol: string,
+  lookup: ProfileLookup | undefined = undefined
+): Promise<ProfileRef | null> {
+  const ticker = normalizeSymbol(rawSymbol);
+  if (!ticker) return null;
+  if (lookup) return lookup(ticker);
+
+  try {
+    const { getImportedRef } = await import("./db-securities-import");
+    const imported = getImportedRef(ticker);
+    if (imported) {
+      const ref: ProfileRef = {
+        ticker: imported.ticker,
+        assetClass: (imported.assetClass as ProfileRef["assetClass"]) ?? "equity"
+      };
+      if (imported.companyName) ref.companyName = imported.companyName;
+      if (imported.sector) ref.sector = imported.sector;
+      if (imported.industry) ref.industry = imported.industry;
+      if (imported.exchange) ref.exchange = imported.exchange;
+      if (imported.currency) ref.currency = imported.currency;
+      if (typeof imported.marketCap === "number" && Number.isFinite(imported.marketCap) && imported.marketCap > 0) {
+        ref.marketCap = imported.marketCap;
+      }
+      if (imported.cik) ref.cik = imported.cik;
+      return ref;
+    }
+  } catch (err) {
+    // DB may be unavailable in some test/edge contexts — fall through to screener.
+    console.warn("[market-read] imported profile lookup failed:", err);
+  }
+
+  const map = await loadScreenerProfileMap();
+  return map.get(ticker) ?? null;
 }

@@ -125,7 +125,8 @@ function isPeerMarketReadPath(pathname: string): boolean {
     pathname === "/api/market/spx" ||
     pathname === "/api/market/quotes" ||
     pathname.startsWith("/api/market/prices/") ||
-    pathname.startsWith("/api/market/intraday/")
+    pathname.startsWith("/api/market/intraday/") ||
+    pathname.startsWith("/api/market/profile/")
   );
 }
 

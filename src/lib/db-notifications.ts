@@ -73,15 +73,22 @@ function normalizeRunFailedSignature(title: string, payload: unknown): string {
  *     no reconcile marker, so it remains sweepable.
  *   - reconcile-path emitters (order confirmed NOT placed) carry reconcile: "not_placed" and are
  *     deliberately sweepable.
+ *   - (lane G3, 2026-09-25) the account-questionnaire hold's first detection — title
+ *     `${accountNumber} needs your action on Robinhood`, payload { …, reconcile:
+ *     "account_action_required" }: a STANDING account-level broker gate (see
+ *     broker-account-questionnaire.ts) that a later successful run does NOT resolve — a sell can
+ *     still succeed while entries stay paused — so it must stay protected like "uncertain"/
+ *     "declined", never auto-acked just because SOME later run completed.
  */
 function isBrokerVerificationRunFailed(title: string, payload: unknown): boolean {
   const record = payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as Record<string, unknown>) : {};
   const reconcile = typeof record.reconcile === "string" ? record.reconcile : undefined;
-  if (reconcile === "uncertain" || reconcile === "declined") return true;
+  if (reconcile === "uncertain" || reconcile === "declined" || reconcile === "account_action_required") return true;
   if (reconcile === "not_placed" || reconcile === "placed" || reconcile === "recovered") return false;
   // Legacy fallback: rows persisted before the reconcile marker existed carry only the title/summary.
   const text = `${title} ${typeof record.summary === "string" ? record.summary : ""}`.toLowerCase();
   return (
+    text.includes("needs your action on robinhood") ||
     text.includes("verify with broker") ||
     text.includes("placement uncertain") ||
     text.includes("declined by broker")

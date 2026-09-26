@@ -53,14 +53,22 @@ const FULL_POSITION_QTY_EPSILON = 1e-6;
  * True when `order` is a sell/cover whose `quantity` matches the caller-supplied
  * `positionQuantity` (the account's currently held quantity for this symbol) within
  * FULL_POSITION_QTY_EPSILON — i.e. an order that closes the ENTIRE position rather than a partial
- * trim. Robinhood explicitly permits liquidating a whole fractional position regardless of its
- * dollar value (that's how "dust" positions get cleaned up), and its own `order_checks` pre-flight
- * does not flag those — so this exemption only ever applies to our OWN defensive notional-floor
- * fallback below, never overrides an actual `review.preflightBlock` signal from the broker.
+ * trim.
+ *
+ * CORRECTED 2026-09-25 (board 687a5fb4, lane G3): this used to also EXEMPT a matching order from
+ * describeBrokerMinimumOrderBlock's own notional-floor fallback, on the assumption that "Robinhood
+ * permits liquidating a whole fractional position regardless of its dollar value." Production
+ * evidence on the live Robinhood "Agentic" account contradicts that: 11 `placing_failed` rejections
+ * for "Fractional orders must be at least $1" and 8 for "Dollar-based orders must be at least $1" —
+ * Robinhood's floor is unconditional, including for a full-position exit. Nothing in this codebase's
+ * MCP usage (toMcpOrder/reviewEquityOrder in robinhood.ts) documents or exercises a special
+ * sub-$1-full-exit path, so there is no verified way to place one. The exemption is REMOVED from
+ * describeBrokerMinimumOrderBlock; `isFullPositionExit` now exists only to tell
+ * `planBrokerMinimumBump` when a sell/cover is ALREADY at the full held position (nothing left to
+ * bump TO), so it can decline immediately instead of proposing a same-size no-op "bump".
  *
  * Both `side` and `positionQuantity` are optional on the order shape: existing call sites that
- * don't supply them simply never match here, preserving today's blocking behavior unchanged until
- * a caller threads the position quantity through.
+ * don't supply them simply never match here.
  */
 function isFullPositionExit(order: { quantity?: number; side?: OrderSide; positionQuantity?: number }): boolean {
   if (order.side !== "sell" && order.side !== "cover") return false;
@@ -79,10 +87,13 @@ function isFullPositionExit(order: { quantity?: number; side?: OrderSide; positi
  * fallback for a fractional/dollar-based order whose reviewed notional is itself under the known
  * per-broker floor. Returns undefined for anything else — this must never flag a legitimate order.
  *
- * EXEMPTION: a sell/cover that closes the entire position (`order.quantity` == `order.positionQuantity`,
- * epsilon tolerance) is never blocked by the notional-floor fallback — see `isFullPositionExit`'s
- * doc comment. A genuinely sub-minimum PARTIAL trim (quantity less than the held position) is
- * unaffected and still blocked exactly as before.
+ * NO EXEMPTION for a full-position exit (removed 2026-09-25, board 687a5fb4, lane G3): production
+ * evidence shows Robinhood rejects a sub-$1 order at placement regardless of whether it closes the
+ * entire position — see `isFullPositionExit`'s doc comment for the evidence and root cause. A
+ * full-position exit under the floor is blocked exactly like a partial trim; callers that support
+ * `brokerMinimumHandling: "bump"` still get a chance to raise a PARTIAL trim toward (and, if
+ * needed, up to) the full position first — see `planBrokerMinimumBump` — before this block fires
+ * on the re-reviewed size.
  */
 export function describeBrokerMinimumOrderBlock(
   review: ReviewedOrder,
@@ -97,8 +108,7 @@ export function describeBrokerMinimumOrderBlock(
     minNotional !== undefined &&
     review.estimatedNotional > 0 &&
     review.estimatedNotional < minNotional &&
-    isFractionalOrDollarBased(order) &&
-    !isFullPositionExit(order)
+    isFractionalOrDollarBased(order)
   ) {
     return `Order notional $${review.estimatedNotional.toFixed(2)} is below the broker's $${minNotional.toFixed(2)} minimum order size and would be rejected.`;
   }
@@ -263,6 +273,13 @@ export function planBrokerMinimumBump(
     // Short positions carry negative quantities — magnitude is what bounds a cover.
     const heldQty = order.positionQuantity != null ? Math.abs(order.positionQuantity) : undefined;
     if (heldQty === undefined || !(heldQty > 0)) return undefined;
+
+    // Already sized to the FULL held position: there is nothing left to bump TO. Robinhood's floor
+    // is unconditional (describeBrokerMinimumOrderBlock no longer exempts a full-position exit), so
+    // an order already at the whole position that's still under the floor cannot be resized any
+    // further — decline immediately instead of returning a same-size "bump" that would re-review
+    // and get blocked anyway one round trip later.
+    if (isFullPositionExit(order)) return undefined;
 
     if (order.quantity != null && order.quantity > 0) {
       if (from < MIN_TRUSTED_REVIEW_NOTIONAL) return undefined;

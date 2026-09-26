@@ -346,17 +346,19 @@ describe("broker-originated executions from the listing", () => {
     insertFillEvent({ accountNumber, source: "paper", executionMode: "broker/paper", symbol: "C", side: "buy", quantity: 47, price: 70, notional: 3290, status: "filled", brokerOrderId: "35000001", filledAt: "2026-08-05T14:00:00.000Z" });
     const rows: Array<Record<string, unknown>> = [
       // Owner sells C from the Tradier UI: untagged, filled.
-      { id: 36200001, type: "market", symbol: "C", side: "sell", quantity: 47, status: "filled", avg_fill_price: 72.4, exec_quantity: 47, class: "equity", create_date: "2026-09-25T14:00:00.000Z", transaction_date: "2026-09-25T14:00:02.000Z" },
+      { id: 36200001, type: "market", symbol: "C", side: "sell", quantity: 47, status: "filled", avg_fill_price: 72.4, exec_quantity: 47, class: "equity", create_date: "2026-09-24T14:00:00.000Z", transaction_date: "2026-09-24T14:00:02.000Z" },
       // App order (tagged): its own lane books it.
-      { id: 36200002, type: "market", symbol: "SHEL", side: "buy", quantity: 5, status: "filled", avg_fill_price: 66.1, exec_quantity: 5, class: "equity", tag: "st-ref-app", create_date: "2026-09-25T14:01:00.000Z", transaction_date: "2026-09-25T14:01:01.000Z" },
+      { id: 36200002, type: "market", symbol: "SHEL", side: "buy", quantity: 5, status: "filled", avg_fill_price: 66.1, exec_quantity: 5, class: "equity", tag: "st-ref-app", create_date: "2026-09-24T14:01:00.000Z", transaction_date: "2026-09-24T14:01:01.000Z" },
       // App OTOCO: entry leg (booked under the container by placement) + a filled take-profit leg.
-      { id: 36200010, type: "otoco", class: "otoco", status: "filled", tag: "st-ref-bracket", create_date: "2026-09-25T14:02:00.000Z", leg: [
-        { id: 36200011, type: "limit", symbol: "MPC", side: "buy", quantity: 4, status: "filled", avg_fill_price: 150.0, exec_quantity: 4, class: "equity", transaction_date: "2026-09-25T14:02:05.000Z" },
-        { id: 36200012, type: "limit", symbol: "MPC", side: "sell", quantity: 4, status: "filled", avg_fill_price: 158.5, exec_quantity: 4, class: "equity", transaction_date: "2026-09-25T15:10:00.000Z" },
+      { id: 36200010, type: "otoco", class: "otoco", status: "filled", tag: "st-ref-bracket", create_date: "2026-09-24T14:02:00.000Z", leg: [
+        { id: 36200011, type: "limit", symbol: "MPC", side: "buy", quantity: 4, status: "filled", avg_fill_price: 150.0, exec_quantity: 4, class: "equity", transaction_date: "2026-09-24T14:02:05.000Z" },
+        { id: 36200012, type: "limit", symbol: "MPC", side: "sell", quantity: 4, status: "filled", avg_fill_price: 158.5, exec_quantity: 4, class: "equity", transaction_date: "2026-09-24T15:10:00.000Z" },
         { id: 36200013, type: "stop", symbol: "MPC", side: "sell", quantity: 4, status: "canceled", avg_fill_price: 0, exec_quantity: 0, class: "equity" }
       ] },
+      // An owner order that executed seconds ago waits out the settle window (next pass books it).
+      { id: 36200030, type: "market", symbol: "VZ", side: "sell", quantity: 10, status: "filled", avg_fill_price: 40.1, exec_quantity: 10, class: "equity", create_date: new Date().toISOString(), transaction_date: new Date().toISOString() },
       // An open order with nothing executed is ignored.
-      { id: 36200020, type: "limit", symbol: "CI", side: "buy", quantity: 27, status: "open", avg_fill_price: 0, exec_quantity: 0, class: "equity", create_date: "2026-09-25T14:03:00.000Z" }
+      { id: 36200020, type: "limit", symbol: "CI", side: "buy", quantity: 27, status: "open", avg_fill_price: 0, exec_quantity: 0, class: "equity", create_date: "2026-09-24T14:03:00.000Z" }
     ];
     const executions = rows.flatMap((row) => executionsFromTradierRow(row));
     expect(executions.find((e) => e.order.id === "36200011")?.role).toBe("entry");

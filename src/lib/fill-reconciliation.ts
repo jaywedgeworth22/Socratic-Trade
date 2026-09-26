@@ -61,6 +61,10 @@ const RECHECK_AFTER_NOT_FOUND_MS = 30 * 60_000;
 const RECHECK_AFTER_ERROR_MS = 5 * 60_000;
 const BRACKET_RECHECK_MS = 15 * 60_000;
 const LISTING_INGEST_INTERVAL_MS = 5 * 60_000;
+/** An execution this fresh is left for the next pass: every app lane books its own order
+ *  synchronously right after the broker responds, so waiting out this window guarantees the lane's
+ *  receipt (and its broker order id) exists before the listing ingest dedupes against it. */
+export const LISTING_INGEST_SETTLE_MS = 2 * 60_000;
 const PROPOSAL_CONVERGE_INTERVAL_MS = 10 * 60_000;
 /** A bracket container the broker reports as not found this many times is settled (stop asking). */
 const BRACKET_NOT_FOUND_SETTLE_COUNT = 3;
@@ -414,8 +418,14 @@ export async function ingestListingExecutions(ctx: BrokerTruthContext): Promise<
   if (!executionMode) return;
   const executions = await listRecentExecutions.call(ctx.gateway, ctx.accountNumber);
   const hasFillFor = (id: string) => Boolean(findFillEventByBrokerOrderId(ctx.accountNumber, id, ctx.userId));
+  const settledBefore = Date.now() - LISTING_INGEST_SETTLE_MS;
   for (const execution of executions) {
     if (!isFinalPricedExecution(execution.order)) continue;
+    const executedAtMs = Date.parse(execution.order.updatedAt ?? execution.order.createdAt ?? "");
+    if (Number.isFinite(executedAtMs) && executedAtMs > settledBefore) {
+      bump(ctx.summary, "listingExecutionsDeferredToSettle");
+      continue;
+    }
     if (listingExecutionOwner(execution, hasFillFor)) continue;
     bookBrokerOriginatedExecution({
       userId: ctx.userId,

@@ -1,3 +1,11 @@
+import { dataSourceFetch } from "./data-source-fetch";
+
+/** Call-site options. userId selects that user's data-source proxy (when set);
+ *  without it the operator env / residential default applies. */
+export interface YahooFetchOptions {
+  userId?: string;
+}
+
 export interface YahooFinanceQuote {
   /** Exchange-reported issuer identity from chart metadata (longName/shortName). */
   companyName?: string;
@@ -101,13 +109,13 @@ export function yahooQuoteFromChartMeta(
   };
 }
 
-export async function fetchYahooFinanceQuote(symbol: string): Promise<YahooFinanceQuote | undefined> {
+export async function fetchYahooFinanceQuote(symbol: string, options?: YahooFetchOptions): Promise<YahooFinanceQuote | undefined> {
   const clean = encodeURIComponent(symbol.toUpperCase());
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${clean}?interval=1d&range=1d`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
   try {
-    const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+    const response = await dataSourceFetch(url, { cache: "no-store", signal: controller.signal }, { userId: options?.userId });
     clearTimeout(timeout);
     if (!response.ok) return undefined;
     const payload = await response.json() as { chart?: { result?: Array<{ meta?: Record<string, unknown>, indicators?: { quote?: Array<{ volume?: unknown[] }> } }> } };
@@ -127,7 +135,7 @@ export async function fetchYahooFinanceQuote(symbol: string): Promise<YahooFinan
 
 export async function fetchYahooFinanceQuotesBatch(
   symbols: string[],
-  options?: { concurrency?: number }
+  options?: { concurrency?: number; userId?: string }
 ): Promise<Map<string, YahooFinanceQuote>> {
   const result = new Map<string, YahooFinanceQuote>();
   if (symbols.length === 0) return result;
@@ -143,7 +151,7 @@ export async function fetchYahooFinanceQuotesBatch(
   const concurrency = Math.max(1, Math.min(options?.concurrency ?? 1, 4));
   for (let i = 0; i < chunks.length; i += concurrency) {
     const wave = chunks.slice(i, i + concurrency);
-    const maps = await Promise.all(wave.map((chunk) => fetchYahooQuoteChunk(chunk)));
+    const maps = await Promise.all(wave.map((chunk) => fetchYahooQuoteChunk(chunk, options?.userId)));
     for (const map of maps) {
       for (const [symbol, quote] of map) result.set(symbol, quote);
     }
@@ -152,7 +160,7 @@ export async function fetchYahooFinanceQuotesBatch(
   return result;
 }
 
-async function fetchYahooQuoteChunk(chunk: string[]): Promise<Map<string, YahooFinanceQuote>> {
+async function fetchYahooQuoteChunk(chunk: string[], userId?: string): Promise<Map<string, YahooFinanceQuote>> {
   const result = new Map<string, YahooFinanceQuote>();
   const cleanSymbols = chunk.map((s) => encodeURIComponent(s.toUpperCase().trim())).join(",");
   const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${cleanSymbols}`;
@@ -160,7 +168,7 @@ async function fetchYahooQuoteChunk(chunk: string[]): Promise<Map<string, YahooF
   const timeout = setTimeout(() => controller.abort(), 8000);
 
   try {
-    const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+    const response = await dataSourceFetch(url, { cache: "no-store", signal: controller.signal }, { userId });
     clearTimeout(timeout);
     if (!response.ok) return result;
     const payload = await response.json() as {

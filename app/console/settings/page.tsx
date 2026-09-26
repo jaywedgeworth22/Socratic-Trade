@@ -39,6 +39,7 @@ import { HelpGlossaryCard } from "./help";
 import { LearningReviewCard } from "./learning-review";
 import { LegalCard } from "./legal";
 import { LlmBudgetCard } from "./llm-budget";
+import { ProxyCard } from "./proxy";
 import { DataSharingCard } from "./sharing";
 import {
   fetchSourceFeatures,
@@ -290,6 +291,9 @@ export default function SettingsPage() {
         <div id="data-sources" className={SECTION_SCROLL_MT}>
           <div id="fmp-features" className="contents">
             <DataSourcesCard />
+          </div>
+          <div className="mt-4">
+            <ProxyCard />
           </div>
         </div>
         {/* requireTypedConfirmation is a USER-level policy field

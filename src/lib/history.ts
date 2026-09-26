@@ -29,6 +29,7 @@ import path from "path";
 import zlib from "zlib";
 import type { OHLCBar } from "./indicators";
 export type { OHLCBar };
+import { dataSourceFetch } from "./data-source-fetch";
 import { normalizeSymbol, toAlpacaSymbol } from "./money";
 import { audit, fulfillMarketDataDemand, getConnectedAccountByBroker, getImportedPriceCloses, getImportedSpxCloses, hasDataPoolConsent, recordMarketDataDemand, resolveApiKeyWithSource, upsertImportedPrices, type ApiKeySource } from "./db";
 import { emitDashboardEvent } from "./events";
@@ -98,7 +99,7 @@ async function fetchYahooChartJson<T>(
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), YAHOO_CHART_TIMEOUT_MS);
     try {
-      const res = await fetch(url, {
+      const res = await dataSourceFetch(url, {
         headers: { "user-agent": BROWSER_UA, accept: "application/json" },
         cache: "no-store",
         signal: controller.signal

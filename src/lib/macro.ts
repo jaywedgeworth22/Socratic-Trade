@@ -1,3 +1,4 @@
+import { dataSourceFetch } from "./data-source-fetch";
 import { resolveApiKeyWithSource, type ApiKeySource } from "./db";
 import { apiCircuitBreakerShouldSkip } from "./api-circuit-breaker";
 import { logApiHealth } from "./db-health";
@@ -452,11 +453,11 @@ async function fetchVixLane(
       const timeout = setTimeout(() => controller.abort(), VIX_LANE_TIMEOUT_MS);
       let res: Response;
       try {
-        res = await fetch(url, {
+        res = await dataSourceFetch(url, {
           cache: "no-store",
           signal: controller.signal,
           headers: { "user-agent": BROWSER_UA, accept }
-        });
+        }, { service: lane });
       } finally {
         clearTimeout(timeout);
       }
@@ -725,7 +726,7 @@ async function fetchFredSeries(seriesId: string, apiKey: string, units?: string)
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
   try {
-    const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+    const response = await dataSourceFetch(url, { cache: "no-store", signal: controller.signal });
     clearTimeout(timeout);
     if (!response.ok) return undefined;
     const payload = await response.json() as any;

@@ -38,7 +38,7 @@ const nextConfig = {
       }
     ];
   },
-  serverExternalPackages: ["better-sqlite3", "@pinecone-database/pinecone", "voyageai", "dd-trace", "@sentry/profiling-node"],
+  serverExternalPackages: ["better-sqlite3", "@pinecone-database/pinecone", "voyageai", "dd-trace", "@sentry/profiling-node", "undici"],
   webpack: (config, { isServer, nextRuntime }) => {
     config.resolve.alias = {
       ...(config.resolve.alias ?? {}),
@@ -51,6 +51,7 @@ const nextConfig = {
         "@pinecone-database/pinecone": false,
         "voyageai": false,
         "dd-trace": false,
+        "undici": false,
         "node:fs": false,
         "node:path": false,
         "node:http": false,

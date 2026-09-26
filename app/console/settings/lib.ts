@@ -368,3 +368,65 @@ export function saveDeliveryPrefs(prefs: DeliveryPrefs): Promise<{ prefs: Delive
     body: JSON.stringify(prefs)
   });
 }
+
+
+// ── Per-user data-source proxy ──────────────────────────────────────────────
+
+export interface UserProxySettingsView {
+  enabled: boolean;
+  protocol: "http" | "https";
+  host: string;
+  port: number | null;
+  username: string | null;
+  hasPassword: boolean;
+  failureMode: "fail_soft" | "fail_closed";
+  updatedAt: string;
+}
+
+export interface ProxySettingsPayload {
+  ok: boolean;
+  settings: UserProxySettingsView | null;
+  effective: {
+    source: "user" | "env" | "default" | "none";
+    failureMode: "fail_soft" | "fail_closed";
+    proxyHost: string | null;
+  };
+  excludedServices: string[];
+}
+
+export interface ProxyTestResult {
+  ok: boolean;
+  status?: number;
+  latencyMs?: number;
+  source?: "user" | "env" | "default" | "none";
+  failureMode?: "fail_soft" | "fail_closed";
+  proxyHost?: string | null;
+  egressIp?: string | null;
+  error?: string;
+}
+
+export function fetchProxySettings(): Promise<ProxySettingsPayload> {
+  return request<ProxySettingsPayload>("/api/settings/proxy");
+}
+
+export function saveProxySettings(body: {
+  enabled: boolean;
+  protocol: "http" | "https";
+  host: string;
+  port?: number | null;
+  username?: string | null;
+  password?: string;
+  failureMode: "fail_soft" | "fail_closed";
+}): Promise<ProxySettingsPayload> {
+  return request<ProxySettingsPayload>("/api/settings/proxy", { method: "PUT", body: JSON.stringify(body) });
+}
+
+export function deleteProxySettings(): Promise<ProxySettingsPayload> {
+  return request<ProxySettingsPayload>("/api/settings/proxy", { method: "DELETE" });
+}
+
+export async function testProxySettings(): Promise<ProxyTestResult> {
+  // The test route returns 200 with ok:false on canary failure, so read the
+  // payload directly rather than going through request<T>'s throw-on-!ok.
+  return request<ProxyTestResult>("/api/settings/proxy/test", { method: "POST", body: "{}" });
+}
